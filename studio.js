@@ -166,7 +166,7 @@ var fromB64 = (b64) => {
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 };
 function makeGithub(gh, fetchImpl = fetch) {
-  const headers4 = () => ({ Authorization: `Bearer ${gh.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
+  const headers5 = () => ({ Authorization: `Bearer ${gh.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
   const repoBase = `${API}/repos/${gh.owner}/${gh.repo}`;
   const base = `${repoBase}/contents`;
   async function err(res) {
@@ -179,13 +179,13 @@ function makeGithub(gh, fetchImpl = fetch) {
     return Object.assign(new Error(m), { status: res.status });
   }
   async function gj(url, opts) {
-    const res = await fetchImpl(url, { ...opts, headers: headers4() });
+    const res = await fetchImpl(url, { ...opts, headers: headers5() });
     if (!res.ok) throw await err(res);
     return res.json();
   }
   return {
     async getFile(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers4() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       const j = await res.json();
@@ -194,7 +194,7 @@ function makeGithub(gh, fetchImpl = fetch) {
     async putFile(path3, content, message, sha) {
       const res = await fetchImpl(`${base}/${enc(path3)}`, {
         method: "PUT",
-        headers: headers4(),
+        headers: headers5(),
         body: JSON.stringify({ message, content: toB64(content), branch: gh.branch, ...sha ? { sha } : {} })
       });
       if (!res.ok) throw await err(res);
@@ -203,7 +203,7 @@ function makeGithub(gh, fetchImpl = fetch) {
     async putBinaryB64(path3, b64, message, sha) {
       const res = await fetchImpl(`${base}/${enc(path3)}`, {
         method: "PUT",
-        headers: headers4(),
+        headers: headers5(),
         body: JSON.stringify({ message, content: String(b64).replace(/\s/g, ""), branch: gh.branch, ...sha ? { sha } : {} })
       });
       if (!res.ok) throw await err(res);
@@ -212,21 +212,21 @@ function makeGithub(gh, fetchImpl = fetch) {
     async deleteFile(path3, message, sha) {
       const res = await fetchImpl(`${base}/${enc(path3)}`, {
         method: "DELETE",
-        headers: headers4(),
+        headers: headers5(),
         body: JSON.stringify({ message, branch: gh.branch, sha })
       });
       if (!res.ok) throw await err(res);
       return true;
     },
     async listDir(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers4() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers5() });
       if (res.status === 404) return [];
       if (!res.ok) throw await err(res);
       const j = await res.json();
       return Array.isArray(j) ? j.map((e) => ({ name: e.name, path: e.path, sha: e.sha, type: e.type })) : [];
     },
     async getBinary(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers4() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       const j = await res.json();
@@ -296,8 +296,8 @@ function makeGithub(gh, fetchImpl = fetch) {
     async enablePages({ owner, repo }) {
       const url = `${API}/repos/${enc(owner)}/${enc(repo)}/pages`;
       const body = JSON.stringify({ build_type: "workflow" });
-      let res = await fetchImpl(url, { method: "POST", headers: headers4(), body });
-      if (res.status === 409) res = await fetchImpl(url, { method: "PUT", headers: headers4(), body });
+      let res = await fetchImpl(url, { method: "POST", headers: headers5(), body });
+      if (res.status === 409) res = await fetchImpl(url, { method: "PUT", headers: headers5(), body });
       if (!res.ok && res.status !== 409) throw await err(res);
       const j = await res.json().catch(() => ({}));
       return { url: j.html_url || null, built: !!(j.status && j.status !== "null") };
@@ -311,7 +311,7 @@ function makeGithub(gh, fetchImpl = fetch) {
     async setPagesDomain({ owner, repo, cname }) {
       const url = `${API}/repos/${enc(owner)}/${enc(repo)}/pages`;
       const body = JSON.stringify({ cname });
-      const put = () => fetchImpl(url, { method: "PUT", headers: headers4(), body });
+      const put = () => fetchImpl(url, { method: "PUT", headers: headers5(), body });
       let res = await put();
       if (res.status === 404) {
         await this.enablePages({ owner, repo }).catch(() => {
@@ -330,7 +330,7 @@ function makeGithub(gh, fetchImpl = fetch) {
     // parsed JSON (incl. { cname, status, https_enforced, https_certificate }) or null when
     // Pages isn't enabled yet (404). The pure interpreter is core/domain.js pagesDomainStatus.
     async getPages({ owner, repo }) {
-      const res = await fetchImpl(`${API}/repos/${enc(owner)}/${enc(repo)}/pages`, { headers: headers4() });
+      const res = await fetchImpl(`${API}/repos/${enc(owner)}/${enc(repo)}/pages`, { headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       return res.json();
@@ -1032,13 +1032,89 @@ async function resolveLatestModel3(opts = {}, fetchImpl = fetch) {
   return latestModelOffline("google");
 }
 
+// server/ai/groq.js
+var groq_exports = {};
+__export(groq_exports, {
+  DEFAULT_MODEL: () => DEFAULT_MODEL4,
+  buildText: () => buildText4,
+  capabilities: () => capabilities4,
+  generateText: () => generateText4,
+  listModels: () => listModels4,
+  parseModels: () => parseModels4,
+  parseText: () => parseText4
+});
+var capabilities4 = { text: true, vision: false, document: false, image: false };
+var DEFAULT_MODEL4 = "llama-3.3-70b-versatile";
+var BASE2 = "https://api.groq.com/openai/v1";
+var ENDPOINT3 = `${BASE2}/chat/completions`;
+var headers4 = (key) => ({
+  "content-type": "application/json",
+  "Authorization": "Bearer " + key
+});
+function buildText4({ system, prompt, maxTokens, model, key, json }) {
+  const userPrompt = json ? `${prompt || ""}
+
+Return ONLY a JSON object conforming to this JSON Schema \u2014 no prose, no markdown fences:
+${JSON.stringify(json)}` : prompt;
+  const body = {
+    model: model || DEFAULT_MODEL4,
+    messages: [
+      ...system ? [{ role: "system", content: system }] : [],
+      { role: "user", content: userPrompt }
+    ],
+    max_tokens: maxTokens ?? 4e3
+  };
+  if (json) body.response_format = { type: "json_object" };
+  return { url: ENDPOINT3, headers: headers4(key), body: JSON.stringify(body) };
+}
+function parseText4(json) {
+  if (json?.choices?.[0]?.finish_reason === "content_filter") throw Object.assign(new Error("Groq declined this request (content_filter)."), { code: "AI_REFUSAL" });
+  return (json?.choices?.[0]?.message?.content || "").trim();
+}
+async function call4(built, fetchImpl = fetch) {
+  const res = await fetchImpl(built.url, { method: "POST", headers: built.headers, body: built.body });
+  const raw = await res.text();
+  let json = null;
+  try {
+    json = raw ? JSON.parse(raw) : {};
+  } catch {
+  }
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Groq API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (json === null) throw Object.assign(new Error(`Groq returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
+  return json;
+}
+async function generateText4(opts, fetchImpl) {
+  const json = await call4(buildText4(opts), fetchImpl);
+  const text2 = parseText4(json);
+  if (!opts.json) return { text: text2 };
+  try {
+    return { text: text2, json: looseJson(text2) };
+  } catch {
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+  }
+}
+function parseModels4(json) {
+  return [...new Set((json.data || []).map((m) => m.id).filter(Boolean))].sort();
+}
+async function listModels4({ key } = {}, fetchImpl = fetch) {
+  const res = await fetchImpl(`${BASE2}/models`, { method: "GET", headers: { "Authorization": "Bearer " + key } });
+  const raw = await res.text();
+  let json = null;
+  try {
+    json = raw ? JSON.parse(raw) : {};
+  } catch {
+  }
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Groq API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  return parseModels4(json || {});
+}
+
 // studio-app/seams/ai.js
-var ADAPTERS = { anthropic: anthropic_exports, openai: openai_exports, google: google_exports };
+var ADAPTERS = { anthropic: anthropic_exports, openai: openai_exports, google: google_exports, groq: groq_exports };
 function makeAi(cfg, fetchImpl = fetch) {
   const browserFetch = (url, opts = {}) => {
-    const headers4 = { ...opts.headers || {} };
-    if (String(url).includes("api.anthropic.com")) headers4["anthropic-dangerous-direct-browser-access"] = "true";
-    return fetchImpl(url, { ...opts, headers: headers4 });
+    const headers5 = { ...opts.headers || {} };
+    if (String(url).includes("api.anthropic.com")) headers5["anthropic-dangerous-direct-browser-access"] = "true";
+    return fetchImpl(url, { ...opts, headers: headers5 });
   };
   const pick = () => {
     const a = cfg.getAi();
@@ -1154,10 +1230,10 @@ var AwsClient = class {
   }
   async sign(input, init) {
     if (input instanceof Request) {
-      const { method, url, headers: headers4, body } = input;
-      init = Object.assign({ method, url, headers: headers4 }, init);
-      if (init.body == null && headers4.has("Content-Type")) {
-        init.body = body != null && headers4.has("X-Amz-Content-Sha256") ? body : await input.clone().arrayBuffer();
+      const { method, url, headers: headers5, body } = input;
+      init = Object.assign({ method, url, headers: headers5 }, init);
+      if (init.body == null && headers5.has("Content-Type")) {
+        init.body = body != null && headers5.has("X-Amz-Content-Sha256") ? body : await input.clone().arrayBuffer();
       }
       input = url;
     }
@@ -1189,13 +1265,13 @@ var AwsClient = class {
   }
 };
 var AwsV4Signer = class {
-  constructor({ method, url, headers: headers4, body, accessKeyId, secretAccessKey, sessionToken, service, region, cache, datetime, signQuery, appendSessionToken, allHeaders, singleEncode }) {
+  constructor({ method, url, headers: headers5, body, accessKeyId, secretAccessKey, sessionToken, service, region, cache, datetime, signQuery, appendSessionToken, allHeaders, singleEncode }) {
     if (url == null) throw new TypeError("url is a required option");
     if (accessKeyId == null) throw new TypeError("accessKeyId is a required option");
     if (secretAccessKey == null) throw new TypeError("secretAccessKey is a required option");
     this.method = method || (body ? "POST" : "GET");
     this.url = new URL(url);
-    this.headers = new Headers(headers4 || {});
+    this.headers = new Headers(headers5 || {});
     this.body = body;
     this.accessKeyId = accessKeyId;
     this.secretAccessKey = secretAccessKey;
@@ -1346,7 +1422,7 @@ function buf2hex(arrayBuffer) {
 function encodeRfc3986(urlEncodedStr) {
   return urlEncodedStr.replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 }
-function guessServiceRegion(url, headers4) {
+function guessServiceRegion(url, headers5) {
   const { hostname, pathname } = url;
   if (hostname.endsWith(".on.aws")) {
     const match2 = hostname.match(/^[^.]{1,63}\.lambda-url\.([^.]{1,63})\.on\.aws$/);
@@ -1376,7 +1452,7 @@ function guessServiceRegion(url, headers4) {
       service = pathname === "/mqtt" ? "iotdevicegateway" : "iotdata";
     }
   } else if (service === "autoscaling") {
-    const targetPrefix = (headers4.get("X-Amz-Target") || "").split(".")[0];
+    const targetPrefix = (headers5.get("X-Amz-Target") || "").split(".")[0];
     if (targetPrefix === "AnyScaleFrontendService") {
       service = "application-autoscaling";
     } else if (targetPrefix === "AnyScaleScalingPlannerFrontendService") {

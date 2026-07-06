@@ -2575,7 +2575,7 @@
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
 <script>window.__LICENCE_PUBLIC_KEY='20e5e11738c29f3ee250dd38fa1b72695a327a2eb18cf4f9b817c56c664c7201';</script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260706-712df56";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -6540,6 +6540,7 @@ window.loadConnect=loadConnect;
 
 /* ── settings → AI ──────────────────────────────────────────────────────── */
 const AI_PROVIDERS=[
+  {id:'groq',     name:'Groq'},
   {id:'anthropic',name:'Anthropic (Claude)'},
   {id:'openai',   name:'OpenAI'},
   {id:'google',   name:'Gemini'},
@@ -6551,7 +6552,7 @@ const AI_PROVIDERS=[
 // SERVER resolves the provider's LATEST sensible model (stable alias or live /models
 // query + recency, see server/ai/pickLatest.js). This map is only the synchronous offline
 // fallback. A stale value is correctable under "Advanced — override".
-const AI_DEFAULT_MODELS={ anthropic:'claude-opus-4-8', openai:'gpt-4o', google:'gemini-flash-latest', ollama:'' };
+const AI_DEFAULT_MODELS={ anthropic:'claude-opus-4-8', openai:'gpt-4o', google:'gemini-flash-latest', groq:'llama-3.3-70b-versatile', ollama:'' };
 const defaultModelFor=(p)=>{ const id=String(p==null?'':p).trim(); return Object.prototype.hasOwnProperty.call(AI_DEFAULT_MODELS,id)?AI_DEFAULT_MODELS[id]:''; };
 // Resolve the provider's LATEST model from the server (alias/live-query). Falls back to the
 // offline default if the route is unavailable (older server, or remote-Helm BYOK). Never throws.
