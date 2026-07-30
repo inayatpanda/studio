@@ -465,6 +465,9 @@ var SAFE_DEFAULT = {
   anthropic: "claude-opus-4-8",
   openai: "gpt-4o",
   google: "gemini-flash-latest",
+  // Groq has no "-latest" alias, so activation resolves the newest chat model from the live
+  // list (pickLatestFromList) and only falls back to this known-current id offline.
+  groq: "llama-3.3-70b-versatile",
   ollama: ""
 };
 var EXCLUDE = [
@@ -489,6 +492,18 @@ var EXCLUDE = [
   "veo",
   "aqa",
   "gemma",
+  // Groq-specific non-chat heads: 'orpheus' is a TTS family (canopylabs/orpheus-*) and
+  // 'compound' is an agentic wrapper (groq/compound[-mini]) — neither is a plain chat model,
+  // so an auto-pick must never land on them.
+  "orpheus",
+  "compound",
+  // Reasoning-first models leak <think>/analysis into the text (see stripThink) and burn the
+  // budget mid-reasoning — auto-pick must skip them even when the base name contains a
+  // whitelisted family (e.g. Groq's `deepseek-r1-distill-llama-70b` matches 'llama').
+  "deepseek",
+  "distill",
+  "r1-",
+  "-r1",
   // previews / experiments / dated snapshots we don't want as the default
   "preview",
   "experimental",
@@ -501,6 +516,13 @@ var PREFERRED_HINTS = {
   anthropic: ["sonnet", "opus", "haiku", "claude"],
   openai: ["gpt", "chatgpt", "o4", "o3"],
   google: ["flash", "pro", "gemini"],
+  // Groq serves open chat models from several families — whitelist ONLY plain-instruct ones
+  // so a pick can't wander onto a specialised id (the Arabic-only allam-*, or anything the
+  // EXCLUDE list above screens out: whisper/guard/orpheus/compound). Qwen and gpt-oss are
+  // deliberately ABSENT: they are reasoning-first families that leak <think>/analysis
+  // scaffolding into the text (live e2e 2026-07-15: an auto-healed qwen3.6 burned the whole
+  // token budget inside <think> and returned no answer). Users can still type them manually.
+  groq: ["llama", "mixtral"],
   ollama: []
 };
 var lc = (s) => String(s == null ? "" : s).toLowerCase();
@@ -624,7 +646,7 @@ async function call(built, fetchImpl = fetch) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Anthropic API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Anthropic API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "anthropic", providerType: json?.error?.type });
   if (json === null) throw Object.assign(new Error(`Anthropic returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
   return json;
 }
@@ -698,7 +720,7 @@ async function fetchModelsJson({ key }, fetchImpl) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Anthropic API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Anthropic API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "anthropic", providerType: json?.error?.type });
   if (json === null) throw Object.assign(new Error(`Anthropic returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
   return json;
 }
@@ -779,7 +801,7 @@ async function call2(built, fetchImpl = fetch) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `OpenAI API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `OpenAI API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "openai", providerCode: json?.error?.code, providerType: json?.error?.type });
   if (json === null) throw Object.assign(new Error(`OpenAI returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
   return json;
 }
@@ -854,7 +876,7 @@ async function fetchModelsJson2({ key }, fetchImpl) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `OpenAI API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `OpenAI API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "openai", providerCode: json?.error?.code, providerType: json?.error?.type });
   if (json === null) throw Object.assign(new Error(`OpenAI returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
   return json;
 }
@@ -893,6 +915,7 @@ __export(google_exports, {
 var capabilities3 = { text: true, vision: true, document: true, image: true };
 var DEFAULT_MODEL3 = "gemini-flash-latest";
 var BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+var GEMINI_THINKING_BUDGET = 256;
 var headers3 = (key) => ({ "content-type": "application/json", ...key ? { "x-goog-api-key": key } : {} });
 function stripAdditionalProps(schema) {
   if (!schema || typeof schema !== "object") return schema;
@@ -912,8 +935,13 @@ function buildText3({ system, prompt, maxTokens, model, key, json, baseUrl }) {
     generationConfig: {
       maxOutputTokens: maxTokens ?? 4e3,
       // Gemini 2.5 / flash-latest are "thinking" models — hidden reasoning tokens are billed
-      // against maxOutputTokens FIRST, truncating JSON on modest budgets (→ AI_PARSE). Disable.
-      thinkingConfig: { thinkingBudget: 0 },
+      // against maxOutputTokens FIRST. With -1 (dynamic) the model over-thinks on "complex"
+      // creative tasks (social pack, thread, carousel) and spends the WHOLE low output ceiling
+      // (~1200) on hidden thinking → truncated JSON → AI_PARSE. Cap it at a small FIXED budget
+      // so thinking can never starve the output; simple tasks still use less than the cap.
+      // (0 is REJECTED with a 400 by gemini-flash-latest — which is this adapter's
+      // DEFAULT_MODEL and what pickLatest resolves google to — so use a positive floor.)
+      thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
       ...json ? { responseMimeType: "application/json", responseSchema: stripAdditionalProps(json) } : {}
     }
   };
@@ -926,7 +954,7 @@ function buildVision3({ system, prompt, imageBase64, mimeType, maxTokens, model,
       { inlineData: { mimeType: mimeType || "image/jpeg", data: imageBase64 } },
       { text: prompt }
     ] }],
-    generationConfig: { maxOutputTokens: maxTokens ?? 300, thinkingConfig: { thinkingBudget: 0 } }
+    generationConfig: { maxOutputTokens: maxTokens ?? 300, thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET } }
   };
   return { url, headers: headers3(key), body: JSON.stringify(body) };
 }
@@ -945,7 +973,7 @@ async function call3(built, fetchImpl = fetch) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Gemini API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Gemini API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "google", providerCode: json?.error?.code, providerStatus: json?.error?.status });
   if (json === null) throw Object.assign(new Error(`Gemini returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
   return json;
 }
@@ -959,7 +987,7 @@ async function readDocument3({ system, instruction, fileBase64, mimeType, json, 
     ...system ? { systemInstruction: { parts: [{ text: system }] } } : {},
     generationConfig: {
       maxOutputTokens: 4e3,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
       ...json ? { responseMimeType: "application/json", responseSchema: stripAdditionalProps(json) } : {}
     }
   };
@@ -1013,7 +1041,7 @@ async function fetchModelsJson3({ key }, fetchImpl) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Gemini API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Gemini API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "google", providerCode: json?.error?.code, providerStatus: json?.error?.status });
   if (json === null) throw Object.assign(new Error(`Gemini returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
   return json;
 }
@@ -1040,8 +1068,12 @@ __export(groq_exports, {
   capabilities: () => capabilities4,
   generateText: () => generateText4,
   listModels: () => listModels4,
+  listModelsRaw: () => listModelsRaw4,
+  maxTokensCapFromError: () => maxTokensCapFromError,
   parseModels: () => parseModels4,
-  parseText: () => parseText4
+  parseText: () => parseText4,
+  resolveLatestModel: () => resolveLatestModel4,
+  stripThink: () => stripThink
 });
 var capabilities4 = { text: true, vision: false, document: false, image: false };
 var DEFAULT_MODEL4 = "llama-3.3-70b-versatile";
@@ -1069,7 +1101,11 @@ ${JSON.stringify(json)}` : prompt;
 }
 function parseText4(json) {
   if (json?.choices?.[0]?.finish_reason === "content_filter") throw Object.assign(new Error("Groq declined this request (content_filter)."), { code: "AI_REFUSAL" });
-  return (json?.choices?.[0]?.message?.content || "").trim();
+  return stripThink(json?.choices?.[0]?.message?.content || "").trim();
+}
+function stripThink(text2) {
+  const s = String(text2 == null ? "" : text2);
+  return s.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<think>[\s\S]*$/, "");
 }
 async function call4(built, fetchImpl = fetch) {
   const res = await fetchImpl(built.url, { method: "POST", headers: built.headers, body: built.body });
@@ -1079,12 +1115,24 @@ async function call4(built, fetchImpl = fetch) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Groq API ${res.status}`), { code: "AI_HTTP", status: res.status });
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Groq API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "groq", providerCode: json?.error?.code, providerType: json?.error?.type });
   if (json === null) throw Object.assign(new Error(`Groq returned a non-JSON response (HTTP ${res.status}).`), { code: "AI_HTTP", status: res.status });
   return json;
 }
+function maxTokensCapFromError(message) {
+  const m = /max_tokens[^0-9]*must be less than or equal to[^0-9]*(\d+)/i.exec(String(message == null ? "" : message));
+  return m ? parseInt(m[1], 10) : 0;
+}
 async function generateText4(opts, fetchImpl) {
-  const json = await call4(buildText4(opts), fetchImpl);
+  let json;
+  try {
+    json = await call4(buildText4(opts), fetchImpl);
+  } catch (err) {
+    const cap = err && (err.status === 400 || err.providerStatus === 400) ? maxTokensCapFromError(err.message) : 0;
+    const asked = opts.maxTokens ?? 4e3;
+    if (!cap || asked <= cap) throw err;
+    json = await call4(buildText4({ ...opts, maxTokens: cap }), fetchImpl);
+  }
   const text2 = parseText4(json);
   if (!opts.json) return { text: text2 };
   try {
@@ -1096,7 +1144,10 @@ async function generateText4(opts, fetchImpl) {
 function parseModels4(json) {
   return [...new Set((json.data || []).map((m) => m.id).filter(Boolean))].sort();
 }
-async function listModels4({ key } = {}, fetchImpl = fetch) {
+function parseModelsRaw4(json) {
+  return (json.data || []).filter((m) => m && m.id).map((m) => ({ id: m.id, created: m.created }));
+}
+async function fetchModelsJson4({ key } = {}, fetchImpl = fetch) {
   const res = await fetchImpl(`${BASE2}/models`, { method: "GET", headers: { "Authorization": "Bearer " + key } });
   const raw = await res.text();
   let json = null;
@@ -1104,8 +1155,22 @@ async function listModels4({ key } = {}, fetchImpl = fetch) {
     json = raw ? JSON.parse(raw) : {};
   } catch {
   }
-  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Groq API ${res.status}`), { code: "AI_HTTP", status: res.status });
-  return parseModels4(json || {});
+  if (!res.ok) throw Object.assign(new Error(json?.error?.message || `Groq API ${res.status}`), { code: "AI_HTTP", status: res.status, provider: "groq", providerCode: json?.error?.code, providerType: json?.error?.type });
+  return json || {};
+}
+async function listModels4(opts = {}, fetchImpl = fetch) {
+  return parseModels4(await fetchModelsJson4(opts, fetchImpl));
+}
+async function listModelsRaw4(opts = {}, fetchImpl = fetch) {
+  return parseModelsRaw4(await fetchModelsJson4(opts, fetchImpl));
+}
+async function resolveLatestModel4(opts = {}, fetchImpl = fetch) {
+  try {
+    const picked = pickLatestFromList("groq", await listModelsRaw4(opts, fetchImpl));
+    if (picked) return picked;
+  } catch {
+  }
+  return latestModelOffline("groq");
 }
 
 // studio-app/seams/ai.js
@@ -2171,7 +2236,11 @@ function inlineHtmlToMd(html) {
     const id = idm ? safeCiteId(decodeEntities(idm[1])) : "";
     return id ? `[^${id}]` : "";
   });
-  s = s.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, txt) => `[${txt.replace(/<[^>]+>/g, "")}](${href})`);
+  s = s.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, txt) => {
+    const text2 = txt.replace(/<[^>]+>/g, "");
+    if (/^\s*(?:javascript|vbscript):/i.test(decodeEntities(href))) return text2;
+    return `[${text2}](${href})`;
+  });
   s = s.replace(/<code>([\s\S]*?)<\/code>/gi, (_, t) => `\`${decodeEntities(t.replace(/<[^>]+>/g, ""))}\``);
   s = s.replace(/<(strong|b)>([\s\S]*?)<\/\1>/gi, (_, __, t) => `**${t}**`);
   s = s.replace(/<(em|i)>([\s\S]*?)<\/\1>/gi, (_, __, t) => `*${t}*`);
@@ -2181,11 +2250,35 @@ function inlineHtmlToMd(html) {
   return s.replace(/[ \t]+/g, " ").trim();
 }
 function escAttr2(s) {
-  return String(s || "").replace(/"/g, "&quot;");
+  return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 function escHtml(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+function escMdText(s) {
+  return String(s == null ? "" : s).replace(/[\r\n]+/g, " ").replace(/[\\`*_~\[\]()<>]/g, (c) => `\\${c}`);
+}
+var SAFE_HTTPS_URL = /^https:\/\/[^\s"'<>\\]+$/i;
+var isSafeHttpsRef = (url) => {
+  const s = String(url || "");
+  return SAFE_HTTPS_URL.test(s) && !s.split("/").includes("..");
+};
+var ATTR_UNSAFE = /[\s"'<>\\]/;
+function safeEmbedSrc(src) {
+  const s = String(src == null ? "" : src).trim();
+  if (!s) return "";
+  if (/^\/[^/]/.test(s)) return ATTR_UNSAFE.test(s) ? "" : s;
+  const up = s.replace(/^http:\/\//i, "https://");
+  return isSafeHttpsRef(up) ? up : "";
+}
+function placementClass(b) {
+  const p = b && b.placement;
+  return p === "wide" ? " breakout" : p === "left" ? " img-left" : p === "right" ? " img-right" : "";
+}
+var isUnsafeFilename = (name) => {
+  const s = String(name);
+  return s.includes("/") || s.includes("\\") || s.includes("..");
+};
 var ALIGNS = /* @__PURE__ */ new Set(["left", "center", "right"]);
 function blkWidth(b) {
   const n = Number(b && b.width);
@@ -2246,14 +2339,17 @@ function figureBlock(b, slug) {
 }
 function serialiseBlock(block, ctx = {}) {
   switch (block.type) {
-    case "heading":
-      return `${"#".repeat(Math.min(Math.max(block.level || 2, 2), 4))} ${(block.text || "").trim()}`;
+    case "heading": {
+      const t = (block.text || "").trim();
+      return t ? `${"#".repeat(Math.min(Math.max(block.level || 2, 2), 4))} ${escHtml(t)}` : "";
+    }
     case "text":
       return inlineHtmlToMd(block.html);
     case "quote": {
       const body = inlineHtmlToMd(block.html != null ? block.html : block.text).replace(/\n/g, "\n> ");
+      if (!body.trim()) return "";
       return `> ${body}${block.cite ? `
-> \u2014 ${block.cite}` : ""}`;
+> \u2014 ${escMdText(block.cite)}` : ""}`;
     }
     case "divider":
       return "---";
@@ -2264,7 +2360,7 @@ function serialiseBlock(block, ctx = {}) {
     case "raw":
       return String(block.content || "");
     case "gallery": {
-      const imgs = (block.images || []).filter((im) => im && im.file).map((im) => `![${escAttr2(im.alt).replace(/[\[\]]/g, "")}](./_images/${ctx.slug || "post"}/${im.file})`);
+      const imgs = (block.images || []).filter((im) => im && im.file).map((im) => `![${String(im.alt || "").replace(/[\[\]]/g, "").replace(/[\r\n]+/g, " ").trim()}](./_images/${ctx.slug || "post"}/${im.file})`);
       if (!imgs.length) return "";
       const w = blkWidth(block);
       const marker = w == null ? "" : `[[blk-gallery:w=${w},a=${blkAlign(block)}]]
@@ -2274,25 +2370,30 @@ function serialiseBlock(block, ctx = {}) {
     }
     case "embed": {
       const ra = resizeAttrs(block);
+      const pl = placementClass(block);
       if (block.provider === "youtube" && block.videoId)
-        return `<div class="embed-16x9"${ra}>
-  <iframe src="https://www.youtube-nocookie.com/embed/${block.videoId}" title="${escAttr2(block.title)}" loading="lazy" allowfullscreen></iframe>
+        return `<div class="embed-16x9${pl}"${ra}>
+  <iframe src="https://www.youtube-nocookie.com/embed/${escAttr2(block.videoId)}" title="${escAttr2(block.title)}" loading="lazy" allowfullscreen></iframe>
 </div>`;
       if (block.provider === "vimeo" && block.videoId)
-        return `<div class="embed-16x9"${ra}>
-  <iframe src="https://player.vimeo.com/video/${block.videoId}" title="${escAttr2(block.title)}" loading="lazy" allowfullscreen></iframe>
+        return `<div class="embed-16x9${pl}"${ra}>
+  <iframe src="https://player.vimeo.com/video/${escAttr2(block.videoId)}" title="${escAttr2(block.title)}" loading="lazy" allowfullscreen></iframe>
 </div>`;
       if (block.src) {
-        const poster = block.poster ? ` poster="${escAttr2(block.poster)}"` : "";
-        const tag = `<video src="${escAttr2(block.src)}"${poster}${heightCapStyle(block)} controls preload="metadata" playsinline></video>`;
+        const src = safeEmbedSrc(block.src);
+        if (!src) return "";
+        const psrc = block.poster ? safeEmbedSrc(block.poster) : "";
+        const poster = psrc ? ` poster="${escAttr2(psrc)}"` : "";
+        const tag = `<video src="${escAttr2(src)}"${poster}${heightCapStyle(block)} controls preload="metadata" playsinline></video>`;
         const cap = block.caption ? `<figcaption>${escHtml(block.caption)}</figcaption>` : "";
-        return ra || cap ? `<figure class="blk-video"${ra}>${tag}${cap}</figure>` : tag;
+        return ra || cap || pl ? `<figure class="blk-video${pl}"${ra}>${tag}${cap}</figure>` : tag;
       }
       return "";
     }
     case "playground": {
-      const html = pgHtml(block.html), js = String(block.js || "").trim();
-      const css = pgHtml(block.css || "");
+      const html = pgHtml(block.html);
+      const js = String(block.js || "").trim().replace(/<\/(script)/gi, "<\\/$1");
+      const css = pgHtml(block.css || "").replace(/<\/(style)/gi, "<\\/$1");
       if (!html && !js && !css) return "";
       const idAttr = block.domId && /^[a-zA-Z][\w-]*$/.test(block.domId) ? ` id="${block.domId}"` : "";
       const place = block.placement === "wide" ? " breakout" : block.placement === "left" ? " img-left" : block.placement === "right" ? " img-right" : "";
@@ -2317,7 +2418,7 @@ ${js}
       const rows = Array.isArray(block.rows) ? block.rows : [];
       if (!header.length && !rows.length) return "";
       const cols = header.length || Math.max(0, ...rows.map((r) => r.length));
-      const cell = (v) => String(v == null ? "" : v).replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+      const cell = (v) => escHtml(String(v == null ? "" : v).replace(/\|/g, "\\|").replace(/\n/g, " ").trim());
       const pad = (r) => {
         const a = (r || []).map(cell);
         while (a.length < cols) a.push("");
@@ -2419,7 +2520,9 @@ function renderPreviewHtml(blocks, ctx = {}) {
         return "";
       }
       case "playground": {
-        const html = pgHtml(b.html), js = String(b.js || "").trim(), css = pgHtml(b.css || "");
+        const html = pgHtml(b.html);
+        const js = String(b.js || "").trim().replace(/<\/(script)/gi, "<\\/$1");
+        const css = pgHtml(b.css || "").replace(/<\/(style)/gi, "<\\/$1");
         if (!html && !js && !css) return "";
         const idAttr = b.domId && /^[a-zA-Z][\w-]*$/.test(b.domId) ? ` id="${b.domId}"` : "";
         return `<div class="playground${placeCls(b.placement)}"${idAttr}${resizeAttrs(b)}>${css ? `<style>${css}</style>` : ""}${html}${js ? `<script>${js}<\/script>` : ""}</div>`;
@@ -2452,7 +2555,17 @@ function validateDoc(doc) {
     if (b.type === "image" && !b.file && !b.base64 && !b.url) throw Object.assign(new Error("image block needs file, base64 or url"), { status: 400 });
     if (b.type === "image" && b.url && !b.base64 && !isSafeImageRef(b.url))
       throw Object.assign(new Error("image reference must be a site image path under /images/posts/"), { status: 400 });
+    if (b.type === "image" && b.file && isUnsafeFilename(b.file))
+      throw Object.assign(new Error("unsafe image filename"), { status: 400 });
+    if (b.type === "gallery") {
+      for (const im of b.images || []) {
+        if (im && im.file && isUnsafeFilename(im.file))
+          throw Object.assign(new Error("unsafe image filename"), { status: 400 });
+      }
+    }
     if (b.type === "figure" && (typeof b.svg !== "string" || b.svg.trim() === "")) throw Object.assign(new Error("figure block needs a non-empty svg string"), { status: 400 });
+    if (b.type === "figure" && b.base && b.base.file && isUnsafeFilename(b.base.file))
+      throw Object.assign(new Error("unsafe figure image filename"), { status: 400 });
   }
   return true;
 }
@@ -14821,7 +14934,7 @@ From this source material, write ONE optimised post per requested platform, each
 - facebook: conversational, 50\u2013120 words, reads like talking to colleagues \u2014 no hashtag pile.${linkNote}
 Source material:
 """${source}"""`;
-  const { json } = await ai.generateText({ provider, system: styleFor(profile), prompt: user, maxTokens: 1200, json: schema });
+  const { json } = await ai.generateText({ provider, system: styleFor(profile), prompt: user, maxTokens: 2e3, json: schema });
   if (!link) return json;
   const out = { ...json };
   if (out.linkedin) out.linkedin = `${out.linkedin.trim()}
@@ -14855,7 +14968,7 @@ ${guide}
 ${guardFor(profile)} British spelling.
 Source material:
 """${src}"""`;
-  const { json } = await ai.generateText({ provider, system: styleFor(profile), prompt: user, maxTokens: 1600, json: schema });
+  const { json } = await ai.generateText({ provider, system: styleFor(profile), prompt: user, maxTokens: 2e3, json: schema });
   const parts = (Array.isArray(json && json.parts) ? json.parts : []).map((p) => String(p == null ? "" : p).trim()).filter(Boolean);
   if (!parts.length) throw Object.assign(new Error("No parts came back \u2014 try again."), { code: "AI_REFUSAL", status: 422 });
   return { format: fmt, parts };
@@ -15171,6 +15284,7 @@ async function suggestInteractive({ description, profile, provider } = {}, ai) {
   };
   const pick = await ai.generateText({
     provider,
+    chain: "interactive",
     maxTokens: 800,
     json: pickSchema,
     system: "You match a desired interactive widget to the single best template family id from a fixed catalogue. Reply only as the JSON schema requires.",
@@ -15184,6 +15298,7 @@ Pick the single best familyId.`
   const fam = getFamily(familyId);
   const filled = await ai.generateText({
     provider,
+    chain: "interactive",
     maxTokens: 3e3,
     effort: "medium",
     json: fam.paramsSchema,
@@ -15203,6 +15318,7 @@ async function tweakInteractive({ familyId, params = {}, instruction, profile, p
   if (instr.length < 2) throw Object.assign(new Error("Tell me what to change."), { status: 400 });
   const filled = await ai.generateText({
     provider,
+    chain: "interactive",
     maxTokens: 3e3,
     effort: "medium",
     json: fam.paramsSchema,
@@ -15278,10 +15394,11 @@ Return the full updated params object.`
   const { svg: svg2 } = build24(familyId, updatedParams, { animate });
   return { familyId, params: updatedParams, block: { type: "figure", svg: svg2, animation: animate } };
 }
-async function inventInteractive({ description, profile, provider } = {}, ai) {
+async function inventInteractive({ description, base, profile, provider } = {}, ai) {
   const desc = String(description || "").trim();
   if (desc.length < 4) throw Object.assign(new Error("Describe the interactive you want"), { status: 400 });
-  const domId = "pg-" + Math.random().toString(36).slice(2, 9);
+  const hasBase = !!(base && (String(base.html || "").trim() || String(base.js || "").trim()));
+  const domId = hasBase && base.domId ? String(base.domId) : "pg-" + Math.random().toString(36).slice(2, 9);
   const schema = {
     type: "object",
     additionalProperties: false,
@@ -15294,23 +15411,41 @@ async function inventInteractive({ description, profile, provider } = {}, ai) {
       notes: { type: "string" }
     }
   };
-  const system = `You invent a small, self-contained interactive teaching widget ("playground") for ${blogDomainFor(profile)}. Output HTML, optional CSS, and JS that bring one idea to life \u2014 a slider, a toggle, a small simulation, an animated SVG diagram.
-
-HARD RULES \u2014 the widget must run first time with no console errors:
+  const rules = `HARD RULES \u2014 the widget must run first time with no console errors:
 - Vanilla JS only. No external libraries, no <script src>, no fetch/network, no localStorage/cookies. Entirely self-contained.
 - Your HTML is placed inside <div class="playground" id="${domId}">\u2026</div>. Do NOT repeat that wrapper. Scope every DOM lookup to it: write your JS as (function(){ const root = document.getElementById('${domId}'); if(!root) return; /* root.querySelector(...) */ })(); \u2014 never use document-wide selectors and never use inline on* attributes (they are stripped).
 - Use the host classes where natural: .pg-stage (main visual area), .pg-controls, .pg-row, .pg-field, .pg-readout (live numbers), <label><b>\u2026</b></label>; sliders are <input type="range">.
 - Dark theme is already applied (near-black background, light text). Do not set a page background. Use the site accents teal #2dd4bf, cyan #22d3ee, violet #818cf8 for highlights.
 - Honour reduced motion: gate any continuous animation behind window.matchMedia('(prefers-reduced-motion: reduce)').
-- British spelling; concise, accurate labels; never hype. ${visualGuardFor(profile)}
-Return ONLY the JSON the schema requires; put a one-line plain-language summary in "notes".`;
+- British spelling; concise, accurate labels; never hype. ${visualGuardFor(profile)}`;
+  const tail = `Return ONLY the JSON the schema requires; put a one-line plain-language summary in "notes".`;
+  const system = hasBase ? `You MODIFY an existing small, self-contained interactive teaching widget ("playground") for ${blogDomainFor(profile)}. Apply the requested change and return the COMPLETE updated widget (HTML, optional CSS, JS) \u2014 never a diff or a fragment.
+
+${rules}
+- Preserve everything that already works; change only what the instruction asks for. Keep the same overall idea unless the instruction says otherwise.
+${tail}` : `You invent a small, self-contained interactive teaching widget ("playground") for ${blogDomainFor(profile)}. Output HTML, optional CSS, and JS that bring one idea to life \u2014 a slider, a toggle, a small simulation, an animated SVG diagram.
+
+${rules}
+${tail}`;
+  const prompt = hasBase ? `Here is the existing widget's code.
+
+--- HTML ---
+${String(base.html || "").slice(0, 6e3)}
+
+--- CSS ---
+${String(base.css || "").slice(0, 3e3)}
+
+--- JS ---
+${String(base.js || "").slice(0, 6e3)}
+
+Apply this change: "${desc.slice(0, 800)}". Return the complete updated widget.` : `Invent an interactive that: "${desc.slice(0, 800)}". Keep it focused and compact so the whole thing fits comfortably \u2014 a tight, working widget beats an elaborate one.`;
   const r = await ai.generateText({
     provider,
     maxTokens: 14e3,
     effort: "medium",
     json: schema,
     system,
-    prompt: `Invent an interactive that: "${desc.slice(0, 800)}". Keep it focused and compact so the whole thing fits comfortably \u2014 a tight, working widget beats an elaborate one.`
+    prompt
   });
   const out = r && r.json || {};
   let jsError = null;
@@ -19773,13 +19908,27 @@ function renderOnboarding() {
             <div>
               <label for="cb-theme">Theme</label>
               <select id="cb-theme">
-                <option value="observatory" selected>Observatory</option>
-                <option value="vista">Vista</option>
-                <option value="blueprint">Blueprint</option>
-                <option value="atlas">Atlas</option>
-                <option value="daybreak">Daybreak</option>
-                <option value="dune">Dune</option>
-                <option value="rivendell">Rivendell</option>
+                <optgroup label="Worlds">
+                  <option value="observatory" selected>Observatory</option>
+                  <option value="vista">Vista</option>
+                  <option value="blueprint">Blueprint</option>
+                  <option value="atlas">Atlas</option>
+                  <option value="daybreak">Daybreak</option>
+                  <option value="dune">Dune</option>
+                  <option value="rivendell">Rivendell</option>
+                </optgroup>
+                <optgroup label="Simple blog">
+                  <option value="paper">Paper</option>
+                  <option value="linen">Linen</option>
+                  <option value="mist">Mist</option>
+                  <option value="ink">Ink</option>
+                </optgroup>
+                <optgroup label="Creative">
+                  <option value="arcade">Arcade</option>
+                  <option value="botanic">Botanic</option>
+                  <option value="broadsheet">Broadsheet</option>
+                  <option value="aurora">Aurora</option>
+                </optgroup>
               </select>
             </div>
             <div>

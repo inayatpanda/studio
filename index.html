@@ -10,11 +10,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Studio" />
+<meta name="apple-mobile-web-app-title" content="Helm Studio" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-<title>Studio</title>
+<title>Helm Studio</title>
 <style>
   /* ── THEME VARIABLES ─────────────────────────────────────────────────────── */
   /* Dark is the default — The Helm is a first-party companion to the (dark) site.
@@ -53,6 +53,13 @@
     --line:#e4e9f0; --line-2:#d3dbe7; --acc:#0ea5a3;
     --shadow:0 14px 40px rgba(20,30,60,.12); --glow:0 0 0 1px rgba(14,165,163,.16);
     --ring:0 0 0 3px rgba(14,165,163,.2);
+    /* Brand palette re-toned for the light field. The dark-mode brights (teal/cyan-400,
+       violet/pink/goblin) sit near-invisibly on a light background, so colour-coded TEXT
+       and the accent buttons washed out. These deeper stops keep the brand hues but clear
+       ~4.5:1 for text; dark button text on --grad-pub stays ~6:1. Dark mode is untouched. */
+    --teal:#0b7d6f; --cyan:#0a6f8c; --violet:#574fd6; --pink:#c2185b; --goblin:#2f7d32; --editor:#574fd6;
+    --grad:linear-gradient(120deg,#0d9488,#0891b2 52%,#6366f1);
+    --grad-pub:linear-gradient(95deg,#0d9488,#0891b2);
   }
 
   /* ── RESET + BASE ────────────────────────────────────────────────────────── */
@@ -68,6 +75,8 @@
       radial-gradient(55% 50% at 100% 12%,rgba(129,140,248,.10),transparent 70%),
       radial-gradient(70% 60% at 50% 110%,rgba(34,211,238,.07),transparent 70%)}
   :root[data-theme="light"] body::before{opacity:.5}
+  /* one icon language — Tabler sprite refs (icons-sprite.svg #ti-*), currentColor line icons */
+  .tico{width:1.15em;height:1.15em;stroke-width:2;flex:none;vertical-align:-.18em}
   /* fluid, rail-aware width — calc() always subtracts the desktop rail + a gutter so
      the column can NEVER exceed the visible area (no horizontal overflow at any zoom) */
   .wrap{width:min(680px,calc(100vw - 1.6rem));margin-inline:auto;padding-top:1.1rem}
@@ -121,7 +130,7 @@
   .btn:active{transform:translateY(0)}
   .btn.ghost{background:var(--surface-2);border:1px solid var(--line);color:var(--ink);box-shadow:none}
   .btn.ghost:hover{border-color:var(--line-2);background:var(--surface);transform:translateY(-1px);filter:none}
-  .btn.danger{background:rgba(244,114,182,.14);border:1px solid rgba(244,114,182,.4);color:#f472b6;box-shadow:none}
+  .btn.danger{background:rgba(244,114,182,.14);border:1px solid rgba(244,114,182,.4);color:var(--pink);box-shadow:none}
   .btn.danger:hover{background:rgba(244,114,182,.22);box-shadow:none;filter:none}
   .btn:disabled{opacity:.45;transform:none;box-shadow:none;cursor:default}
   .btn-row{display:flex;gap:.6rem}.btn-row .btn{margin-top:0}
@@ -1035,6 +1044,35 @@
     padding:.5em 1.2em;font-size:.85rem;color:var(--ink);white-space:nowrap;
     opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:999}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ── POST-PUBLISH SUCCESS BAR ────────────────────────────────────────────
+     Non-blocking replacement for the old publish confirm(): ✓ Published ·
+     View live ↗ · Draft social posts · ✕. One instance at a time; ✕ or ~15 s
+     dismisses. Sits above the compose bar (z-index 60) and the bottom nav. */
+  #pubBar{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(90px + env(safe-area-inset-bottom) + .8rem);z-index:998;
+    display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:.4rem;
+    max-width:min(94vw,600px);background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;box-shadow:var(--shadow);
+    padding:.4rem .45rem .4rem .85rem;color:var(--ink);font-size:.85rem;
+    animation:pubbar-in .18s ease-out}
+  @keyframes pubbar-in{from{opacity:0;transform:translateX(-50%) translateY(10px)}
+    to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  @media (prefers-reduced-motion: reduce){#pubBar{animation:none}}
+  #pubBar .pb-msg{display:inline-flex;align-items:center;gap:.35em;font-weight:600;white-space:nowrap}
+  #pubBar .pb-msg .tico{color:var(--acc)}
+  #pubBar .pb-btn{display:inline-flex;align-items:center;gap:.35em;min-height:40px;padding:0 .75em;
+    border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--ink);
+    font:600 .85rem var(--font-display);cursor:pointer;text-decoration:none;white-space:nowrap;
+    transition:border-color .15s}
+  #pubBar a.pb-btn{color:var(--acc)}
+  #pubBar .pb-btn:hover{border-color:var(--acc)}
+  #pubBar .pb-x{flex:0 0 auto;width:40px;height:40px;border:0;background:transparent;color:var(--mut);
+    border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  #pubBar .pb-x:hover{color:var(--ink)}
+  /* desktop: centre within the content area to the right of the 88px nav rail */
+  @media(min-width:900px){ #pubBar{left:calc(50% + 44px)} }
+
   #login{margin-top:18vh}
 
   /* ── THEME TOGGLE BUTTON ─────────────────────────────────────────────────── */
@@ -1052,13 +1090,26 @@
     transition:border-color .15s,background .15s}
   .block:hover{border-color:var(--line)}
   .block.sel{border-color:var(--acc);background:rgba(45,212,191,.07)}
+  /* while a block is dragged: dimmed, lifted above siblings, follows the pointer
+     via an inline translateY. Coexists with .chat-bound's outline. */
+  .block.dragging{opacity:.85;z-index:5;box-shadow:var(--shadow);cursor:grabbing;
+    transition:none;will-change:transform}
+  /* #blockList is the positioning context for the drop indicator line */
+  #blockList{position:relative}
+  /* 2px accent line marking the drop insertion point (absolute → no layout shift) */
+  .dragline{position:absolute;left:2px;right:2px;height:2px;background:var(--acc);
+    border-radius:2px;pointer-events:none;z-index:6;box-shadow:0 0 6px var(--acc)}
 
-  /* type label in top-left corner of block */
+  /* type label in top-left corner of block — doubles as the drag grip */
   .htag{
-    position:absolute;top:-9px;left:9px;
+    position:absolute;top:-9px;left:9px;z-index:2;
+    display:inline-flex;align-items:center;gap:2px;
     font-size:9px;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--acc);background:var(--surface);padding:0 5px;
-    font-weight:600;border-radius:4px;pointer-events:none}
+    color:var(--acc);background:var(--surface);padding:1px 5px 1px 3px;
+    font-weight:600;border-radius:4px;
+    cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+  .htag:active{cursor:grabbing}
+  .htag .tico{width:11px;height:11px;flex:none;opacity:.85}
 
   /* block body placeholder */
   .blockbody{
@@ -1103,6 +1154,20 @@
   .be-fmt button:hover{background:rgba(45,212,191,.12);color:var(--acc)}
   .be-fmt button.link{font-size:.75rem;padding:.35em .65em}
   .be-fmt button.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem}
+  /* floating format mini-toolbar (B / I / </> / link) — the replacement for the
+     per-block .be-fmt bar, which went unreachable once the composer stopped
+     setting selectedId. One reusable element, fixed, floated above the live text
+     selection (see selFmtBar() in JS). Same single-bar look as .inline-ai-bar. */
+  #selFmt{
+    position:fixed;z-index:120;display:none;gap:2px;align-items:center;
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:3px;box-shadow:var(--shadow)}
+  #selFmt button{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:34px;height:34px;padding:0;border:0;background:transparent;color:var(--ink);
+    border-radius:8px;cursor:pointer}
+  #selFmt button:hover{background:rgba(45,212,191,.12);color:var(--acc)}
+  #selFmt .tico{width:19px;height:19px}
   /* inline code inside the editable + rendered preview */
   .be-ce code,.be-ce kbd{
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;
@@ -1539,9 +1604,11 @@
   .adddiv:hover{opacity:1}
   #blockList:hover .adddiv{opacity:.35}
   #blockList:hover .adddiv:hover{opacity:1}
+  /* touch: no hover — keep the inserters quietly visible so blocks are always addable */
+  @media (pointer:coarse){ .adddiv{opacity:.45} }
   .adddiv .ln{flex:1;height:1px;background:var(--line)}
   .adddiv .plus{
-    width:22px;height:22px;border-radius:50%;
+    width:30px;height:30px;border-radius:50%;font-size:1rem;
     border:1px dashed var(--acc);color:var(--acc);
     background:transparent;display:flex;align-items:center;
     justify-content:center;font-size:14px;cursor:pointer;
@@ -1563,6 +1630,16 @@
     z-index:201;transform:translateY(100%);
     transition:transform .25s cubic-bezier(.32,1,.24,1)}
   .picker-sheet.open{transform:translateY(0)}
+  /* desktop: the picker opens as a compact popover AT the + you clicked (not a far-away
+     bottom sheet). Position is set inline by openPicker; phone keeps the thumb sheet. */
+  @media (min-width:900px) and (pointer:fine){
+    .picker-sheet.pop{left:auto;right:auto;bottom:auto;width:min(560px,92vw);
+      border-radius:14px;border:1px solid var(--line);
+      transform:none;transition:opacity .14s;opacity:0;pointer-events:none;
+      box-shadow:var(--shadow)}
+    .picker-sheet.pop.open{opacity:1;pointer-events:auto;transform:none}
+    .picker-sheet.pop .picker-grab{display:none}
+  }
 
   .picker-grab{
     width:38px;height:4px;border-radius:3px;
@@ -1586,6 +1663,9 @@
   .ptile:hover{border-color:var(--acc);background:rgba(45,212,191,.07)}
   .ptile:active{transform:scale(.96)}
   .ptile .ic{font-size:18px;display:block;margin-bottom:5px;line-height:1}
+  /* sprite icons on tiles: accent-coloured (matches the library tiles) — clearly visible
+     in dark AND light, which the old faint text glyphs were not */
+  .ptile .tico{width:22px;height:22px;display:block;margin:0 auto 6px;color:var(--acc)}
   .ptile .nm{font-size:.72rem;font-weight:600;color:var(--ink)}
 
   /* ── Goblin mode: a deliberately playful chaos panel (still on-brand dark) ───── */
@@ -1635,6 +1715,7 @@
     background:transparent;border:0;border-radius:9px;padding:.5em .6em;cursor:pointer;
     color:var(--ink);font:600 .88rem system-ui;line-height:1.2}
   .sm-item .ic{flex:0 0 1.5em;text-align:center;font-size:1rem;color:var(--mut)}
+  .sm-item .tico{flex:0 0 auto;width:1.05em;height:1.05em;color:var(--mut);margin-right:.15em}
   .sm-item .nm{flex:1}
   .sm-item .ds{font-weight:400;font-size:.72rem;color:var(--faint)}
   .sm-item:hover,.sm-item.cur{background:rgba(45,212,191,.1);color:var(--acc)}
@@ -1659,6 +1740,7 @@
     background:transparent;border:0;border-radius:10px;padding:.6em .7em;cursor:pointer;
     color:var(--ink);font:600 .92rem system-ui;line-height:1.25}
   .ck-item .ic{flex:0 0 1.6em;text-align:center;font-size:1.05rem;color:var(--mut)}
+  .ck-item .tico{flex:0 0 auto;width:1.1em;height:1.1em;color:var(--mut);margin-right:.2em}
   .ck-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ck-item .tag{font-weight:600;font-size:.66rem;color:var(--faint);
     border:1px solid var(--line);border-radius:6px;padding:.1em .4em}
@@ -2012,10 +2094,13 @@
   /* ── 💬 Chat mode ── */
   #v-editor.chat-on #blockList{padding-bottom:10rem}
   #v-editor.chat-on .block{cursor:pointer}
-  #v-editor.chat-on .block.chat-bound{outline:2px solid var(--acc);outline-offset:3px;border-radius:12px}
-  .chat-bar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(6,9,16,.97);
+  #v-editor.chat-on .block.chat-bound{outline:2px solid var(--acc);outline-offset:3px;border-radius:12px;background:rgba(45,212,191,.12)}
+  .chat-bar{position:fixed;left:0;right:0;bottom:0;z-index:60;
+    background:color-mix(in srgb,var(--bg) 92%,transparent);
     border-top:1px solid var(--line);padding:.5rem .65rem calc(.55rem + env(safe-area-inset-bottom));
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  /* desktop: clear the left nav rail so the bar never sits under it */
+  @media(min-width:900px){ .chat-bar{left:88px} }
   .chat-row{display:flex;align-items:flex-end;gap:.45rem;max-width:760px;margin:0 auto}
   #chatInput{flex:1;min-height:44px;max-height:140px;resize:none;background:var(--bg);border:1px solid var(--line);
     border-radius:22px;color:var(--ink);padding:.62rem .95rem;font:inherit;font-size:16px;line-height:1.4;outline:none}
@@ -2024,10 +2109,11 @@
   .chat-bar .cbtn{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);
     background:rgba(140,160,200,.06);color:var(--ink);font-size:1.05rem;cursor:pointer;
     display:flex;align-items:center;justify-content:center;padding:0}
-  #chatSendBtn{border-color:transparent;color:#04060c;background:linear-gradient(135deg,#2dd4bf,#22d3ee);font-weight:700}
+  #chatSendBtn{border-color:transparent;color:#04060c;background:var(--grad-pub);font-weight:700}
   #chatMic.on{border-color:#fb7185;color:#fb7185;animation:chatpulse 1.2s infinite}
   @keyframes chatpulse{50%{box-shadow:0 0 0 6px rgba(251,113,133,.15)}}
   @media (prefers-reduced-motion: reduce){#chatMic.on{animation:none}}
+  .chat-strip[hidden]{display:none}   /* author display:flex would otherwise defeat [hidden] */
   .chat-strip{display:flex;align-items:center;gap:.5rem;max-width:760px;margin:0 auto .4rem;
     border-left:3px solid var(--acc);background:rgba(45,212,191,.08);border-radius:8px;
     padding:.35rem .6rem;font-size:.8rem;color:var(--ink)}
@@ -2038,7 +2124,7 @@
     background:rgba(140,160,200,.06);color:var(--ink);cursor:pointer;font-size:.9rem}
   .chat-acts button:hover{border-color:var(--acc)}
   #chatSheet{position:fixed;inset:0;z-index:70;background:rgba(2,4,10,.6)}
-  .chat-sheet-card{position:absolute;left:0;right:0;bottom:0;background:#0a0f1c;border-top:1px solid var(--line);
+  .chat-sheet-card{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
     border-radius:16px 16px 0 0;padding:1rem .9rem calc(1rem + env(safe-area-inset-bottom));
     max-width:760px;margin:0 auto;max-height:70vh;overflow-y:auto}
   .chat-sheet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:.5rem}
@@ -2047,6 +2133,7 @@
     color:var(--ink);font:600 .78rem var(--font-display);cursor:pointer;padding:.4rem}
   .chat-sheet-tile:hover{border-color:var(--acc)}
   .chat-sheet-tile .ic{font-size:1.2rem}
+  .chat-sheet-tile .tico{width:20px;height:20px;color:var(--acc)}
   .chat-sheet-tile.ai{border-color:rgba(45,212,191,.4);color:var(--acc)}
 
   .tpllib-preview{max-width:620px;margin:0 auto}
@@ -2289,6 +2376,7 @@
   .outlist-sheet li.lvl3{padding-left:1.5em;color:var(--mut);font-size:.9rem}
   .outlist-sheet li.lvl4{padding-left:2.4em;color:var(--mut);font-size:.86rem}
   .outlist-empty{color:var(--faint);font-size:.85rem;padding:.4em .2em}
+  .ol-ghost{color:var(--faint) !important;font-style:italic}   /* guide headings not yet written over */
   /* desktop rail: indent by level + collapse state */
   #outlineRail.collapsed #outlineList{display:none}
   #outlineRail h4{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
@@ -2316,6 +2404,12 @@
   #v-editor .editor-bar .back{background:transparent;border:0;color:var(--acc);
     font:inherit;cursor:pointer;padding:0;white-space:nowrap;font-size:1.1rem}
   #v-editor .editor-bar .status-slot{flex:1;font-size:.82rem;color:var(--faint)}
+  /* Word-count / reading-time readout: reuses .status-slot for the toolbar look but
+     carries no save-dot. It must NOT grab flex:1 (that belongs to #editorStatus, which
+     pushes the buttons right), and the base .status-slot{display:inline-flex} would
+     otherwise defeat the `hidden` attribute — so restore display:none when hidden. */
+  #v-editor .editor-bar #editorWords{flex:0 0 auto;color:var(--mut);white-space:nowrap}
+  #v-editor .editor-bar #editorWords[hidden]{display:none}
   .pub-btn{background:var(--grad-pub);color:#04121a;font-weight:700;
     font-size:.82rem;padding:.5em 1em;border-radius:999px;border:0;cursor:pointer;
     white-space:nowrap}
@@ -2575,23 +2669,25 @@
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
 <script>window.__LICENCE_PUBLIC_KEY='20e5e11738c29f3ee250dd38fa1b72695a327a2eb18cf4f9b817c56c664c7201';</script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260706-712df56";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260730-a4dd827";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
 
 <!-- ===== LICENCE GATE (shown before everything when no valid key is stored) ===== -->
 <div id="licence" class="wrap" style="display:none">
-  <h1>Activate Studio</h1>
-  <p class="sub">Enter your Studio-access key to use the Studio. Contact the author to obtain one.</p>
+  <h1>Activate Helm Studio</h1>
+  <p class="sub">Enter your Helm Studio-access key to use Helm Studio. Contact the author to obtain one.</p>
   <input id="licKey" type="text" placeholder="IPL1.…" autocomplete="off" spellcheck="false" />
   <button class="btn" onclick="submitLicence()">Activate</button>
   <div id="licMsg" class="msg err"></div>
+  <!-- LIVE Stripe payment link — see helm rqai-sales/LINKS.md. -->
+  <p class="sub" style="margin-top:14px">No key yet? <a href="https://buy.stripe.com/5kQeVd0C06t7aSLf3IgUM05?client_reference_id=studio" target="_blank" rel="noopener noreferrer">Buy a key &rarr;</a></p>
 </div>
 
 <!-- ===== LOGIN ===== -->
 <div id="login" class="wrap" style="display:none">
-  <h1 id="loginBrand">Studio</h1>
+  <h1 id="loginBrand">Helm Studio</h1>
   <p class="sub">Enter your Helm admin password.</p>
   <input id="pw" type="password" placeholder="Password" autocomplete="current-password" />
   <button class="btn" onclick="login()">Unlock</button>
@@ -2608,7 +2704,7 @@
 <div class="wrap">
   <header>
     <div>
-      <h1 id="appHeaderTitle">Studio</h1>
+      <h1 id="appHeaderTitle">Helm Studio</h1>
       <div class="sub" id="appHeaderSub" style="margin:0">draft · approve · share</div>
     </div>
     <div style="display:flex;align-items:center;gap:.5rem">
@@ -3007,7 +3103,7 @@
 
     <button class="btn" id="aiSaveBtn" onclick="saveSettings()">Save keys</button>
     <div id="settingsMsg" class="msg"></div>
-    <p class="sub" style="margin-top:.6rem">Paste a key and tap <b>Use this</b> — the Studio picks that provider's current model automatically. Keys are write-only (never shown again); save a new key before testing it.</p>
+    <p class="sub" style="margin-top:.6rem">Paste a key and tap <b>Use this</b> — Helm Studio picks that provider's current model automatically. Keys are write-only (never shown again); save a new key before testing it.</p>
 
     <!-- ===== About you / Your voice (the author profile that steers every AI feature) ===== -->
     <div id="profileCard" class="card" style="margin-top:1.1rem">
@@ -3100,8 +3196,8 @@
 
     <!-- ===== Build / version stamp (unobtrusive) — set from window.__STUDIO_BUILD, which
              the deploy pipeline injects at build time (scripts/deploy-studio.sh). ===== -->
-    <p class="sub" id="buildStamp" style="margin-top:1.6rem;opacity:.5;font:.72rem var(--font-mono,ui-monospace,monospace)">Studio · local build</p>
-    <script>(function(){var b=window.__STUDIO_BUILD,el=document.getElementById('buildStamp');if(el)el.textContent=b?('Studio '+b):'Studio · local build';})();</script>
+    <p class="sub" id="buildStamp" style="margin-top:1.6rem;opacity:.5;font:.72rem var(--font-mono,ui-monospace,monospace)">Helm Studio · local build</p>
+    <script>(function(){var b=window.__STUDIO_BUILD,el=document.getElementById('buildStamp');if(el)el.textContent=b?('Helm Studio '+b):'Helm Studio · local build';})();</script>
   </section>
 
   <!-- ===== SITE SETTINGS ===== -->
@@ -3168,13 +3264,27 @@
 
     <label style="margin-top:1rem">Default theme</label>
     <select id="ss-theme">
-      <option value="observatory">Observatory</option>
-      <option value="vista">Vista</option>
-      <option value="blueprint">Blueprint</option>
-      <option value="atlas">Atlas</option>
-      <option value="daybreak">Daybreak</option>
-      <option value="dune">Dune</option>
-      <option value="rivendell">Rivendell</option>
+      <optgroup label="Worlds">
+        <option value="observatory">Observatory</option>
+        <option value="vista">Vista</option>
+        <option value="blueprint">Blueprint</option>
+        <option value="atlas">Atlas</option>
+        <option value="daybreak">Daybreak</option>
+        <option value="dune">Dune</option>
+        <option value="rivendell">Rivendell</option>
+      </optgroup>
+      <optgroup label="Simple blog">
+        <option value="paper">Paper</option>
+        <option value="linen">Linen</option>
+        <option value="mist">Mist</option>
+        <option value="ink">Ink</option>
+      </optgroup>
+      <optgroup label="Creative">
+        <option value="arcade">Arcade</option>
+        <option value="botanic">Botanic</option>
+        <option value="broadsheet">Broadsheet</option>
+        <option value="aurora">Aurora</option>
+      </optgroup>
     </select>
 
     <label style="margin-top:1rem">Galaxy figure</label>
@@ -3431,22 +3541,22 @@
        clearly-labelled standalone control; Publish stays prominent on the right.
        Every original control keeps its id, so the existing handlers still bind. -->
   <div class="editor-bar">
-    <button class="back" id="editorBackBtn">← Posts</button>
-    <button class="iconBtn" id="focusExitBtn" title="Exit focus mode (Esc)">✕ Focus</button>
+    <button class="back" id="editorBackBtn"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-arrow-left"/></svg> Posts</button>
+    <button class="iconBtn" id="focusExitBtn" title="Exit focus mode (Esc)"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-x"/></svg> Focus</button>
     <span class="status-slot" id="editorStatus" data-save="saved"><i class="save-dot" aria-hidden="true"></i><span id="editorStatusText">Draft · saved</span></span>
+    <span class="status-slot" id="editorWords" hidden></span>
 
-    <button class="iconBtn tb-labelled" id="focusToggleBtn" title="Focus mode (⌘⇧F)" aria-label="Toggle focus mode"><span aria-hidden="true">⛶</span> Focus</button>
-    <button class="iconBtn tb-labelled" id="chatModeBtn" title="Switch to chat writing" aria-label="Toggle chat writing mode"><span aria-hidden="true">💬</span> Chat</button>
+    <button class="iconBtn tb-labelled" id="focusToggleBtn" title="Focus mode (⌘⇧F)" aria-label="Toggle focus mode"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-focus-2"/></svg> Focus</button>
 
     <!-- Live preview — was a "View ▾" menu; Outline dropped per owner. The Outline rail
          still auto-joins on wide screens, so nothing is lost on desktop. -->
-    <button class="iconBtn tb-labelled" id="previewBtn" type="button" title="Live preview"><span aria-hidden="true">👁</span> Live preview</button>
+    <button class="iconBtn tb-labelled" id="previewBtn" type="button" title="Live preview"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-eye"/></svg> Live preview</button>
 
     <!-- AI ▾ — whole-draft editor pass -->
     <details class="tb-menu">
       <summary class="iconBtn tb-labelled" title="AI">AI <span class="tb-tri" aria-hidden="true">▾</span></summary>
       <div class="tb-pop" role="menu">
-        <button class="tb-item" id="editorPassBtn" type="button" title="Editor pass — AI critique of the whole draft in your voice"><span aria-hidden="true">✦</span> Editor pass</button>
+        <button class="tb-item" id="editorPassBtn" type="button" title="Editor pass — AI critique of the whole draft in your voice"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-sparkles"/></svg> Editor pass</button>
       </div>
     </details>
 
@@ -3454,17 +3564,17 @@
     <details class="tb-menu">
       <summary class="iconBtn tb-labelled" title="Checks &amp; references">Checks <span class="tb-tri" aria-hidden="true">▾</span></summary>
       <div class="tb-pop" role="menu">
-        <button class="tb-item" id="refsBtn" type="button"><span aria-hidden="true">📚</span> References &amp; footnotes</button>
-        <button class="tb-item" id="shareBtn" type="button"><span aria-hidden="true">📣</span> Share &amp; SEO preview</button>
-        <button class="tb-item" id="checkBtn" type="button"><span aria-hidden="true">🔎</span> Pre-publish check</button>
-        <button class="tb-item" id="historyBtn" type="button"><span aria-hidden="true">🕑</span> Version history</button>
+        <button class="tb-item" id="refsBtn" type="button"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-book"/></svg> References &amp; footnotes</button>
+        <button class="tb-item" id="shareBtn" type="button"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-speakerphone"/></svg> Share &amp; SEO preview</button>
+        <button class="tb-item" id="checkBtn" type="button"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-checklist"/></svg> Pre-publish check</button>
+        <button class="tb-item" id="historyBtn" type="button"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-clock"/></svg> Version history</button>
       </div>
     </details>
 
     <button class="iconBtn" id="cmdkBtn" title="Command palette (⌘K)" aria-label="Command palette">⌘K</button>
     <button class="themeBtn" id="themeToggleEditor" title="Toggle theme" onclick="toggleTheme()">☀️</button>
-    <button class="iconBtn tb-labelled" id="settingsToggleBtn" style="display:none" title="Post settings"><span aria-hidden="true">⚙</span> Post settings</button>
-    <button class="iconBtn tb-labelled" id="editorScheduleBtn" title="Schedule for later"><span aria-hidden="true">🗓</span> Schedule</button>
+    <button class="iconBtn tb-labelled" id="settingsToggleBtn" style="display:none" title="Post settings"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-settings"/></svg> Post settings</button>
+    <button class="iconBtn tb-labelled" id="editorScheduleBtn" title="Schedule for later"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-calendar-time"/></svg> Schedule</button>
     <button class="pub-btn" id="editorPublishBtn">Publish</button>
   </div>
   <!-- Schedule for later (overlay) — commits a hidden draft + publishAt; the site's
@@ -3494,10 +3604,10 @@
       <button id="chatStripX" type="button" aria-label="Stop editing this block">✕</button>
     </div>
     <div class="chat-row">
-      <button class="cbtn" id="chatPlus" type="button" title="Add — image, interactive, figure…" aria-label="Add a block">＋</button>
+      <button class="cbtn" id="chatPlus" type="button" title="Add — image, interactive, figure…" aria-label="Add a block"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-plus"/></svg></button>
       <textarea id="chatInput" rows="1" placeholder="Write a message…" autocomplete="off"></textarea>
-      <button class="cbtn" id="chatMic" type="button" title="Dictate" aria-label="Dictate" hidden>🎤</button>
-      <button class="cbtn" id="chatSendBtn" type="button" title="Send" aria-label="Send">➤</button>
+      <button class="cbtn" id="chatMic" type="button" title="Dictate" aria-label="Dictate" hidden><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-microphone"/></svg></button>
+      <button class="cbtn" id="chatSendBtn" type="button" title="Send" aria-label="Send"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-send-2"/></svg></button>
     </div>
   </div>
   <div id="chatSheet" hidden>
@@ -3877,7 +3987,7 @@
     <div class="pp-head"><span aria-hidden="true">🎬</span><strong id="vidTitle">Make a video</strong><button class="pp-x" id="vidClose" aria-label="Close" onclick="closeVideo()">✕</button></div>
     <div class="pp-body">
       <div id="vidLocalOnly" class="vid-local" hidden>
-        <p>Video rendering runs in your <strong>local Helm</strong> (<code>npm start</code>), not the hosted Studio. Open Studio on the machine running Helm to render and download a video.</p>
+        <p>Video rendering runs in your <strong>local Helm</strong> (<code>npm start</code>), not the hosted Helm Studio. Open Helm Studio on the machine running Helm to render and download a video.</p>
       </div>
       <div id="vidEditor">
         <!-- Mode: a regular storyboard (title/point/figure) vs a caption-centric
@@ -3980,17 +4090,17 @@
   <div class="picker-grab"></div>
   <h3>Add a block</h3>
   <div class="picker-grid" id="pickerGrid">
-    <button class="ptile" data-type="text"><span class="ic">¶</span><span class="nm">Text</span></button>
-    <button class="ptile" data-type="heading"><span class="ic">H</span><span class="nm">Heading</span></button>
-    <button class="ptile" data-type="image"><span class="ic">🖼</span><span class="nm">Image</span></button>
-    <button class="ptile" data-type="quote"><span class="ic">❝</span><span class="nm">Quote</span></button>
-    <button class="ptile" data-type="gallery"><span class="ic">▦</span><span class="nm">Gallery</span></button>
-    <button class="ptile" data-type="embed"><span class="ic">▶</span><span class="nm">Video</span></button>
-    <button class="ptile" data-type="table"><span class="ic">▦</span><span class="nm">Table</span></button>
-    <button class="ptile" data-type="playground"><span class="ic">&lt;/&gt;</span><span class="nm">Playground</span></button>
-    <button class="ptile" id="tplLibTile" data-type="__tpllib"><span class="ic">✦</span><span class="nm">Interactive (template)</span></button>
-    <button class="ptile" id="figTile" data-type="__figure"><span class="ic">◆</span><span class="nm">Figure</span></button>
-    <button class="ptile" data-type="divider"><span class="ic">―</span><span class="nm">Divider</span></button>
+    <button class="ptile" data-type="text"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-align-left"/></svg><span class="nm">Text</span></button>
+    <button class="ptile" data-type="heading"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-heading"/></svg><span class="nm">Heading</span></button>
+    <button class="ptile" data-type="image"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-photo"/></svg><span class="nm">Image</span></button>
+    <button class="ptile" data-type="quote"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-quote"/></svg><span class="nm">Quote</span></button>
+    <button class="ptile" data-type="gallery"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-library-photo"/></svg><span class="nm">Gallery</span></button>
+    <button class="ptile" data-type="embed"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-video"/></svg><span class="nm">Video</span></button>
+    <button class="ptile" data-type="table"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-table"/></svg><span class="nm">Table</span></button>
+    <button class="ptile" data-type="playground"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-terminal-2"/></svg><span class="nm">Playground</span></button>
+    <button class="ptile" id="tplLibTile" data-type="__tpllib"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-wand"/></svg><span class="nm">Interactive (template)</span></button>
+    <button class="ptile" id="figTile" data-type="__figure"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-chart-dots"/></svg><span class="nm">Figure</span></button>
+    <button class="ptile" data-type="divider"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-separator"/></svg><span class="nm">Divider</span></button>
   </div>
 </div>
 
@@ -4549,6 +4659,15 @@ import { resizeToBase64, decodeImage, encodeSource, MAX_EDGE } from '/resize.js'
 import { initDarkroom } from '/darkroom-upload.js';
 
 const $=id=>document.getElementById(id);
+/* ── one icon language: Tabler sprite refs (icons-sprite.svg, ids ti-<name>) ──
+   tico('heading') → '<svg><use …>' inheriting currentColor. Anything that isn't a
+   bare icon name (a legacy glyph like '¶') degrades to a plain text span. */
+const TICO_SPRITE='/icons-sprite.svg';
+function tico(name, cls){
+  const n = String(name || '');
+  if(!/^[a-z0-9-]+$/.test(n)) return '<span class="ic">' + n + '</span>';
+  return '<svg class="tico' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="' + TICO_SPRITE + '#ti-' + n + '"/></svg>';
+}
 let TOKEN=localStorage.getItem('studio_token')||'';
 let state={platform:'linkedin', idea:'', post:'', hooks:[], imageDataUrl:null, imageFile:null};
 
@@ -4557,11 +4676,11 @@ function setTheme(t){
   // dark is the default/base (empty data-theme); light is the opt-in override
   document.documentElement.dataset.theme = t==='light' ? 'light' : '';
   localStorage.setItem('helm-theme', t==='light' ? 'light' : 'dark');
-  const icon = t==='light' ? '☀️' : '🌙';
+  const icon = tico(t==='light' ? 'sun' : 'moon');
   const t1=$('themeToggleMain'), t2=$('themeToggleEditor'), t3=$('themeToggleSettings');
-  if(t1) t1.textContent=icon;
-  if(t2) t2.textContent=icon;
-  if(t3) t3.textContent=icon;
+  if(t1) t1.innerHTML=icon;
+  if(t2) t2.innerHTML=icon;
+  if(t3) t3.innerHTML=icon;
 }
 function toggleTheme(){
   const cur=document.documentElement.dataset.theme;
@@ -4586,6 +4705,23 @@ function classifyError({ status, payload, raw } = {}){
   const e = new Error();
   e.status = status || (raw && raw.status) || 0;
   e.detail = String(rawMsg || (status ? 'HTTP '+status : '') || '').slice(0,400);
+  // keep the source's typed code (e.g. AI_NO_KEY) so callers can branch on it
+  const srcCode=String((payload&&payload.code)||(raw&&raw.code)||''); if(srcCode) e.code=srcCode;
+  // AI adapter errors (server/ai) carry an AI_* code. AI_PARSE (output truncated before the
+  // JSON closed) and AI_REFUSAL come through with NO HTTP status, so without this they fall
+  // into the status-0 branch below and masquerade as "Could not reach your Helm". Surface the
+  // real AI reason instead. AI_NO_KEY (status 503) and status-bearing AI_HTTP keep their own
+  // paths below, where rate-limit / 5xx get their tailored copy.
+  // NOTE (Helm-specific): isNoKeyErr() here matches on MESSAGE TEXT (/key configured/i and
+  // /Settings → AI/i), unlike Chapbook's object/code-aware version — so these messages must
+  // avoid both phrasings or a generic AI failure would render as "No AI provider configured".
+  if(/^AI_/.test(srcCode) && srcCode!=='AI_NO_KEY' && !e.status){
+    e.kind='ai';
+    e.message = srcCode==='AI_PARSE'
+      ? 'The AI reply was cut off before it finished — try a shorter source, or raise the output limit for this provider in Settings.'
+      : (rawMsg || 'The AI request failed — try again, or check your provider in Settings.');
+    return e;
+  }
   // network / offline: a fetch that never reached the server (TypeError), or no
   // status at all (status 0 — e.g. a remote-Helm tunnel that's down, blocked by
   // CORS, or the laptop is offline/asleep).
@@ -5480,11 +5616,39 @@ async function announceFlow(url, source){
   await socialPack();
 }
 window.announceFlow=announceFlow;
-// Offer to announce right after a publish. title/source optional; falls back to a gentle toast.
+/* Post-publish success bar — non-blocking replacement for the old confirm().
+   ✓ Published · View live ↗ · Draft social posts · ✕. One instance at a time
+   (a re-publish replaces it); ✕ or ~15 s auto-dismiss. "View live" is a real
+   anchor to the live post; "Draft social posts" runs the same announceFlow the
+   old confirm-true branch called. */
+let _pubBarTimer=null;
+function dismissPublishBar(){ clearTimeout(_pubBarTimer); _pubBarTimer=null; const b=$('pubBar'); if(b) b.remove(); }
+function showPublishBar(url, source){
+  dismissPublishBar();
+  // The publish routes return a site-relative /blog/<slug>/ — absolutise it
+  // against the configured live-site origin so "View live" is a genuine link.
+  const u=String(url||'');
+  const live = /^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u
+    : (u.startsWith('/') ? _siteOrigin()+u : SHARE.shareableUrl(u));
+  const bar=document.createElement('div');
+  bar.id='pubBar'; bar.setAttribute('role','status');
+  bar.innerHTML =
+    '<span class="pb-msg">'+tico('circle-check')+'Published</span>'
+    +'<a class="pb-btn" href="'+esc(live)+'" target="_blank" rel="noopener">View live '+tico('external-link')+'</a>'
+    +'<button type="button" class="pb-btn" id="pubBarSocial">Draft social posts</button>'
+    +'<button type="button" class="pb-x" aria-label="Dismiss">'+tico('x')+'</button>';
+  bar.querySelector('#pubBarSocial').addEventListener('click',()=>{ dismissPublishBar(); announceFlow(url, source||''); });
+  bar.querySelector('.pb-x').addEventListener('click',dismissPublishBar);
+  document.body.appendChild(bar);
+  _pubBarTimer=setTimeout(dismissPublishBar,15000);
+}
+window.dismissPublishBar=dismissPublishBar;
+// Offer to announce right after a publish. url/source optional; no url → a gentle toast.
 async function offerAnnounce(url, source){
   notePublished(url);
-  if(url && confirm('Published ✓\n'+url+'\n\nGenerate LinkedIn / Instagram / X posts (with the link) now?')){
-    await announceFlow(url, source||'');
+  if(url){
+    try{ await ensureSiteCfg(); }catch{}   // warm the live-site origin for the View-live link
+    showPublishBar(url, source||'');
   } else { toast('Published ✓'); }
 }
 window.offerAnnounce=offerAnnounce;
@@ -6443,7 +6607,8 @@ $('publishBtn').addEventListener('click',async()=>{
       toast('Saved');
     } else {
       const r=await api('/posts',{method:'POST',body:JSON.stringify({title,body,tags:selectedTags})});
-      toast('Published');
+      // same editor-publish flow as the composer → same success bar (falls back to a toast when no url)
+      await offerAnnounce(r.url, (title+'\n\n'+body).slice(0,1500));
       await openPostEdit(r.slug);
     }
   }catch(e){ toast(e.message); }
@@ -6563,7 +6728,7 @@ async function latestModelFor(id){
 }
 let _aiModels={}; // last-loaded model per provider, to detect changes on save
 
-// Connection-mode status (hosted Studio only). Shows "Connected to your Helm ✓"
+// Connection-mode status (hosted Helm Studio only). Shows "Connected to your Helm ✓"
 // in remote mode, or "Local-only (this device)" in BYOK. Hidden in the local build.
 function refreshConnStatus(){
   const row=$('connRow'); if(!row) return;
@@ -6796,7 +6961,7 @@ window.saveSettings=saveSettings;
 
 /* ── R2 video storage (BYOK direct-to-R2) ──────────────────────────────────
    Pure browser concern: reads/writes window.__studioConfig (config.r2). Only
-   shown in the hosted Studio (where __studioConfig exists); the local same-origin
+   shown in the hosted Helm Studio (where __studioConfig exists); the local same-origin
    Helm build uses its server config instead. The secret is browser-only. */
 function loadR2Settings(){
   const row=$('r2Row'); if(!row) return;
@@ -7340,12 +7505,60 @@ function defaults(t){
   return {};
 }
 
+/* ── block-level undo/redo (⌘/Ctrl+Z, ⇧⌘Z) ──
+   Snapshots of doc.blocks around STRUCTURAL operations (add / delete / move / send-new).
+   Native text undo inside a focused field is untouched — the shortcut only takes over
+   when focus is outside an editable. Snapshots are structuredClone'd both ways so a
+   restored state can't be mutated behind the stack's back. */
+const _undoStack = [], _redoStack = [];
+function pushHistory(){
+  if(!doc || !Array.isArray(doc.blocks)) return;
+  _undoStack.push(structuredClone(doc.blocks));
+  if(_undoStack.length > 50) _undoStack.shift();
+  _redoStack.length = 0;
+}
+function _applyHistory(snap){
+  doc.blocks = snap;
+  if(typeof chatRelease === 'function') chatRelease(true);   // the bound block may be gone
+  renderBlocks();
+  markDirty();
+}
+function undoBlocks(){
+  if(!_undoStack.length) return;
+  _redoStack.push(structuredClone(doc.blocks));
+  _applyHistory(_undoStack.pop());
+}
+function redoBlocks(){
+  if(!_redoStack.length) return;
+  _undoStack.push(structuredClone(doc.blocks));
+  _applyHistory(_redoStack.pop());
+}
+document.addEventListener('keydown', e => {
+  if(!((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z')) return;
+  const a = document.activeElement;
+  if(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return;   // native text undo wins
+  const ed = $('v-editor');
+  if(!ed || !ed.classList.contains('on')) return;   // editor view only
+  e.preventDefault();
+  if(e.shiftKey) redoBlocks(); else undoBlocks();
+});
+
 function addBlock(type, atIndex){
+  pushHistory();
   const b = { id:mkId(), type, ...defaults(type) };
   doc.blocks.splice(atIndex == null ? doc.blocks.length : atIndex, 0, b);
   renderBlocks();
   selectBlock(b.id);
   markDirty();
+  // Smoother insertion: an image block goes straight into the photo picker (an image
+  // block without an image is never the goal), and a table lands with the caret in its
+  // first header cell — ready to type. Both ride the user's click activation.
+  requestAnimationFrame(() => {
+    const card = document.querySelector('#blockList .block[data-id="' + b.id + '"]');
+    if(!card) return;
+    if(type === 'image'){ const d = card.querySelector('.be-img-drop'); if(d) d.click(); }
+    else if(type === 'table'){ const c = card.querySelector('.be-tbl-in'); if(c) c.focus(); }
+  });
 }
 
 /* Bulk-add: turn many picked files into image blocks, each auto-downscaled to
@@ -7373,12 +7586,14 @@ function moveBlock(id, dir){
   const i = doc.blocks.findIndex(b => b.id === id);
   const j = i + dir;
   if(i < 0 || j < 0 || j >= doc.blocks.length) return;
+  pushHistory();
   [doc.blocks[i], doc.blocks[j]] = [doc.blocks[j], doc.blocks[i]];
   renderBlocks();
   markDirty();
 }
 
 function deleteBlock(id){
+  pushHistory();
   doc.blocks = doc.blocks.filter(b => b.id !== id);
   if(selectedId === id) selectedId = null;
   renderBlocks();
@@ -7391,6 +7606,138 @@ function selectBlock(id){
   if(typeof _chatOn !== 'undefined' && _chatOn){ selectedId = null; chatBind(id); return; }
   selectedId = id;
   renderBlocks();
+}
+
+/* ─── drag-to-reorder blocks (pointer events; phone-friendly) ──────────────
+   The block's .htag tag is the grip. A plain tap still selects (the drag only
+   engages after 6px of movement); a real drag suppresses the drop-click so it
+   never selects/binds. Cards stay STATIC during the drag — only the dragged
+   card translates and a 2px accent line marks the drop point — and we re-render
+   ONCE on drop. renderBlocks() rebuilds every card from doc.blocks, so live DOM
+   reordering mid-drag would fight the model; a single re-render on drop is the
+   robust design. The page (window) is the scroller, so auto-scroll uses
+   window.scrollBy and geometry is read via getBoundingClientRect. */
+let _dragState = null;
+
+// A completed drag can still emit a synthetic click on pointerup; swallow the
+// next one (capture phase) so it can't reach a card's select/deselect handler.
+function _suppressNextClick(){
+  const h = ev => { ev.stopPropagation(); ev.preventDefault(); };
+  document.addEventListener('click', h, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener('click', h, { capture: true }), 400);
+}
+
+function startBlockDrag(e, card, id){
+  if(e.button != null && e.button !== 0) return;          // primary pointer only
+  if(_dragState) return;                                  // one drag at a time
+  const grip = e.currentTarget;
+  const cards = [...document.querySelectorAll('#blockList .block')];
+  const fromIndex = cards.indexOf(card);
+  if(fromIndex < 0) return;
+  _dragState = {
+    id, card, grip, cards, fromIndex,
+    pointerId: e.pointerId,
+    startClientY: e.clientY, startPageY: e.pageY,
+    lastClientY: e.clientY,
+    active: false, dropIndex: fromIndex, indicator: null, raf: 0
+  };
+  try{ grip.setPointerCapture(e.pointerId); }catch(_){}
+  grip.addEventListener('pointermove', onBlockDragMove);
+  grip.addEventListener('pointerup', onBlockDragEnd);
+  grip.addEventListener('pointercancel', onBlockDragCancel);
+  // NB: no preventDefault here — a sub-threshold tap must still fall through to
+  // the card's click → selectBlock. The grip is a <span> (not focusable), so the
+  // delegated focusin→chatBind never fires from it either.
+}
+
+function onBlockDragMove(e){
+  const st = _dragState; if(!st) return;
+  st.lastClientY = e.clientY;
+  if(!st.active){
+    if(Math.abs(e.clientY - st.startClientY) < 6) return; // still a tap
+    st.active = true;
+    st.card.classList.add('dragging');
+    st.indicator = document.createElement('div');
+    st.indicator.className = 'dragline';
+    st.indicator.style.display = 'none';
+    $('blockList').appendChild(st.indicator);
+    st.raf = requestAnimationFrame(_dragTick);            // continuous auto-scroll
+  }
+  e.preventDefault();                                     // now dragging: no scroll/select
+  _dragUpdate();
+}
+
+// Recompute the dragged card's offset, the drop index and the indicator line.
+function _dragUpdate(){
+  const st = _dragState; if(!st || !st.active) return;
+  const y = st.lastClientY;
+  // pageY tracks the finger across auto-scroll (scrollY cancels in screen space).
+  st.card.style.transform = 'translateY(' + ((y + window.scrollY) - st.startPageY) + 'px)';
+  // Drop index = original-array slot before the first non-dragged card whose
+  // midpoint sits below the pointer; else after the last card.
+  let idx = st.cards.length;
+  for(let i = 0; i < st.cards.length; i++){
+    if(i === st.fromIndex) continue;
+    const r = st.cards[i].getBoundingClientRect();
+    if(y < r.top + r.height / 2){ idx = i; break; }
+  }
+  st.dropIndex = idx;
+  const changed = !(idx === st.fromIndex || idx === st.fromIndex + 1);
+  const ind = st.indicator;
+  if(!changed){ ind.style.display = 'none'; return; }
+  const hostTop = $('blockList').getBoundingClientRect().top;
+  let top;
+  if(idx < st.cards.length) top = st.cards[idx].getBoundingClientRect().top - hostTop;
+  else{ const last = st.cards[st.cards.length - 1].getBoundingClientRect(); top = last.bottom - hostTop; }
+  ind.style.top = (top - 1) + 'px';
+  ind.style.display = 'block';
+}
+
+// Auto-scroll while the pointer is within 60px of the viewport top/bottom.
+function _dragTick(){
+  const st = _dragState;
+  if(!st || !st.active){ return; }
+  const y = st.lastClientY, vh = window.innerHeight;
+  let dir = 0;
+  if(y < 60) dir = -1; else if(y > vh - 60) dir = 1;
+  if(dir){ window.scrollBy(0, dir * 8); _dragUpdate(); }
+  st.raf = requestAnimationFrame(_dragTick);
+}
+
+function _dragCleanup(){
+  const st = _dragState; if(!st) return;
+  if(st.raf) cancelAnimationFrame(st.raf);
+  st.grip.removeEventListener('pointermove', onBlockDragMove);
+  st.grip.removeEventListener('pointerup', onBlockDragEnd);
+  st.grip.removeEventListener('pointercancel', onBlockDragCancel);
+  try{ st.grip.releasePointerCapture(st.pointerId); }catch(_){}
+  if(st.card){ st.card.classList.remove('dragging'); st.card.style.transform = ''; }
+  if(st.indicator && st.indicator.parentNode) st.indicator.parentNode.removeChild(st.indicator);
+  _dragState = null;
+}
+
+function onBlockDragEnd(e){
+  const st = _dragState; if(!st) return;
+  const active = st.active, from = st.fromIndex, to = st.dropIndex, id = st.id;
+  const changed = active && !(to === from || to === from + 1);
+  if(active){ e.preventDefault(); _suppressNextClick(); }
+  _dragCleanup();
+  if(!changed) return;                                    // tap or no move → nothing else
+  pushHistory();                                          // undo snapshot BEFORE the splice
+  const [moved] = doc.blocks.splice(from, 1);
+  doc.blocks.splice(to > from ? to - 1 : to, 0, moved);   // to = original insert slot
+  renderBlocks();
+  markDirty();
+  requestAnimationFrame(() => {
+    const el = document.querySelector('#blockList .block[data-id="' + id + '"]');
+    if(el) el.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function onBlockDragCancel(){
+  const st = _dragState; if(!st) return;
+  if(st.active) _suppressNextClick();
+  _dragCleanup();                                         // abort cleanly, no reorder
 }
 
 /* ─── per-type block editor bodies ──────────────────────────────────────── */
@@ -7447,7 +7794,7 @@ function edHeading(b, isSel){
   inp.type = 'text';
   inp.className = 'be-h-text h' + (b.level||2);
   inp.value = b.text || '';
-  inp.placeholder = 'Heading text…';
+  inp.placeholder = b.ph || 'Heading text…';   // template guide shows as ghost, not deletable content
   // Stop block-click from bubbling through the input
   inp.addEventListener('click', e => e.stopPropagation());
   inp.addEventListener('input', () => {
@@ -8037,7 +8384,7 @@ function edText(b, isSel){
   const ce = document.createElement('div');
   ce.className = 'be-ce';
   ce.contentEditable = 'true';
-  ce.dataset.ph = 'Write something…';
+  ce.dataset.ph = b.ph || 'Write something…  ( / for blocks )';   // per-block ghost guidance (template guide)
   ce.innerHTML = b.html || '';
   ce.addEventListener('click', e => e.stopPropagation());
   ce.addEventListener('input', () => {
@@ -8236,8 +8583,7 @@ window.importMarkdownText = importMarkdownText;
    No binding → ➤ appends new blocks (markdown tokens make headings/quotes/lists).
    Pure logic mirrored from studio-app/core/chatCompose.js (tested there).
    ═══════════════════════════════════════════════════════════════════════════ */
-const CHAT_MODE_KEY = 'helm.studio.editorMode';
-let _chatOn = false, _chatBound = null, _chatRebuildT = null, _chatPaintT = null;
+let _chatOn = false, _chatBound = null, _chatRebuildT = null, _chatPaintT = null, _composeAnchorId = null;
 const _chatCoarse = () => window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
 /* ── mirror of core/chatCompose.js — keep in lockstep ── */
@@ -8255,7 +8601,8 @@ function chatFieldFor(block){
     default: return null;
   }
 }
-function chatEnterSends(){ return !_chatCoarse(); }
+/* WhatsApp rule everywhere: Enter = new paragraph, only ➤ (Send) commits. */
+function chatEnterSends(){ return false; }
 function chatIsPlainParagraph(text){
   const t = String(text == null ? '' : text).trim();
   if(!t || /\n/.test(t)) return false;
@@ -8274,46 +8621,47 @@ function chatHtmlToText(html){
   return s.trim();
 }
 
-/* ── mode ── */
-function chatDefaultMode(){
-  try{ return localStorage.getItem(CHAT_MODE_KEY) || (_chatCoarse() ? 'chat' : 'blocks'); }
-  catch(_){ return 'blocks'; }
-}
-function chatApplyMode(mode){
-  const m = mode || chatDefaultMode();
-  _chatOn = (m === 'chat');
-  try{ localStorage.setItem(CHAT_MODE_KEY, m); }catch(_){}
-  $('v-editor').classList.toggle('chat-on', _chatOn);
-  $('chatBar').hidden = !_chatOn || !$('v-editor').classList.contains('on');
-  const t = $('chatModeBtn');
-  if(t){
-    t.classList.toggle('on', _chatOn);
-    t.innerHTML = _chatOn ? '<span aria-hidden="true">▤</span> Blocks' : '<span aria-hidden="true">💬</span> Chat';
-    t.title = _chatOn ? 'Switch to the block editor' : 'Switch to chat writing';
-  }
-  if(!_chatOn) chatRelease(true);
-  else selectedId = null;
+/* ── the unified surface ──
+   There is ONE writing surface: the block canvas with the compose bar always docked
+   at the bottom while the editor is open. (The old Chat/Block toggle is gone — tap a
+   box to edit it, type in the bar to add; same thing everywhere, desktop and phone.) */
+function chatApplyMode(){
+  _chatOn = true;
+  $('v-editor').classList.add('chat-on');
+  $('chatBar').hidden = !$('v-editor').classList.contains('on');
   renderBlocks();
-  if(_chatOn) requestAnimationFrame(chatPlaceBar);
+  requestAnimationFrame(chatPlaceBar);
 }
-function chatToggleMode(){ chatApplyMode(_chatOn ? 'blocks' : 'chat'); }
 /* go('editor') / leaving the editor call this — the bar only lives on the editor */
 function chatOnViewChange(isEditor){
-  if(isEditor){ chatApplyMode(chatDefaultMode()); }
+  if(isEditor){ chatApplyMode(); }
   else { $('chatBar').hidden = true; $('chatSheet').hidden = true; }
 }
 
 /* ── binding ── */
 function chatBlockById(id){ return (doc && doc.blocks || []).find(x => x.id === id); }
-function chatBind(id){
+/* Bind a block to the compose bar. opts.fromBlock = the bind came from focusing the
+   block's own editable (tap-in-text): keep the caret there, and NEVER rebuild the DOM
+   under it — chatDecorate() is surgical, chatPaint()/renderBlocks would destroy the
+   focused element mid-keystroke. */
+function chatBind(id, opts){
+  const fromBlock = !!(opts && opts.fromBlock);
   const b = chatBlockById(id); if(!b) return;
-  if(_chatBound === id){ chatRelease(); return; }   // tap the bound block again → let go
+  if(_chatBound === id){
+    if(fromBlock) return;                    // typing/refocusing inside the bound box — stay bound
+    // A click that landed in one of the block's own inputs already bound it via focusin;
+    // the same click bubbling to the card must not instantly release it.
+    const card = document.querySelector('#blockList .block[data-id="' + id + '"]');
+    if(card && card.contains(document.activeElement)) return;
+    chatRelease(); return;                   // margin-tap on the bound block again → let go
+  }
   _chatBound = id;
+  _composeAnchorId = id;   // new sent boxes appear just after the block you're working on
   const f = chatFieldFor(b);
   const strip = $('chatStrip'), lbl = $('chatStripLbl'), inp = $('chatInput');
   strip.hidden = false;
   if(f){
-    lbl.textContent = '✎ Editing: ' + f.label;
+    lbl.textContent = 'Editing · ' + f.label.charAt(0).toUpperCase() + f.label.slice(1);
     inp.disabled = false;
     inp.placeholder = 'Edit the ' + f.label + '…';
     inp.value = f.field === 'html' ? chatHtmlToText(b.html || '')
@@ -8321,18 +8669,14 @@ function chatBind(id){
       : f.field === 'caption' ? String(b.caption || '')
       : String((b.template && b.template.params && b.template.params.title) || '');
     chatAutosize();
-    inp.focus();
+    if(!fromBlock) inp.focus();              // bar-initiated bind types in the bar
   } else {
-    lbl.textContent = 'No text here — use ⋯ for actions';
+    lbl.textContent = 'No text here — use the block’s own controls';
     inp.value = ''; inp.disabled = true;
     chatAutosize();
   }
-  chatPaint();
-  requestAnimationFrame(() => {
-    const cards = document.querySelectorAll('#blockList .block');
-    const idx = doc.blocks.findIndex(x => x.id === id);
-    if(cards[idx]) cards[idx].scrollIntoView({ block: 'center', behavior: 'smooth' });
-  });
+  if(fromBlock) chatDecorate(); else chatPaint();
+  requestAnimationFrame(() => chatCentre(true));   // binding is deliberate — centre now
 }
 function chatRelease(silent){
   _chatBound = null;
@@ -8366,6 +8710,7 @@ function chatSyncInput(){
   }
   markDirty();
   chatPaint();
+  chatCentreSoon();   // the box grows as you type — keep it centred in the visible band
 }
 /* rAF-throttled full repaint — safe: the keyboard focus lives in the chatbox */
 function chatPaint(){
@@ -8376,17 +8721,27 @@ function chatPaint(){
 /* ── send ── */
 async function chatSend(){
   const inp = $('chatInput');
-  if(_chatBound){ chatRelease(); return; }        // live-synced already → send = done
+  // Editing an existing box: the text is already live-synced (chatSyncInput repaints per
+  // keystroke) — Send just finalises and STAYS on the box. No repaint here: a rebuild
+  // would destroy the box's caret if the user was typing in the box itself.
+  if(_chatBound){ markDirty(); return; }
   const t = (inp.value || '').trim();
   if(!t) return;
+  pushHistory();   // a sent message is a structural add — one ⌘Z step
+  let focusId = null;
   if(chatIsPlainParagraph(t)){
     const b = { id: mkId(), type: 'text', html: inlineMdToHtml(t) };
-    // a trailing EMPTY text block (the new-post seed) becomes the message rather
-    // than leaving a ghost paragraph above it — mirrors the md-import anchor rule
+    // Insert just AFTER the block you're working on (the compose anchor), so a new
+    // message lands where you are — not at the bottom of the page. No anchor → end.
+    const at = chatInsertAt();
     const last = doc.blocks[doc.blocks.length - 1];
     const lastEmpty = last && last.type === 'text' && !String(last.html || '').replace(/<[^>]+>/g, '').trim();
-    if(lastEmpty) doc.blocks.splice(doc.blocks.length - 1, 1, b);
-    else doc.blocks.push(b);
+    // A trailing EMPTY seed (new-post) becomes the message rather than a ghost above
+    // it, but only when we're actually appending at the very end.
+    if(at >= doc.blocks.length && lastEmpty) doc.blocks.splice(doc.blocks.length - 1, 1, b);
+    else doc.blocks.splice(at, 0, b);
+    _composeAnchorId = b.id;   // advance the anchor so consecutive messages stack in order
+    focusId = b.id;
     markDirty(); renderBlocks();
   } else {
     const last = doc.blocks[doc.blocks.length - 1];
@@ -8397,8 +8752,18 @@ async function chatSend(){
   inp.value = ''; chatAutosize();
   requestAnimationFrame(() => {
     const cards = document.querySelectorAll('#blockList .block');
-    if(cards.length) cards[cards.length - 1].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const idx = focusId ? doc.blocks.findIndex(x => x.id === focusId) : (cards.length - 1);
+    if(cards[idx]) cards[idx].scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
+}
+// Where a newly sent message lands: just after the compose anchor (the block you last
+// tapped or sent), else the very end — keeps new boxes near where you're writing.
+function chatInsertAt(){
+  if(_composeAnchorId){
+    const i = doc.blocks.findIndex(x => x.id === _composeAnchorId);
+    if(i >= 0) return i + 1;
+  }
+  return doc.blocks.length;
 }
 
 /* ── bound-card decoration: outline + the ⋯ action row ── */
@@ -8411,20 +8776,15 @@ function chatDecorate(){
   card.classList.add('chat-bound');
   const row = document.createElement('div');
   row.className = 'chat-acts';
-  const mk = (txt, title, fn) => {
+  const mk = (icon, title, fn) => {
     const b = document.createElement('button');
-    b.type = 'button'; b.textContent = txt; b.title = title;
+    b.type = 'button'; b.innerHTML = tico(icon); b.title = title; b.setAttribute('aria-label', title);
     b.addEventListener('click', e => { e.stopPropagation(); fn(); });
     row.appendChild(b);
   };
-  mk('↑', 'Move up', () => chatMoveBound(-1));
-  mk('↓', 'Move down', () => chatMoveBound(1));
-  mk('🗑', 'Delete block', chatDeleteBound);
-  mk('▤', 'Open in Blocks (full settings)', () => {
-    const id = _chatBound;
-    chatApplyMode('blocks');
-    selectBlock(id);
-  });
+  mk('arrow-up', 'Move up', () => chatMoveBound(-1));
+  mk('arrow-down', 'Move down', () => chatMoveBound(1));
+  mk('trash', 'Delete block', chatDeleteBound);
   card.appendChild(row);
 }
 function chatMoveBound(d){
@@ -8452,18 +8812,19 @@ function chatOpenSheet(){
   INSERT_ACTIONS.forEach(a => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'chat-sheet-tile';
-    b.innerHTML = '<span class="ic">' + a.ic + '</span><span>' + esc(a.label) + '</span>';
+    b.innerHTML = tico(a.ic) + '<span>' + esc(a.label) + '</span>';
     b.addEventListener('click', () => { chatCloseSheet(); a.insert(at); });
     host.appendChild(b);
   });
   const ai = [
-    ['✦ Draft this block', () => openAiDraft(_chatBound || undefined)],
-    ['🧌 Goblin spark', () => openGoblin()],
-    ['✎ Structure notes', () => openStructure()],
+    ['sparkles', 'Draft this block', () => openAiDraft(_chatBound || undefined)],
+    ['🧌', 'Goblin spark', () => openGoblin()],          // the goblin stays a goblin
+    ['notes', 'Structure notes', () => openStructure()],
   ];
-  for(const [label, fn] of ai){
+  for(const [icon, label, fn] of ai){
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'chat-sheet-tile ai'; b.textContent = label;
+    b.type = 'button'; b.className = 'chat-sheet-tile ai';
+    b.innerHTML = tico(icon) + '<span>' + esc(label) + '</span>';
     b.addEventListener('click', () => { chatCloseSheet(); fn(); });
     host.appendChild(b);
   }
@@ -8501,6 +8862,33 @@ function chatPlaceBar(){
   const off = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
   bar.style.transform = off ? `translateY(-${off}px)` : '';
 }
+
+/* ── keep the active box centred ──
+   Wherever you are on the page, the bound box auto-scrolls to the centre of the VISIBLE
+   band (viewport minus the compose bar, minus the on-screen keyboard via visualViewport)
+   and stays there as it grows. Debounced, respects a deliberate manual scroll for a
+   grace period, honours prefers-reduced-motion, and never jitters over small drifts. */
+let _chatCentreT = null, _lastManualScroll = 0, _centring = false;
+window.addEventListener('scroll', () => { if(!_centring) _lastManualScroll = Date.now(); }, { passive: true });
+function chatCentre(immediate){
+  if(!_chatBound) return;
+  const card = document.querySelector('#blockList .block[data-id="' + _chatBound + '"]');
+  if(!card) return;
+  if(!immediate && Date.now() - _lastManualScroll < 1500) return;   // the user is driving — don't fight them
+  const vv = window.visualViewport;
+  const bandTop = vv ? vv.offsetTop : 0;
+  const bandH = Math.max(120, (vv ? vv.height : window.innerHeight) - (($('chatBar') && !$('chatBar').hidden) ? $('chatBar').offsetHeight : 0));
+  const r = card.getBoundingClientRect();
+  const delta = (r.top + r.height / 2) - (bandTop + bandH / 2);
+  if(Math.abs(delta) < 40) return;                                   // close enough — no jitter
+  _centring = true;
+  window.scrollBy({ top: delta, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  setTimeout(() => { _centring = false; }, 450);
+}
+function chatCentreSoon(){
+  clearTimeout(_chatCentreT);
+  _chatCentreT = setTimeout(() => chatCentre(), 140);
+}
 function chatAutosize(){
   const inp = $('chatInput'); if(!inp) return;
   inp.style.height = 'auto';
@@ -8512,17 +8900,65 @@ function chatAutosize(){
   const inp = $('chatInput'); if(!inp) return;
   inp.addEventListener('input', () => { chatAutosize(); chatSyncInput(); });
   inp.addEventListener('keydown', e => {
-    if(e.key === 'Enter' && !e.shiftKey && chatEnterSends()){ e.preventDefault(); chatSend(); }
-    else if(e.key === 'Escape' && _chatBound){ e.preventDefault(); chatRelease(); }
+    if(e.key === 'Escape' && _chatBound){ e.preventDefault(); chatRelease(); }
   });
   $('chatSendBtn').addEventListener('click', chatSend);
   $('chatStripX').addEventListener('click', () => chatRelease());
   $('chatPlus').addEventListener('click', chatOpenSheet);
   $('chatSheet').addEventListener('click', e => { if(e.target === $('chatSheet')) chatCloseSheet(); });
-  // DELEGATED: parts of the editor toolbar re-render (replacing the button node),
-  // which silently killed a direct listener — document-level delegation survives.
-  document.addEventListener('click', e => {
-    if(e.target && e.target.closest && e.target.closest('#chatModeBtn')) chatToggleMode();
+  // Tap ANYWHERE in a box to edit it: focusing any of a block's inputs binds that block
+  // (delegated — editors re-render, per-node listeners would die). Native focus already
+  // puts the caret at the tap point; fromBlock keeps it there.
+  $('blockList').addEventListener('focusin', e => {
+    const card = e.target.closest('#blockList .block');
+    if(!card || !card.dataset.id) return;
+    if(_chatBound !== card.dataset.id) chatBind(card.dataset.id, { fromBlock: true });
+  });
+  // Live mirror, box → bar. The editable's own input handler (on the target) has already
+  // updated the block model by the time this bubbles, so read the model back. Programmatic
+  // .value= fires no input event, so this can't loop with chatSyncInput (bar → box).
+  $('blockList').addEventListener('input', e => {
+    if(!_chatBound) return;
+    const card = e.target.closest('#blockList .block');
+    if(!card || card.dataset.id !== _chatBound) return;
+    const b = chatBlockById(_chatBound); if(!b) return;
+    const f = chatFieldFor(b); if(!f || f.field === 'title') return;   // playground title rebuilds via its own path
+    const inp = $('chatInput');
+    inp.value = f.field === 'html' ? chatHtmlToText(b.html || '')
+      : f.field === 'text' ? String(b.text || '')
+      : String(b.caption || '');
+    chatAutosize();
+    chatCentreSoon();   // typing in the box — keep it centred too
+  });
+  // Backspace in an EMPTY box removes the box and moves you to the previous one (caret at
+  // its end) — natural block deletion. Content fields only (never a caption), and the last
+  // remaining block always survives.
+  $('blockList').addEventListener('keydown', e => {
+    if(e.key !== 'Backspace' || !_chatBound) return;
+    const card = e.target.closest('#blockList .block');
+    if(!card || card.dataset.id !== _chatBound) return;
+    const b = chatBlockById(_chatBound); if(!b) return;
+    const f = chatFieldFor(b); if(!f) return;
+    const empty = f.field === 'html' ? !String(b.html || '').replace(/<[^>]+>/g, '').trim()
+      : f.field === 'text' ? !String(b.text || '').trim()
+      : false;                                   // caption/title: Backspace never deletes the block
+    if(!empty || doc.blocks.length <= 1) return;
+    e.preventDefault();
+    const i = doc.blocks.findIndex(x => x.id === _chatBound);
+    const prev = doc.blocks[i - 1] || doc.blocks[i + 1];
+    deleteBlock(_chatBound);                     // re-renders + marks dirty
+    _chatBound = null;
+    if(prev){
+      chatBind(prev.id, { fromBlock: true });    // decorate without stealing focus to the bar
+      requestAnimationFrame(() => {
+        const el = document.querySelector('#blockList .block[data-id="' + prev.id + '"]');
+        if(!el) return;
+        const hin = el.querySelector('.be-h-text');
+        const ce = el.querySelector('.be-ce, .be-quote-ce');
+        if(hin){ hin.focus(); hin.setSelectionRange(hin.value.length, hin.value.length); }
+        else if(ce){ ce.focus(); placeCaretEnd(ce); }
+      });
+    }
   });
   chatInitMic();
   if(window.visualViewport){
@@ -8553,7 +8989,7 @@ function edImage(b, isSel){
 
     const ic = document.createElement('span');
     ic.className = 'ic';
-    ic.textContent = '🖼';
+    ic.innerHTML = tico('photo-up');
     drop.appendChild(ic);
 
     const lbl = document.createElement('span');
@@ -8753,7 +9189,7 @@ function edQuote(b, isSel){
   const ce = document.createElement('blockquote');
   ce.className = 'be-quote-ce';
   ce.contentEditable = 'true';
-  ce.dataset.ph = 'Quote text…';
+  ce.dataset.ph = b.ph || 'Quote text…';   // template guide shows as ghost, not deletable content
   ce.innerHTML = b.html || '';
   ce.addEventListener('click', e => e.stopPropagation());
   ce.addEventListener('input', () => { b.html = ce.innerHTML; markDirty(); });
@@ -9041,7 +9477,7 @@ function edEmbed(b, isSel){
 
   // Helm-mode: upload a local video → Helm archives the original, transcodes a web
   // copy + poster, pushes to the media host, and fills this block with the public URLs.
-  // Capability-probed: on 503/VIDEO_LOCAL_ONLY (BYOK / hosted Studio) the control hides,
+  // Capability-probed: on 503/VIDEO_LOCAL_ONLY (BYOK / hosted Helm Studio) the control hides,
   // leaving BYOK users the paste-a-URL path. Filling the block leaves it a DRAFT — the
   // owner still publishes the POST explicitly (never auto-published here).
   const up = document.createElement('div');
@@ -9246,7 +9682,7 @@ function edPlayground(b, isSel){
     ta.setAttribute('autocomplete', 'off');
     ta.placeholder = key === 'html' ? '<svg …>…</svg>' : 'const el = document.getElementById(…); …';
     ta.addEventListener('click', e => e.stopPropagation());
-    ta.addEventListener('input', () => { b[key] = ta.value; markDirty(); });
+    ta.addEventListener('input', () => { b[key] = ta.value; markDirty(); scheduleLivePreview(); });
     into.appendChild(ta);
     return ta;
   }
@@ -9404,6 +9840,19 @@ function edPlayground(b, isSel){
   holder.className = 'be-pg-preview';
 
   let on = false;
+  // Debounced in-place live preview: reflect HTML/JS edits without pressing
+  // Run / refresh. Only refreshes when the preview is open, and the iframe lives
+  // in `holder` (outside the textareas) so re-rendering never steals the author's
+  // caret. Local-only re-render (no network) → a snappy 150 ms is safe.
+  // (scheduleLivePreview closes over `on`/renderPreview, both live by the time the
+  // input handler ever fires — the field() textareas are wired to call it. Named
+  // apart from the picker's module-level schedulePreview() to avoid shadowing.)
+  let livePreviewTimer = null;
+  function scheduleLivePreview(){
+    if(!on) return;
+    clearTimeout(livePreviewTimer);
+    livePreviewTimer = setTimeout(() => { if(on) renderPreview(); }, 150);
+  }
 
   function buildSrcdoc(){
     // Minimal site playground CSS so the preview approximates the real thing.
@@ -9912,7 +10361,10 @@ function renderBlockEl(b, idx){
 
   const tag = document.createElement('span');
   tag.className = 'htag';
-  tag.textContent = b.type + (isSel ? ' · selected' : '');
+  tag.setAttribute('aria-label', 'Drag to reorder');
+  tag.innerHTML = tico('grip-vertical') + '<span class="htag-lbl"></span>';
+  tag.querySelector('.htag-lbl').textContent = b.type + (isSel ? ' · selected' : '');
+  tag.addEventListener('pointerdown', e => startBlockDrag(e, wrap, b.id));
   wrap.appendChild(tag);
 
   // Real per-type editor body
@@ -9959,7 +10411,7 @@ function renderBlocks(){
     adddiv.innerHTML = '<span class="ln"></span><button class="plus" title="Insert block here">+</button><span class="ln"></span>';
     adddiv.querySelector('.plus').addEventListener('click', e => {
       e.stopPropagation();
-      openPicker(idx);
+      openPicker(idx, e.currentTarget);
     });
     host.appendChild(adddiv);
 
@@ -9972,7 +10424,7 @@ function renderBlocks(){
   lastDiv.innerHTML = '<span class="ln"></span><button class="plus" title="Add block at end">+</button><span class="ln"></span>';
   lastDiv.querySelector('.plus').addEventListener('click', e => {
     e.stopPropagation();
-    openPicker(null);
+    openPicker(null, e.currentTarget);
   });
   host.appendChild(lastDiv);
 
@@ -10005,7 +10457,8 @@ function refreshOutline(){
     } else heads.forEach(b => {
       const lvl = Math.min(Math.max(b.level || 2, 2), 4);
       const li = document.createElement('li');
-      li.textContent = b.text || '(heading)';
+      li.textContent = b.text || b.ph || '(heading)';
+      if(!b.text) li.classList.add('ol-ghost');   // untouched guide heading — show its guide text, faintly
       li.className = (b.id === selectedId ? 'cur ' : '') + 'lvl' + lvl;
       li.onclick = () => selectAndScrollTo(b.id);
       ul.appendChild(li);
@@ -10019,13 +10472,34 @@ function refreshOutline(){
     heads.forEach(b => {
       const lvl = Math.min(Math.max(b.level || 2, 2), 4);
       const li = document.createElement('li');
-      li.textContent = b.text || '(heading)';
+      li.textContent = b.text || b.ph || '(heading)';
+      if(!b.text) li.classList.add('ol-ghost');   // untouched guide heading — show its guide text, faintly
       li.className = (b.id === selectedId ? 'cur ' : '') + 'lvl' + lvl;
       li.tabIndex = 0;
       li.onclick = () => { selectAndScrollTo(b.id); closeOutlineSheet(); };
       sul.appendChild(li);
     });
     if(empty) empty.style.display = heads.length ? 'none' : 'block';
+  }
+}
+
+/* Live word count + reading time in the toolbar. Idempotent and O(blocks): strips
+   tags from text/quote HTML, adds heading text and media captions, counts \S+ runs.
+   Hidden (0 words) on an empty draft. Called debounced from markDirty + once at
+   editor-open — never on every renderBlocks repaint. */
+function updateWordCount(){
+  const el = $('editorWords'); if(!el) return;
+  let text = '';
+  for(const b of (doc && doc.blocks || [])){
+    if(b.type === 'heading') text += ' ' + (b.text || '');
+    else if(b.type === 'text' || b.type === 'quote') text += ' ' + String(b.html || '').replace(/<[^>]+>/g, ' ');
+    else if(b.caption) text += ' ' + b.caption;
+  }
+  const words = (text.match(/\S+/g) || []).length;
+  el.hidden = !words;
+  if(words){
+    const mins = Math.max(1, Math.round(words / 230));
+    el.textContent = words.toLocaleString('en-GB') + ' words · ' + mins + ' min';
   }
 }
 
@@ -10042,6 +10516,7 @@ const TEMPLATE_LABELS = { observatory:'Observatory', parchment:'Parchment', manu
 let meta = { title:'', tags:[], accent:'#2dd4bf', draft:true, description:'', theme:'dark', template:'observatory', glyph:'', image:'', citations:[], series:'', seriesPart:null };
 let _slugDebounce = null;
 let _saveDebounce = null;
+let _wordCountDebounce = null;
 let _topicsCache = null;
 let _lastLocalSaveTs = 0;  // ms of the last successful local autosave (this session)
 
@@ -10081,12 +10556,14 @@ async function startNewPost(seedDoc){
   doc = seedDoc || { version:1, blocks:[ { id:mkId(), type:'text', html:'' } ] };
   meta = { title:'', tags:[], accent:'#2dd4bf', draft:true, description:'', theme:'dark', template:'observatory', glyph:'', image:'', citations:[], series:'', seriesPart:null, publishAt:'' };
   selectedId = null;
+  _composeAnchorId = null;   // reset the compose anchor for a fresh post
   $('editorTitle').value = '';
   setMetaDescUI('');
   setSeriesUI();
   setSaveState('idle','New post');
   _dirty = false; _lastLocalSaveTs = 0;
   renderBlocks();
+  updateWordCount();   // editor-open: reflect the (empty) new post — hides the readout
   // Switch views FIRST — loadEditorSettings() fetches /topics and, on a slow or
   // stalled connection, that await used to strand the user on the template screen
   // with no feedback. The editor is fully usable while topics stream in.
@@ -10135,6 +10612,7 @@ async function openBlockEditor(slug){
     setMetaDescUI(meta.description);
     setSaveState('saved','Draft · saved');
     renderBlocks();
+    updateWordCount();   // editor-open: count the freshly-loaded post's words
     await loadEditorSettings();
     // ── draft recovery: a server-side local autosave exists ('draft') AND it's
     //    newer than the published version → don't silently keep either; ask.
@@ -10165,6 +10643,7 @@ async function offerDraftRecovery(slug, savedAt){
     meta = metaFromData(slug, r && r.data);
     $('editorTitle').value = meta.title; setMetaDescUI(meta.description);
     renderBlocks(); await loadEditorSettings();
+    updateWordCount();   // reloaded the published version — refresh the readout (no markDirty here)
     setSaveState('saved','Draft · saved'); _dirty=false;
   }catch(e){ showError(e, { title:'Couldn’t discard the draft' }); }
 }
@@ -10472,6 +10951,8 @@ function markDirty(){
   setSaveState('dirty');
   clearTimeout(_saveDebounce);
   _saveDebounce = setTimeout(autosaveDraft, 1200);
+  clearTimeout(_wordCountDebounce);
+  _wordCountDebounce = setTimeout(updateWordCount, 400);
 }
 
 async function autosaveDraft(){
@@ -10977,16 +11458,33 @@ window.loadEditorSettings = loadEditorSettings;
 /* ── block picker ───────────────────────────────────────────────────────── */
 let _pickerInsertAt = null;
 
-function openPicker(atIndex){
+function openPicker(atIndex, anchorEl){
   closeAiDraft(); closeStructure(); closePreviewSheet(); closeTplLib(); closeFigLib();
   _pickerInsertAt = atIndex;
+  const sheet = $('pickerSheet');
+  // Desktop + a known anchor → compact popover at the click point (flips above when
+  // there's no room below). Otherwise the classic bottom sheet.
+  const pop = !!anchorEl && window.matchMedia('(min-width:900px) and (pointer:fine)').matches;
+  sheet.classList.toggle('pop', pop);
+  sheet.style.left = sheet.style.top = '';
+  if(pop){
+    const r = anchorEl.getBoundingClientRect();
+    const w = Math.min(560, window.innerWidth * .92);
+    sheet.style.left = Math.max(12, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 12)) + 'px';
+    const estH = 340;   // ~grid height; measured placement would need it visible first
+    const below = r.bottom + 8;
+    sheet.style.top = (below + estH > window.innerHeight - 12 ? Math.max(12, r.top - 8 - estH) : below) + 'px';
+  }
   $('pickerScrim').classList.add('open');
-  $('pickerSheet').classList.add('open');
+  sheet.classList.add('open');
 }
 
 function closePicker(){
   $('pickerScrim').classList.remove('open');
-  $('pickerSheet').classList.remove('open');
+  const sheet = $('pickerSheet');
+  sheet.classList.remove('open');
+  sheet.classList.remove('pop');
+  sheet.style.left = sheet.style.top = '';
 }
 
 $('pickerScrim').addEventListener('click', closePicker);
@@ -11016,8 +11514,38 @@ function chooseTemplate(id){
   const tpl = _templates.find(t => t.id === id);
   if(!tpl || !tpl.doc){ startNewPost(); return; }   // includes the "Blank" no-op path
   const seed = structuredClone(tpl.doc);
-  seed.blocks = (seed.blocks || []).map(b => ({ ...b, id: mkId() }));
-  startNewPost(seed);
+  // Non-destructive guide: a template block's instructional text becomes GHOST
+  // placeholder text on an empty box (shown via data-ph, cleared the moment you type),
+  // so you write over it and never have to delete a box. Empty guide boxes carry no
+  // content, so they don't publish either.
+  seed.blocks = (seed.blocks || []).map(b => guideify({ ...b, id: mkId() }));
+  // Discoverability: the "Interactive" post-template used to seed a RAW code
+  // playground. Instead, drop that placeholder block and, once the scaffold is in
+  // place, open the interactive-template PICKER at its slot so authors start from a
+  // real template (form + live preview), not raw HTML/JS. The raw "Playground"
+  // block-picker tile stays as the escape hatch. Detected by the block itself (a
+  // playground with no template.familyId) rather than hard-coding a template id.
+  let pickerAt = null;
+  const rawIdx = seed.blocks.findIndex(b => b && b.type === 'playground' && !(b.template && b.template.familyId));
+  if(rawIdx !== -1){ pickerAt = rawIdx; seed.blocks.splice(rawIdx, 1); }
+  startNewPost(seed);   // sets doc + renders synchronously before its first await
+  if(pickerAt != null && typeof openTplLib === 'function'){ openTplLib(pickerAt); }
+}
+// Turn a template block's starter text into non-destructive placeholder guidance.
+// Text/quote carry their guide in html; heading carries it in text. In every case the
+// guide moves to `b.ph` (shown as ghost placeholder) and the content field is emptied,
+// so an untouched guide box holds no content and never publishes.
+function guideify(b){
+  if(!b) return b;
+  if(b.type === 'text' || b.type === 'quote'){
+    const t = String(b.html || '').replace(/<[^>]+>/g, '').trim();
+    if(t && b.ph == null) return { ...b, ph: t, html: '' };
+  }
+  if(b.type === 'heading'){
+    const t = String(b.text || '').trim();
+    if(t && b.ph == null) return { ...b, ph: t, text: '' };
+  }
+  return b;
 }
 window.chooseTemplate = chooseTemplate;
 
@@ -11064,7 +11592,7 @@ $('tplList').addEventListener('click', e => {
 });
 
 // Wire the main "+ Add block" button
-$('addBlockBtn').addEventListener('click', () => openPicker(null));
+$('addBlockBtn').addEventListener('click', e => openPicker(null, e.currentTarget));
 
 // Deselect when clicking empty canvas area
 $('blockList').addEventListener('click', () => { selectedId = null; renderBlocks(); });
@@ -11090,18 +11618,18 @@ window.rerenderBlock = rerenderBlock;
    would: addBlock(type, at) for native blocks; openTplLib/openFigLib for the two
    composer openers. `key` is the fuzzy-match haystack. */
 const INSERT_ACTIONS = [
-  { ic:'¶',  label:'Text',        key:'text paragraph body',          insert:(at)=>addBlock('text', at) },
-  { ic:'H',  label:'Heading',     key:'heading title section h2 h3',  insert:(at)=>addBlock('heading', at) },
-  { ic:'❝',  label:'Quote',       key:'quote blockquote pull',        insert:(at)=>addBlock('quote', at) },
-  { ic:'―',  label:'Divider',     key:'divider rule hr separator',    insert:(at)=>addBlock('divider', at) },
-  { ic:'🖼', label:'Image',       key:'image photo picture',          insert:(at)=>addBlock('image', at) },
-  { ic:'▦',  label:'Gallery',     key:'gallery images grid',          insert:(at)=>addBlock('gallery', at) },
-  { ic:'▶',  label:'Video',       key:'video embed youtube vimeo',    insert:(at)=>addBlock('embed', at) },
-  { ic:'▦',  label:'Table',       key:'table grid columns rows',      insert:(at)=>addBlock('table', at) },
-  { ic:'</>',label:'Code / Raw',  key:'code raw html block',          insert:(at)=>addBlock('raw', at) },
-  { ic:'<>', label:'Playground',  key:'playground interactive code',  insert:(at)=>addBlock('playground', at) },
-  { ic:'✦',  label:'Interactive (template)', key:'interactive template playground library', insert:(at)=>openTplLib(at) },
-  { ic:'◆',  label:'Figure',      key:'figure diagram svg drawing',   insert:(at)=>openFigLib(at) },
+  { ic:'align-left',    label:'Text',        key:'text paragraph body',          insert:(at)=>addBlock('text', at) },
+  { ic:'heading',       label:'Heading',     key:'heading title section h2 h3',  insert:(at)=>addBlock('heading', at) },
+  { ic:'quote',         label:'Quote',       key:'quote blockquote pull',        insert:(at)=>addBlock('quote', at) },
+  { ic:'separator',     label:'Divider',     key:'divider rule hr separator',    insert:(at)=>addBlock('divider', at) },
+  { ic:'photo',         label:'Image',       key:'image photo picture',          insert:(at)=>addBlock('image', at) },
+  { ic:'library-photo', label:'Gallery',     key:'gallery images grid',          insert:(at)=>addBlock('gallery', at) },
+  { ic:'video',         label:'Video',       key:'video embed youtube vimeo',    insert:(at)=>addBlock('embed', at) },
+  { ic:'table',         label:'Table',       key:'table grid columns rows',      insert:(at)=>addBlock('table', at) },
+  { ic:'code',          label:'Code / Raw',  key:'code raw html block',          insert:(at)=>addBlock('raw', at) },
+  { ic:'terminal-2',    label:'Playground',  key:'playground interactive code',  insert:(at)=>addBlock('playground', at) },
+  { ic:'wand',          label:'Interactive (template)', key:'interactive template playground library', insert:(at)=>openTplLib(at) },
+  { ic:'chart-dots',    label:'Figure',      key:'figure diagram svg drawing',   insert:(at)=>openFigLib(at) },
 ];
 
 /* ─── Slash "/" insert menu ──────────────────────────────────────────────────
@@ -11182,7 +11710,7 @@ function renderSlashMenu(query){
   const menu = $('slashMenu');
   if(!_slash.items.length){ menu.innerHTML = '<div class="sm-empty">No matching block</div>'; return; }
   menu.innerHTML = _slash.items.map((a, i) =>
-    `<button type="button" class="sm-item${i === _slash.sel ? ' cur' : ''}" role="option" data-i="${i}" aria-selected="${i === _slash.sel}"><span class="ic" aria-hidden="true">${esc(a.ic)}</span><span class="nm">${esc(a.label)}</span></button>`
+    `<button type="button" class="sm-item${i === _slash.sel ? ' cur' : ''}" role="option" data-i="${i}" aria-selected="${i === _slash.sel}">${tico(a.ic)}<span class="nm">${esc(a.label)}</span></button>`
   ).join('');
 }
 
@@ -11289,7 +11817,7 @@ function cmdkActions(){
   const inEditor = $('v-editor')?.classList.contains('on');
   const a = [];
   // ----- global actions -----
-  a.push({ ic:'＋', label:'New post', key:'new post create write draft', run:()=>openNewPost() });
+  a.push({ ic:'plus', label:'New post', key:'new post create write draft', run:()=>openNewPost() });
   a.push({ ic:'🧌', label:'Goblin mode', key:'goblin chaos ideas brainstorm blank page unhinged spark', run:()=>{ closeCmdk(); openGoblin(); } });
   // ----- nav -----
   const navs = [
@@ -11311,23 +11839,23 @@ function cmdkActions(){
     ['setup','Getting started','onboarding first run setup connect keys guide help tour'],
   ];
   for(const [v, label, key] of navs){
-    a.push({ ic:'→', label:'Go to ' + label, key:'go ' + label + ' ' + key, group:'Navigate', run:()=>{ closeCmdk(); go(v); _navLoad(v); } });
+    a.push({ ic:'arrow-right', label:'Go to ' + label, key:'go ' + label + ' ' + key, group:'Navigate', run:()=>{ closeCmdk(); go(v); _navLoad(v); } });
   }
   // ----- editor actions (only meaningful with a post open) -----
   if(inEditor){
-    a.push({ ic:'＋', label:'Insert block', key:'insert block add slash', group:'Editor', run:()=>{ closeCmdk(); openPicker(null); } });
-    a.push({ ic:'💾', label:'Save draft', key:'save draft', group:'Editor', run:()=>{ clearTimeout(_saveDebounce); autosaveDraft().then(()=>toast('Draft saved ✓')); } });
-    a.push({ ic:'🔎', label:'Pre-publish check', key:'check publish prepublish review', group:'Editor', run:()=>{ (async()=>{ try{ renderPrepublish(await runPrepublishCheck(), doPublish); }catch(err){ showError(err, { title:'Check failed' }); } })(); } });
-    a.push({ ic:'✦', label:'Editor pass', key:'editor pass critique review voice hype hedge clarity ai notes', group:'Editor', run:()=>{ closeCmdk(); runEditorPass(); } });
-    a.push({ ic:'📚', label:'References', key:'references citations footnotes', group:'Editor', run:()=>openRefsManager() });
-    a.push({ ic:'📣', label:'Share preview', key:'share seo preview social card', group:'Editor', run:()=>openSharePreview() });
-    a.push({ ic:'👁', label:'Live preview', key:'preview view', group:'Editor', run:()=>$('previewBtn')?.click() });
-    a.push({ ic:'🕑', label:'Version history', key:'history versions snapshot', group:'Editor', run:()=>openHistory() });
-    a.push({ ic:'🎬', label:'Make a video', key:'video render shorts', group:'Editor', run:()=>{ if(!currentSlug){ toast('Save the post first'); return; } makeVideo({ slug: currentSlug, title: meta.title }); } });
-    a.push({ ic:'⛶', label:(focusModeOn()?'Exit focus mode':'Toggle focus mode'), key:'focus mode distraction', group:'Editor', run:()=>toggleFocusMode() });
+    a.push({ ic:'plus', label:'Insert block', key:'insert block add slash', group:'Editor', run:()=>{ closeCmdk(); openPicker(null); } });
+    a.push({ ic:'device-floppy', label:'Save draft', key:'save draft', group:'Editor', run:()=>{ clearTimeout(_saveDebounce); autosaveDraft().then(()=>toast('Draft saved ✓')); } });
+    a.push({ ic:'checklist', label:'Pre-publish check', key:'check publish prepublish review', group:'Editor', run:()=>{ (async()=>{ try{ renderPrepublish(await runPrepublishCheck(), doPublish); }catch(err){ showError(err, { title:'Check failed' }); } })(); } });
+    a.push({ ic:'sparkles', label:'Editor pass', key:'editor pass critique review voice hype hedge clarity ai notes', group:'Editor', run:()=>{ closeCmdk(); runEditorPass(); } });
+    a.push({ ic:'book', label:'References', key:'references citations footnotes', group:'Editor', run:()=>openRefsManager() });
+    a.push({ ic:'speakerphone', label:'Share preview', key:'share seo preview social card', group:'Editor', run:()=>openSharePreview() });
+    a.push({ ic:'eye', label:'Live preview', key:'preview view', group:'Editor', run:()=>$('previewBtn')?.click() });
+    a.push({ ic:'clock', label:'Version history', key:'history versions snapshot', group:'Editor', run:()=>openHistory() });
+    a.push({ ic:'movie', label:'Make a video', key:'video render shorts', group:'Editor', run:()=>{ if(!currentSlug){ toast('Save the post first'); return; } makeVideo({ slug: currentSlug, title: meta.title }); } });
+    a.push({ ic:'focus-2', label:(focusModeOn()?'Exit focus mode':'Toggle focus mode'), key:'focus mode distraction', group:'Editor', run:()=>toggleFocusMode() });
   }
   // ----- sync -----
-  a.push({ ic:'🔄', label:'Sync now', key:'sync now refresh reload posts pull', group:'Navigate', run:()=>{ go('posts'); loadPosts().then(()=>toast('Synced ✓')); } });
+  a.push({ ic:'refresh', label:'Sync now', key:'sync now refresh reload posts pull', group:'Navigate', run:()=>{ go('posts'); loadPosts().then(()=>toast('Synced ✓')); } });
   return a;
 }
 
@@ -11354,7 +11882,7 @@ function openCmdk(){
   if(_cmdk) return;
   closeSlashMenu();
   const posts = (Array.isArray(_posts) ? _posts : []).map(p => ({
-    ic:'📄', label: p.title || p.slug, key: (p.title||'') + ' ' + p.slug, group:'Jump to post',
+    ic:'file-text', label: p.title || p.slug, key: (p.title||'') + ' ' + p.slug, group:'Jump to post',
     tag: p.draft ? 'draft' : 'live',
     run: () => { closeCmdk(); openBlockEditor(p.slug); },
   }));
@@ -11385,7 +11913,7 @@ function renderCmdk(query){
   _cmdk.filtered.forEach((it, i) => {
     const g = it.group || 'Actions';
     if(g !== lastGroup){ html += `<li class="ck-grouplbl" aria-hidden="true">${esc(g)}</li>`; lastGroup = g; }
-    html += `<li><button type="button" class="ck-item${i === _cmdk.sel ? ' cur' : ''}" role="option" data-i="${i}" aria-selected="${i === _cmdk.sel}"><span class="ic" aria-hidden="true">${esc(it.ic||'•')}</span><span class="nm">${esc(it.label)}</span>${it.tag?`<span class="tag">${esc(it.tag)}</span>`:''}</button></li>`;
+    html += `<li><button type="button" class="ck-item${i === _cmdk.sel ? ' cur' : ''}" role="option" data-i="${i}" aria-selected="${i === _cmdk.sel}">${tico(it.ic||'point')}<span class="nm">${esc(it.label)}</span>${it.tag?`<span class="tag">${esc(it.tag)}</span>`:''}</button></li>`;
   });
   list.innerHTML = html;
   const cur = list.querySelector('.ck-item.cur');
@@ -16565,6 +17093,143 @@ async function runInlineAi(action, btn){
   }
 }
 
+/* ── floating format mini-toolbar (B / I / inline code / link) ─────────────────
+   The per-block .be-fmt bar (bold/italic/code/link) went unreachable once the
+   composer merged its modes and stopped setting selectedId. This is its drop-in
+   replacement: ONE reusable, position:fixed bar that floats above the current
+   text selection inside a .be-ce or .be-quote-ce. It borrows the old bar's
+   mechanics wholesale — mousedown+preventDefault to preserve the selection,
+   execCommand('bold'/'italic'), wrapInlineCode(ce), and the same openLinkPopover
+   flow — then round-trips the result into the owning block's b.html.
+   Coexists with the sibling .inline-ai-bar (which also floats above .be-ce
+   selections) by stacking clear above it whenever both target the same rect. */
+let _selFmtEl = null, _selFmtT = null;
+
+// The contenteditable (.be-ce / .be-quote-ce) the current selection lives in.
+function selFmtCe(){
+  const sel = window.getSelection();
+  if(!sel || !sel.rangeCount) return null;
+  let node = sel.getRangeAt(0).commonAncestorContainer;
+  if(node && node.nodeType === 3) node = node.parentNode;
+  return (node && node.closest) ? node.closest('.be-ce, .be-quote-ce') : null;
+}
+// Push the editable's live HTML back into its block model + mark dirty (round-trip).
+function selFmtSync(ce){
+  if(!ce) return;
+  const card = ce.closest('.block');
+  if(!card) return;
+  const b = doc.blocks.find(x => x.id === card.dataset.id);
+  if(!b) return;
+  b.html = ce.innerHTML;
+  markDirty();
+}
+// Run a formatting action on the current editable, then sync the block.
+function selFmtRun(action){
+  const ce = selFmtCe();
+  if(!ce) return;
+  action(ce);
+  selFmtSync(ce);
+}
+function selFmtBar(){
+  if(_selFmtEl) return _selFmtEl;
+  const bar = document.createElement('div');
+  bar.id = 'selFmt';
+  // Set position:fixed inline too (not just via CSS) so openLinkPopover's
+  // `wrap.style.position = wrap.style.position || 'relative'` can't clobber it —
+  // the popover then anchors (top:100%) to this fixed bar rather than page flow.
+  bar.style.position = 'fixed';
+  const mk = (icon, title, run) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = title;
+    btn.setAttribute('aria-label', title);
+    btn.innerHTML = tico(icon);
+    // mousedown+preventDefault keeps the selection/focus in the editable (same
+    // trick the old .be-fmt mkBtn used) so execCommand acts on the live range.
+    btn.addEventListener('mousedown', e => { e.preventDefault(); run(); });
+    bar.appendChild(btn);
+  };
+  mk('bold',   'Bold',        () => selFmtRun(() => document.execCommand('bold', false, null)));
+  mk('italic', 'Italic',      () => selFmtRun(() => document.execCommand('italic', false, null)));
+  mk('code',   'Inline code', () => selFmtRun(ce => wrapInlineCode(ce)));
+  mk('link',   'Link',        () => {
+    const ce = selFmtCe();
+    if(!ce) return;
+    // Reuse the existing inline link popover verbatim. Parenting it to the bar
+    // (as `wrap`) means focusing its URL input counts as focus *within* the bar,
+    // so the hide logic (guarded by _linkPop) leaves everything in place.
+    openLinkPopover(ce, bar, () => selFmtSync(ce));
+  });
+  document.body.appendChild(bar);
+  _selFmtEl = bar;
+  return bar;
+}
+function hideSelFmt(){
+  if(_linkPop) return;                       // keep the bar alive while its popover is open
+  if(_selFmtEl) _selFmtEl.style.display = 'none';
+}
+// Centre the bar above the selection rect (8px gap); clamp to the viewport; flip
+// below when there's no room above. When the .inline-ai-bar is showing above the
+// same selection, sit clear above it instead of overlapping (it wins z-order).
+function positionSelFmt(rect){
+  const bar = _selFmtEl, GAP = 8, M = 6;
+  const w = bar.offsetWidth, h = bar.offsetHeight;
+  let left = rect.left + rect.width / 2 - w / 2;
+  left = Math.max(M, Math.min(left, window.innerWidth - w - M));
+  const ai = (_inlineBar && _inlineBar.style.display !== 'none') ? _inlineBar.getBoundingClientRect() : null;
+  const overTop = (ai && ai.height) ? Math.min(rect.top, ai.top) : rect.top;
+  let top = overTop - GAP - h;
+  if(top < M){                               // no room above → drop below the selection (+ any AI bar)
+    top = rect.bottom + GAP;
+    if(ai && ai.height) top = Math.max(top, ai.bottom + GAP);
+    top = Math.min(top, window.innerHeight - h - M);
+  }
+  bar.style.left = left + 'px';
+  bar.style.top  = top + 'px';
+}
+function onSelFmtSelection(){
+  if(_linkPop) return;                       // popover open → leave the bar as-is
+  if(!$('v-editor') || !$('v-editor').classList.contains('on')){ hideSelFmt(); return; }
+  const sel = window.getSelection();
+  const ce = selFmtCe();
+  if(!ce || !sel || sel.isCollapsed || !sel.rangeCount || sel.toString().trim().length < 1){
+    hideSelFmt();
+    return;
+  }
+  const rect = sel.getRangeAt(0).getBoundingClientRect();
+  if(!rect || (!rect.width && !rect.height)){ hideSelFmt(); return; }
+  const bar = selFmtBar();
+  bar.style.display = 'flex';                 // must be laid out before we can measure it
+  positionSelFmt(rect);
+}
+// Debounced ~150ms: sits just after the AI bar's 140ms so its rect has settled
+// when we read it for stacking. Same selectionchange driver serves touch long-press.
+document.addEventListener('selectionchange', () => {
+  clearTimeout(_selFmtT);
+  _selFmtT = setTimeout(onSelFmtSelection, 150);
+});
+// A fixed bar detaches from the text on scroll → hide immediately (any scroller).
+window.addEventListener('scroll', () => hideSelFmt(), true);
+// Esc: close the link popover first if open, else dismiss the bar.
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  if(_selFmtEl && _selFmtEl.style.display !== 'none'){
+    if(_linkPop) closeLinkPopover();
+    else _selFmtEl.style.display = 'none';
+  }
+});
+// Focus leaving the editable with no live selection left → hide (backstop for the
+// cases selectionchange doesn't catch). Deferred so focus can land in our popover.
+document.addEventListener('focusout', () => {
+  setTimeout(() => {
+    if(_linkPop) return;
+    if(!_selFmtEl || _selFmtEl.style.display === 'none') return;
+    const s = window.getSelection();
+    if(s && !s.isCollapsed && s.rangeCount && selFmtCe()) return;   // selection still live in an editable
+    _selFmtEl.style.display = 'none';
+  }, 0);
+});
+
 /* ── glyph icon picker ─────────────────────────────────────────────────────── */
 const GLYPH_SPRITE = '/icons-sprite.svg';
 let _glyphManifest = null, _glyphFiltered = [], _glyphShown = 0, _glyphMode = '2d';
@@ -17243,11 +17908,11 @@ function videoLibExplainer(html){
 
 // Is a Helm backend reachable for this Studio session? Mirrors helmReachable() in
 // studio-app/app.js: remote-tunnel-to-Helm OR the local same-origin Helm build count;
-// the hosted Studio in pure-BYOK mode (window.__studioConfig present, not remote) does not.
+// the hosted Helm Studio in pure-BYOK mode (window.__studioConfig present, not remote) does not.
 function videoHelmReachable(){
   if(window.__studioRemote && window.__studioRemote.active) return true;   // remote tunnel → local Helm
   if(!window.__studioConfig) return true;                                  // local same-origin Helm build
-  return false;                                                            // hosted Studio, BYOK mode
+  return false;                                                            // hosted Helm Studio, BYOK mode
 }
 
 // Mode-aware product name. Local Helm (or a remote tunnel to one) → "The Helm";
@@ -17256,7 +17921,7 @@ function videoHelmReachable(){
 // Called once the mode is known (the boot gate / boot()), and re-callable if the
 // mode changes (e.g. after connecting to a remote Helm).
 function applyBrandName(){
-  const name = videoHelmReachable() ? 'The Helm' : 'Studio';
+  const name = videoHelmReachable() ? 'The Helm' : 'Helm Studio';
   document.title = name;
   const login = document.getElementById('loginBrand');     if(login)  login.textContent  = name;
   const header = document.getElementById('appHeaderTitle'); if(header) header.textContent = name;
@@ -17295,11 +17960,11 @@ async function loadVideoLibrary(){
     const r = await api('/media/video/list');
     list = Array.isArray(r) ? r : (r && Array.isArray(r.videos) ? r.videos : []);
   }catch(e){
-    // 503/local-only (BYOK or hosted Studio) → explain where video lives; otherwise a
+    // 503/local-only (BYOK or hosted Helm Studio) → explain where video lives; otherwise a
     // missing endpoint / network blip → the same gentle empty state (no fake rows).
     if(e && (e.status === 503 || e.code === 'VIDEO_LOCAL_ONLY')){
       videoLibExplainer(
-        `<b>Video lives on your local Helm.</b><br>Uploading, transcoding and self-hosting clips runs in the Helm on your Mac (<code>npm&nbsp;start</code>), not the hosted Studio. Open Studio on that machine to browse and add videos.`
+        `<b>Video lives on your local Helm.</b><br>Uploading, transcoding and self-hosting clips runs in the Helm on your Mac (<code>npm&nbsp;start</code>), not the hosted Helm Studio. Open Helm Studio on that machine to browse and add videos.`
       );
     } else {
       videoLibExplainer(
@@ -17664,7 +18329,7 @@ $('libIconGrid')?.addEventListener('click',e=>{ const t=e.target.closest('.gp-ti
    ordered scene cards (add / remove / reorder / per-scene seconds + format), then
    render the Remotion PostVideo to an MP4 via the LOCAL render-job route and poll to
    done → preview + download + (Web Share where available). Rendering is local-only;
-   the BYOK hosted Studio reports a 503 and we show the friendly local-only message. */
+   the BYOK hosted Helm Studio reports a 503 and we show the friendly local-only message. */
 const _vid = { storyboard:null, scenes:[], format:'9:16', transition:'fade', audio:null, pollTimer:null, blobUrl:null, slug:null, mode:'story' };
 
 async function makeVideo(p){
@@ -18091,7 +18756,7 @@ applyBrandName();
 
    NOTE: client-side verification is a DETERRENT, not tamper-proof — a determined
    user can edit the bundle in their own browser. The real gate is the Helm
-   startup check (server/index.js); this stops casual use of the hosted Studio.
+   startup check (server/index.js); this stops casual use of the hosted Helm Studio.
 
    Modes:
      • LOCAL Helm (server-backed build): try GET /api/licence first, so the
