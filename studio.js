@@ -2223,7 +2223,7 @@ function sanitise(svg2) {
 }
 
 // server/blocks.js
-var KNOWN = /* @__PURE__ */ new Set(["heading", "text", "image", "quote", "divider", "raw", "gallery", "embed", "playground", "table", "figure"]);
+var KNOWN = /* @__PURE__ */ new Set(["heading", "text", "image", "quote", "divider", "raw", "gallery", "embed", "playground", "table", "figure", "video"]);
 function decodeEntities(s) {
   return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
 }
@@ -2274,6 +2274,10 @@ function safeEmbedSrc(src) {
 function placementClass(b) {
   const p = b && b.placement;
   return p === "wide" ? " breakout" : p === "left" ? " img-left" : p === "right" ? " img-right" : "";
+}
+function videoFigure(b) {
+  const cap = b.caption ? `<figcaption>${escHtml(b.caption)}</figcaption>` : "";
+  return `<figure class="post-video"><video controls playsinline preload="metadata" poster="${escAttr2(b.poster)}" src="${escAttr2(b.url)}"></video>${cap}</figure>`;
 }
 var isUnsafeFilename = (name) => {
   const s = String(name);
@@ -2355,6 +2359,8 @@ function serialiseBlock(block, ctx = {}) {
       return "---";
     case "image":
       return imageFigure(block, ctx.slug || "post");
+    case "video":
+      return videoFigure(block);
     case "figure":
       return figureBlock(block, ctx.slug || "post");
     case "raw":
@@ -2363,9 +2369,13 @@ function serialiseBlock(block, ctx = {}) {
       const imgs = (block.images || []).filter((im) => im && im.file).map((im) => `![${String(im.alt || "").replace(/[\[\]]/g, "").replace(/[\r\n]+/g, " ").trim()}](./_images/${ctx.slug || "post"}/${im.file})`);
       if (!imgs.length) return "";
       const w = blkWidth(block);
-      const marker = w == null ? "" : `[[blk-gallery:w=${w},a=${blkAlign(block)}]]
+      const p = block.placement === "wide" || block.placement === "left" || block.placement === "right" ? block.placement : "";
+      const tokens = [];
+      if (w != null) tokens.push(`w=${w}`, `a=${blkAlign(block)}`);
+      if (p) tokens.push(`p=${p}`);
+      const marker = tokens.length ? `[[blk-gallery:${tokens.join(",")}]]
 
-`;
+` : "";
       return `${marker}${imgs.join("\n")}`;
     }
     case "embed": {
@@ -2493,6 +2503,12 @@ function renderPreviewHtml(blocks, ctx = {}) {
         return "<hr>";
       case "image":
         return b.url || b.file || b.base64 || b.src ? figure(b) : "";
+      case "video": {
+        if (!b.url) return "";
+        const cap = b.caption ? `<figcaption>${escHtml(b.caption)}</figcaption>` : "";
+        const poster = b.poster ? ` poster="${escAttr2(b.poster)}"` : "";
+        return `<figure class="post-video"><video controls playsinline preload="metadata"${poster} src="${escAttr2(b.url)}"></video>${cap}</figure>`;
+      }
       case "figure": {
         if (!b.svg) return "";
         const place = b.placement === "wide" ? "wide" : b.placement === "left" ? "left" : b.placement === "right" ? "right" : "default";
@@ -2548,13 +2564,18 @@ function renderPreviewHtml(blocks, ctx = {}) {
 }
 var SAFE_IMAGE_REF = /^\/images\/posts\/[A-Za-z0-9._\-\/]+$/;
 var isSafeImageRef = (url) => SAFE_IMAGE_REF.test(String(url || "")) && !String(url).split("/").includes("..");
+var ILLUSTRATION_ORIGIN = "https://pub-d0c0f024bcde4912b0366f54204bd01a.r2.dev/";
+var isSafeIllustrationUrl = (url) => {
+  const s = String(url || "");
+  return s.startsWith(ILLUSTRATION_ORIGIN) && SAFE_HTTPS_URL.test(s) && !s.split("/").includes("..");
+};
 function validateDoc(doc) {
   if (!doc || !Array.isArray(doc.blocks)) throw Object.assign(new Error("block doc must have a blocks array"), { status: 400 });
   for (const b of doc.blocks) {
     if (!b || !KNOWN.has(b.type)) throw Object.assign(new Error(`unknown block type: ${b && b.type}`), { status: 400 });
     if (b.type === "image" && !b.file && !b.base64 && !b.url) throw Object.assign(new Error("image block needs file, base64 or url"), { status: 400 });
-    if (b.type === "image" && b.url && !b.base64 && !isSafeImageRef(b.url))
-      throw Object.assign(new Error("image reference must be a site image path under /images/posts/"), { status: 400 });
+    if (b.type === "image" && b.url && !b.base64 && !isSafeImageRef(b.url) && !isSafeIllustrationUrl(b.url))
+      throw Object.assign(new Error("image reference must be a site image path under /images/posts/ or an illustration URL"), { status: 400 });
     if (b.type === "image" && b.file && isUnsafeFilename(b.file))
       throw Object.assign(new Error("unsafe image filename"), { status: 400 });
     if (b.type === "gallery") {
@@ -2566,6 +2587,10 @@ function validateDoc(doc) {
     if (b.type === "figure" && (typeof b.svg !== "string" || b.svg.trim() === "")) throw Object.assign(new Error("figure block needs a non-empty svg string"), { status: 400 });
     if (b.type === "figure" && b.base && b.base.file && isUnsafeFilename(b.base.file))
       throw Object.assign(new Error("unsafe figure image filename"), { status: 400 });
+    if (b.type === "video") {
+      if (!isSafeHttpsRef(b.url)) throw Object.assign(new Error("video block needs an https url on your R2"), { status: 400 });
+      if (!isSafeHttpsRef(b.poster)) throw Object.assign(new Error("video block needs an https poster on your R2"), { status: 400 });
+    }
   }
   return true;
 }
@@ -11813,6 +11838,848 @@ paint();
   }
 };
 
+// server/playgrounds/self-assessment.js
+var self_assessment_default = {
+  id: "self-assessment",
+  name: "Self-assessment",
+  category: "Game",
+  description: "A profile or recommendation quiz \u2014 answers add to outcome bands, then the reader receives the closest result. For reflective and advisory posts.",
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["questions", "outcomes"],
+    properties: {
+      intro: { type: "string", title: "Opening instruction" },
+      questions: {
+        type: "array",
+        minItems: 1,
+        maxItems: 12,
+        title: "Questions",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["q", "options"],
+          properties: {
+            q: { type: "string", title: "Question" },
+            options: {
+              type: "array",
+              minItems: 2,
+              maxItems: 6,
+              title: "Answers",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["label", "outcome"],
+                properties: {
+                  label: { type: "string", title: "Answer" },
+                  outcome: { type: "integer", minimum: 0, maximum: 5, default: 0, title: "Outcome number (0-based)" },
+                  weight: { type: "number", minimum: 0, maximum: 10, default: 1, title: "Weight" }
+                }
+              }
+            }
+          }
+        }
+      },
+      outcomes: {
+        type: "array",
+        minItems: 2,
+        maxItems: 6,
+        title: "Outcome profiles",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "text"],
+          properties: {
+            name: { type: "string", title: "Result name" },
+            text: { type: "string", title: "Result explanation", "x-control": "textarea" },
+            next: { type: "string", title: "Optional next step" }
+          }
+        }
+      }
+    }
+  },
+  presets: [
+    {
+      name: "Your working rhythm",
+      params: {
+        intro: "Choose the answer that sounds most like you. There are no wrong answers.",
+        questions: [
+          { q: "A clear morning appears in your calendar. What do you do first?", options: [
+            { label: "Start the hardest thing before messages arrive", outcome: 0, weight: 2 },
+            { label: "Make a short plan and clear the quick jobs", outcome: 1, weight: 2 },
+            { label: "Call someone and build momentum together", outcome: 2, weight: 2 }
+          ] },
+          { q: "When an idea stalls, what usually helps?", options: [
+            { label: "Quiet and another uninterrupted hour", outcome: 0, weight: 2 },
+            { label: "Breaking it into a smaller next action", outcome: 1, weight: 2 },
+            { label: "Talking it through out loud", outcome: 2, weight: 2 }
+          ] },
+          { q: "Which finish feels best?", options: [
+            { label: "One substantial piece of work completed", outcome: 0, weight: 1 },
+            { label: "Everything important moved forward", outcome: 1, weight: 1 },
+            { label: "The group is aligned and unblocked", outcome: 2, weight: 1 }
+          ] }
+        ],
+        outcomes: [
+          { name: "Deep diver", text: "You do your best work with protected time and one demanding focus.", next: "Try reserving the first uninterrupted hour for the task that needs the most thought." },
+          { name: "Steady orchestrator", text: "You create momentum by making the work visible and moving several pieces deliberately.", next: "Keep a short active list and decide the next action before you stop." },
+          { name: "Collaborative spark", text: "Conversation and shared energy sharpen your thinking.", next: "Build in an early check-in instead of waiting until the work feels finished." }
+        ]
+      }
+    }
+  ],
+  build(params, domId) {
+    const questions = (Array.isArray(params.questions) ? params.questions : []).slice(0, 12);
+    const outcomes = (Array.isArray(params.outcomes) ? params.outcomes : []).slice(0, 6);
+    const intro = params.intro ? `<div class="pg-sa-intro">${esc(params.intro)}</div>` : "";
+    const html = `<div class="pg-stage">${intro}<div class="pg-readout pg-sa-progress" data-role="progress"></div><div class="pg-sa-q" data-role="q"></div><div class="pg-sa-options" data-role="options"></div><div class="pg-sa-result" data-role="result" aria-live="polite" hidden></div><div class="pg-sa-actions"><button type="button" data-role="back" hidden>\u2039 Back</button><button type="button" data-role="restart" hidden>Try again \u21BA</button></div></div>`;
+    const css = [
+      `#${domId} .pg-sa-intro{color:var(--ink-dim,#9fb3c8);font-size:.9rem;line-height:1.5;margin-bottom:.8rem}`,
+      `#${domId} .pg-sa-progress{font-size:.8rem;color:var(--ink-faint,#717d99);margin-bottom:.45rem}`,
+      `#${domId} .pg-sa-q{font-size:1.04rem;font-weight:700;color:#fff;line-height:1.42;margin-bottom:.75rem}`,
+      `#${domId} .pg-sa-options{display:grid;gap:.55rem}`,
+      `#${domId} .pg-sa-options button{min-height:44px;text-align:left;border:1px solid var(--line,#23304a);border-radius:11px;background:rgba(140,160,200,.05);color:var(--ink-dim,#cdd6e6);font:inherit;padding:.7rem .85rem;cursor:pointer}`,
+      `#${domId} .pg-sa-options button:hover{border-color:#22d3ee;color:#fff}`,
+      `#${domId} .pg-sa-options button:focus-visible,#${domId} .pg-sa-actions button:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}`,
+      `#${domId} .pg-sa-result{border:1px solid #22d3ee66;border-radius:13px;background:rgba(34,211,238,.07);padding:1rem}`,
+      `#${domId} .pg-sa-result h3{margin:0 0 .35rem;color:#22d3ee;font-size:1.12rem}`,
+      `#${domId} .pg-sa-result p{margin:.25rem 0;color:var(--ink-dim,#cdd6e6);line-height:1.55}`,
+      `#${domId} .pg-sa-result .pg-sa-next{color:#fff;margin-top:.65rem}`,
+      `#${domId} .pg-sa-actions{display:flex;justify-content:space-between;gap:.5rem;margin-top:.8rem}`,
+      `#${domId} .pg-sa-actions button{min-height:42px;border:1px solid var(--line,#23304a);border-radius:9px;background:transparent;color:#22d3ee;font:600 .84rem system-ui;padding:.45rem .8rem;cursor:pointer}`
+    ].join("\n");
+    const jsBody = `
+var QS=(CONFIG.questions||[]).map(function(q){
+  return {q:String((q&&q.q)||''),options:(q&&q.options||[]).map(function(o){
+    return {label:String((o&&o.label)||''),outcome:Math.max(0,(+((o||{}).outcome))||0),weight:Math.max(0,(+((o||{}).weight))||1)};
+  }).filter(function(o){return o.label;})};
+}).filter(function(q){return q.q&&q.options.length>=2;});
+var OUT=(CONFIG.outcomes||[]).map(function(o){return {name:String((o&&o.name)||''),text:String((o&&o.text)||''),next:String((o&&o.next)||'')};}).filter(function(o){return o.name;});
+var progress=$('[data-role=progress]'),qEl=$('[data-role=q]'),opts=$('[data-role=options]');
+var result=$('[data-role=result]'),back=$('[data-role=back]'),restart=$('[data-role=restart]');
+if(!QS.length||OUT.length<2||!qEl||!opts)return;
+var at=0,answers=[];
+function clean(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function show(){
+  result.hidden=true;restart.hidden=true;qEl.hidden=false;opts.hidden=false;
+  var q=QS[at];progress.textContent='Question '+(at+1)+' of '+QS.length;qEl.textContent=q.q;opts.innerHTML='';
+  q.options.forEach(function(o,i){var b=document.createElement('button');b.type='button';b.textContent=o.label;
+    b.addEventListener('click',function(){answers[at]=i;if(at<QS.length-1){at++;show();}else finish();});opts.appendChild(b);});
+  back.hidden=(at===0);back.disabled=(at===0);
+}
+function finish(){
+  var scores=OUT.map(function(){return 0;});
+  QS.forEach(function(q,i){var choice=q.options[answers[i]];if(choice&&scores[choice.outcome]!=null)scores[choice.outcome]+=choice.weight;});
+  var best=0;scores.forEach(function(v,i){if(v>scores[best])best=i;});
+  var o=OUT[best]||OUT[0];
+  progress.textContent='Your result';qEl.hidden=true;opts.hidden=true;back.hidden=true;restart.hidden=false;
+  result.hidden=false;result.innerHTML='<h3>'+clean(o.name)+'</h3><p>'+clean(o.text)+'</p>'+(o.next?'<p class="pg-sa-next"><b>Try this:</b> '+clean(o.next)+'</p>':'');
+  restart.focus();
+}
+back.addEventListener('click',function(){if(at>0){at--;answers.length=at;show();}});
+restart.addEventListener('click',function(){at=0;answers=[];show();});
+show();
+`;
+    return { html, css, jsBody };
+  }
+};
+
+// server/playgrounds/formula-calculator.js
+var inputSchema2 = {
+  type: "object",
+  additionalProperties: false,
+  required: ["key", "label", "min", "max", "value"],
+  properties: {
+    key: { type: "string", title: "Variable name (letters/numbers/underscore)" },
+    label: { type: "string" },
+    min: { type: "number" },
+    max: { type: "number" },
+    value: { type: "number" },
+    step: { type: "number", default: 1 },
+    unit: { type: "string", default: "" }
+  }
+};
+var formula_calculator_default = {
+  id: "formula-calculator",
+  name: "Formula calculator",
+  category: "tool",
+  description: "Configurable inputs and calculated outputs \u2014 turn a post into an estimator, planner or comparison tool.",
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["inputs", "outputs"],
+    properties: {
+      prompt: { type: "string", title: "Instruction line" },
+      inputs: { type: "array", minItems: 1, maxItems: 5, title: "Inputs", items: inputSchema2 },
+      outputs: {
+        type: "array",
+        minItems: 1,
+        maxItems: 4,
+        title: "Calculated outputs",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label", "expr"],
+          properties: {
+            label: { type: "string" },
+            expr: { type: "string", title: "Formula using the variable names and Math.*" },
+            prefix: { type: "string", default: "" },
+            unit: { type: "string", default: "" },
+            decimals: { type: "integer", minimum: 0, maximum: 6, default: 2 }
+          }
+        }
+      },
+      note: { type: "string", title: "Optional explanation or caveat" }
+    }
+  },
+  presets: [
+    {
+      name: "Freelance project estimate",
+      params: {
+        prompt: "Adjust the assumptions to estimate the project.",
+        inputs: [
+          { key: "days", label: "Working days", min: 1, max: 60, value: 12, step: 1, unit: " days" },
+          { key: "rate", label: "Day rate", min: 100, max: 1500, value: 450, step: 25, unit: "" },
+          { key: "buffer", label: "Contingency", min: 0, max: 40, value: 15, step: 1, unit: "%" }
+        ],
+        outputs: [
+          { label: "Base estimate", expr: "days * rate", prefix: "\xA3", unit: "", decimals: 0 },
+          { label: "With contingency", expr: "days * rate * (1 + buffer/100)", prefix: "\xA3", unit: "", decimals: 0 }
+        ],
+        note: "This is a planning estimate, not a quote. Add taxes and pass-through costs separately."
+      }
+    }
+  ],
+  build(params, domId) {
+    const inputs = (Array.isArray(params.inputs) ? params.inputs : []).slice(0, 5);
+    const outputs = (Array.isArray(params.outputs) ? params.outputs : []).slice(0, 4);
+    const prompt = params.prompt ? `<div class="pg-fc-prompt">${esc(params.prompt)}</div>` : "";
+    const controls = inputs.map((it, i) => {
+      const key = String(it.key || `v${i}`).replace(/[^\w$]/g, "_");
+      return `<div class="pg-fc-field"><label for="${domId}-${key}-num">${esc(it.label || key)}</label><div class="pg-fc-inputs"><input type="range" data-role="range" data-key="${esc(key)}" min="${Number(it.min) || 0}" max="${Number(it.max) || 100}" step="${Number(it.step) || 1}" value="${Number(it.value) || 0}"><span class="pg-fc-numwrap"><input id="${domId}-${key}-num" type="number" data-role="number" data-key="${esc(key)}" min="${Number(it.min) || 0}" max="${Number(it.max) || 100}" step="${Number(it.step) || 1}" value="${Number(it.value) || 0}" inputmode="decimal"><span>${esc(it.unit || "")}</span></span></div></div>`;
+    }).join("");
+    const cards = outputs.map(
+      (o, i) => `<div class="pg-fc-out"><span>${esc(o.label || `Output ${i + 1}`)}</span><strong data-role="out" data-idx="${i}">\u2013</strong></div>`
+    ).join("");
+    const note = params.note ? `<div class="pg-fc-note">${esc(params.note)}</div>` : "";
+    const html = `<div class="pg-stage">${prompt}<div class="pg-fc-grid"><div class="pg-fc-controls">${controls}</div><div class="pg-fc-results">${cards}</div></div>${note}<div class="pg-fc-status" data-role="status" aria-live="polite"></div></div>`;
+    const css = [
+      `#${domId} .pg-fc-prompt{color:var(--ink-dim,#9fb3c8);margin-bottom:.85rem}`,
+      `#${domId} .pg-fc-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(12rem,.8fr);gap:1rem}`,
+      `#${domId} .pg-fc-controls,#${domId} .pg-fc-results{display:grid;gap:.7rem}`,
+      `#${domId} .pg-fc-field{border:1px solid var(--line,#23304a);border-radius:10px;padding:.65rem .75rem;background:rgba(140,160,200,.04)}`,
+      `#${domId} .pg-fc-field>label{display:block;font-weight:650;color:#fff;margin-bottom:.45rem}`,
+      `#${domId} .pg-fc-inputs{display:flex;align-items:center;gap:.65rem}`,
+      `#${domId} .pg-fc-inputs input[type=range]{flex:1;accent-color:#22d3ee;min-width:5rem}`,
+      `#${domId} .pg-fc-numwrap{display:flex;align-items:center;gap:.25rem;color:var(--ink-dim,#9fb3c8);white-space:nowrap}`,
+      `#${domId} .pg-fc-numwrap input{width:6rem;min-height:40px;border:1px solid var(--line,#23304a);border-radius:8px;background:rgba(4,6,12,.3);color:#fff;font:inherit;padding:.35rem .45rem}`,
+      `#${domId} .pg-fc-numwrap input:focus{outline:2px solid #22d3ee;outline-offset:1px}`,
+      `#${domId} .pg-fc-out{border:1px solid #22d3ee55;border-radius:11px;background:rgba(34,211,238,.07);padding:.75rem}`,
+      `#${domId} .pg-fc-out span{display:block;color:var(--ink-faint,#717d99);font-size:.78rem;margin-bottom:.2rem}`,
+      `#${domId} .pg-fc-out strong{font-size:1.35rem;color:#22d3ee;font-variant-numeric:tabular-nums}`,
+      `#${domId} .pg-fc-note{font-size:.8rem;color:var(--ink-faint,#717d99);line-height:1.5;margin-top:.75rem}`,
+      `#${domId} .pg-fc-status{min-height:1.2em;color:#fb7185;font-size:.8rem;margin-top:.35rem}`,
+      `@media(max-width:620px){#${domId} .pg-fc-grid{grid-template-columns:1fr}#${domId} .pg-fc-inputs{align-items:flex-start;flex-direction:column}#${domId} .pg-fc-numwrap input{width:7rem}}`
+    ].join("\n");
+    const jsBody = `
+var INS=(CONFIG.inputs||[]).slice(0,5),OUTS=(CONFIG.outputs||[]).slice(0,4);
+var ranges=$$('[data-role=range]'),nums=$$('[data-role=number]'),cards=$$('[data-role=out]'),status=$('[data-role=status]');
+var KEYS=INS.map(function(it,i){return String((it&&it.key)||('v'+i)).replace(/[^\\w$]/g,'_');}).filter(function(k){return /^[A-Za-z_$][\\w$]*$/.test(k);});
+function compile(expr){try{var pre=KEYS.map(function(k){return 'var '+k+'=V['+JSON.stringify(k)+'];';}).join('');return new Function('V','Math',pre+'return ('+(expr||'0')+');');}catch(e){return null;}}
+var fns=OUTS.map(function(o){return compile(o&&o.expr);});
+function clamp(v,el){var lo=parseFloat(el.min),hi=parseFloat(el.max);if(isNaN(v))v=lo||0;return Math.max(lo,Math.min(hi,v));}
+function values(){var V={};nums.forEach(function(n){V[n.getAttribute('data-key')]=parseFloat(n.value)||0;});return V;}
+function draw(){
+  var V=values(),bad=false;
+  cards.forEach(function(card,i){var o=OUTS[i]||{},v=NaN;try{if(fns[i])v=fns[i](V,Math);}catch(e){}
+    if(!isFinite(v)){card.textContent='\u2013';bad=true;return;}var d=Math.max(0,Math.min(6,(+o.decimals)||0));
+    card.textContent=String(o.prefix||'')+v.toFixed(d)+String(o.unit||'');
+  });
+  if(status)status.textContent=bad?'One formula could not be calculated with these values.':'';
+}
+function sync(from,to){var key=from.getAttribute('data-key'),peer=to.filter(function(x){return x.getAttribute('data-key')===key;})[0];if(!peer)return;var v=clamp(parseFloat(from.value),from);from.value=String(v);peer.value=String(v);draw();}
+ranges.forEach(function(r){r.addEventListener('input',function(){sync(r,nums);});});
+nums.forEach(function(n){n.addEventListener('input',function(){sync(n,ranges);});});
+draw();
+`;
+    return { html, css, jsBody };
+  }
+};
+
+// server/playgrounds/branching-scenario.js
+var branching_scenario_default = {
+  id: "branching-scenario",
+  name: "Branching scenario",
+  category: "Narrative",
+  description: "A choose-your-path case study \u2014 decisions move through authored scenes, optionally changing a score before an outcome.",
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["start", "nodes"],
+    properties: {
+      intro: { type: "string", title: "Opening context", "x-control": "textarea" },
+      start: { type: "string", title: "Starting node id" },
+      scoreLabel: { type: "string", default: "Score", title: "Optional score label" },
+      showScore: { type: "boolean", default: true, title: "Show score while playing" },
+      nodes: {
+        type: "array",
+        minItems: 2,
+        maxItems: 30,
+        title: "Scenes and outcomes",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id"],
+          properties: {
+            id: { type: "string", title: "Node id" },
+            text: { type: "string", title: "Scene/question", "x-control": "textarea" },
+            outcome: { type: "string", title: "Outcome text (leave blank for a question)", "x-control": "textarea" },
+            options: {
+              type: "array",
+              maxItems: 5,
+              title: "Choices",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["label", "to"],
+                properties: {
+                  label: { type: "string" },
+                  to: { type: "string", title: "Destination node id" },
+                  score: { type: "number", default: 0, title: "Score change" },
+                  feedback: { type: "string", title: "Optional consequence shown in the trail" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  presets: [
+    {
+      name: "A difficult project conversation",
+      params: {
+        intro: "A deadline is slipping and the client has noticed. Choose how you handle the conversation.",
+        start: "open",
+        scoreLabel: "Trust",
+        showScore: true,
+        nodes: [
+          { id: "open", text: "How do you open the call?", options: [
+            { label: "Name the delay and take responsibility", to: "plan", score: 2, feedback: "You make the problem discussable." },
+            { label: "Lead with everything the client changed", to: "defend", score: -1, feedback: "The call starts defensively." },
+            { label: "Say the work is nearly done", to: "surprise", score: -2, feedback: "You buy time but create another risk." }
+          ] },
+          { id: "plan", text: "The client asks what happens next.", options: [
+            { label: "Offer a smaller milestone tomorrow and a realistic final date", to: "repair", score: 2 },
+            { label: "Promise the original date anyway", to: "surprise", score: -2 }
+          ] },
+          { id: "defend", text: "The client starts listing earlier promises.", options: [
+            { label: "Pause, acknowledge the impact, and reset the conversation", to: "plan", score: 1 },
+            { label: "Keep arguing the timeline", to: "breakdown", score: -2 }
+          ] },
+          { id: "repair", outcome: "You leave with a credible plan and more trust than the delay deserved." },
+          { id: "surprise", outcome: "The rushed promise creates another surprise. The relationship now needs repair as well as delivery." },
+          { id: "breakdown", outcome: "The call ends without a shared plan. A follow-up conversation is now unavoidable." }
+        ]
+      }
+    }
+  ],
+  build(params, domId) {
+    const nodes = (Array.isArray(params.nodes) ? params.nodes : []).slice(0, 30);
+    const intro = params.intro ? `<div class="pg-bs-intro">${esc(params.intro)}</div>` : "";
+    const html = `<div class="pg-stage">${intro}<div class="pg-bs-top"><div class="pg-readout" data-role="progress"></div><div class="pg-bs-score" data-role="score"></div></div><div class="pg-bs-trail" data-role="trail" aria-label="Choices made"></div><div class="pg-bs-card" data-role="card" aria-live="polite"></div><div class="pg-bs-actions"><button type="button" data-role="back" hidden>\u2039 Back</button><button type="button" data-role="restart" hidden>Start over \u21BA</button></div></div>`;
+    const css = [
+      `#${domId} .pg-bs-intro{color:var(--ink-dim,#cdd6e6);line-height:1.55;margin-bottom:.8rem}`,
+      `#${domId} .pg-bs-top{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem}`,
+      `#${domId} .pg-bs-score{font-size:.8rem;color:#22d3ee;font-weight:700}`,
+      `#${domId} .pg-bs-trail{display:flex;flex-wrap:wrap;gap:.35rem;min-height:1.2rem;margin-bottom:.55rem}`,
+      `#${domId} .pg-bs-chip{border-radius:999px;background:rgba(140,160,200,.08);color:var(--ink-faint,#717d99);font-size:.72rem;padding:.25rem .5rem}`,
+      `#${domId} .pg-bs-card{border:1px solid var(--line,#23304a);border-radius:14px;background:rgba(140,160,200,.05);padding:1rem}`,
+      `#${domId} .pg-bs-card h3{font-size:1.04rem;line-height:1.45;color:#fff;margin:0 0 .8rem}`,
+      `#${domId} .pg-bs-options{display:grid;gap:.55rem}`,
+      `#${domId} .pg-bs-options button{min-height:44px;text-align:left;border:1px solid #22d3ee55;border-radius:10px;background:rgba(34,211,238,.06);color:var(--ink-dim,#cdd6e6);font:inherit;padding:.65rem .8rem;cursor:pointer}`,
+      `#${domId} .pg-bs-options button:hover{border-color:#22d3ee;color:#fff}`,
+      `#${domId} .pg-bs-options button:focus-visible,#${domId} .pg-bs-actions button:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}`,
+      `#${domId} .pg-bs-outcome{color:var(--ink-dim,#cdd6e6);font-size:1rem;line-height:1.6}`,
+      `#${domId} .pg-bs-actions{display:flex;justify-content:space-between;margin-top:.65rem}`,
+      `#${domId} .pg-bs-actions button{min-height:42px;border:1px solid var(--line,#23304a);border-radius:9px;background:transparent;color:#22d3ee;font:600 .84rem system-ui;padding:.45rem .8rem;cursor:pointer}`
+    ].join("\n");
+    const jsBody = `
+var NODES={};(CONFIG.nodes||[]).slice(0,30).forEach(function(n){if(n&&n.id)NODES[String(n.id)]=n;});
+var card=$('[data-role=card]'),trail=$('[data-role=trail]'),progress=$('[data-role=progress]'),scoreEl=$('[data-role=score]');
+var back=$('[data-role=back]'),restart=$('[data-role=restart]');
+if(!card)return;var current=String(CONFIG.start||''),score=0,history=[],moves=0;
+function clean(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function paintTrail(){trail.innerHTML=history.map(function(h){return '<span class="pg-bs-chip">'+clean(h.label)+(h.feedback?' \xB7 '+clean(h.feedback):'')+'</span>';}).join('');}
+function render(){
+  var n=NODES[current];moves=history.length;progress.textContent='Decision '+(moves+1);
+  scoreEl.textContent=CONFIG.showScore===false?'':String(CONFIG.scoreLabel||'Score')+': '+score;
+  back.hidden=!history.length;restart.hidden=true;paintTrail();
+  if(!n){card.innerHTML='<div class="pg-bs-outcome">This path is incomplete. The author needs to connect \u201C'+clean(current)+'\u201D.</div>';restart.hidden=false;return;}
+  if(n.outcome){progress.textContent='Outcome';card.innerHTML='<div class="pg-bs-outcome">'+clean(n.outcome)+'</div>';restart.hidden=false;restart.focus();return;}
+  if(moves>=30){card.innerHTML='<div class="pg-bs-outcome">This path has gone in a circle. Start again and choose another route.</div>';restart.hidden=false;return;}
+  var opts=(n.options||[]).filter(function(o){return o&&o.label&&o.to;});
+  card.innerHTML='<h3>'+clean(n.text||'Choose what happens next.')+'</h3><div class="pg-bs-options"></div>';
+  var host=card.querySelector('.pg-bs-options');
+  opts.forEach(function(o){var b=document.createElement('button');b.type='button';b.textContent=String(o.label);
+    b.addEventListener('click',function(){history.push({id:current,label:String(o.label),feedback:String(o.feedback||''),score:score});score+=(+o.score)||0;current=String(o.to);render();});
+    host.appendChild(b);});
+  if(!opts.length){host.textContent='No choices are connected from this scene.';restart.hidden=false;}
+}
+back.addEventListener('click',function(){var h=history.pop();if(!h)return;current=h.id;score=h.score;render();});
+restart.addEventListener('click',function(){current=String(CONFIG.start||'');score=0;history=[];render();});
+render();
+`;
+    return { html, css, jsBody };
+  }
+};
+
+// server/playgrounds/dataset-explorer.js
+var dataset_explorer_default = {
+  id: "dataset-explorer",
+  name: "Dataset explorer",
+  category: "Data",
+  description: "Search, filter, sort and chart a small inline dataset. For comparisons, ranked lists and evidence-led posts.",
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["columns", "rows"],
+    properties: {
+      columns: { type: "array", minItems: 2, maxItems: 8, title: "Column names", items: { type: "string" } },
+      rows: {
+        type: "array",
+        minItems: 1,
+        maxItems: 100,
+        title: "Rows (one value per column)",
+        items: { type: "array", minItems: 2, maxItems: 8, items: { type: "string" } }
+      },
+      labelColumn: { type: "integer", minimum: 0, maximum: 7, default: 0, title: "Label column number (0-based)" },
+      categoryColumn: { type: "integer", minimum: -1, maximum: 7, default: 1, title: "Category filter column (-1 for none)" },
+      valueColumn: { type: "integer", minimum: -1, maximum: 7, default: 2, title: "Numeric chart column (-1 for table only)" },
+      initialView: { type: "string", enum: ["table", "bars"], default: "table", title: "Initial view" }
+    }
+  },
+  presets: [
+    {
+      name: "City weekend comparison",
+      params: {
+        columns: ["City", "Region", "Typical daily cost", "Museums", "Walkability"],
+        rows: [
+          ["Lisbon", "Southern Europe", "95", "28", "High"],
+          ["Krak\xF3w", "Central Europe", "72", "42", "High"],
+          ["Copenhagen", "Northern Europe", "165", "55", "High"],
+          ["Edinburgh", "Northern Europe", "140", "35", "Medium"],
+          ["Valencia", "Southern Europe", "88", "19", "High"],
+          ["Ljubljana", "Central Europe", "82", "16", "High"]
+        ],
+        labelColumn: 0,
+        categoryColumn: 1,
+        valueColumn: 2,
+        initialView: "table"
+      }
+    }
+  ],
+  build(params, domId) {
+    const cols = (Array.isArray(params.columns) ? params.columns : []).slice(0, 8).map((x) => String(x == null ? "" : x));
+    const rows = (Array.isArray(params.rows) ? params.rows : []).slice(0, 100).map(
+      (r) => (Array.isArray(r) ? r : []).slice(0, cols.length).map((x) => String(x == null ? "" : x))
+    );
+    const heads = cols.map((c, i) => `<th scope="col" aria-sort="none" data-role="th" data-idx="${i}"><button type="button">${esc(c)}<span aria-hidden="true"></span></button></th>`).join("");
+    const body = rows.map((r) => `<tr>${cols.map((_, i) => `<td>${esc(r[i] || "")}</td>`).join("")}</tr>`).join("");
+    const html = `<div class="pg-stage"><div class="pg-de-tools"><input type="search" data-role="search" placeholder="Search rows\u2026" aria-label="Search dataset"><select data-role="category" aria-label="Filter category"><option value="">All categories</option></select><div class="pg-de-tabs" role="group" aria-label="Dataset view"><button type="button" data-view="table">Table</button><button type="button" data-view="bars">Bars</button></div></div><div class="pg-de-tablewrap" data-role="tableview"><table><thead><tr>${heads}</tr></thead><tbody data-role="tbody">${body}</tbody></table></div><div class="pg-de-bars" data-role="bars" hidden></div><div class="pg-readout pg-de-count" data-role="count" aria-live="polite"></div></div>`;
+    const css = [
+      `#${domId} .pg-de-tools{display:grid;grid-template-columns:minmax(9rem,1fr) minmax(9rem,.7fr) auto;gap:.5rem;margin-bottom:.65rem}`,
+      `#${domId} .pg-de-tools input,#${domId} .pg-de-tools select{min-height:44px;border:1px solid var(--line,#23304a);border-radius:9px;background:rgba(140,160,200,.05);color:var(--ink,#e9eef8);font:inherit;font-size:16px;padding:.45rem .65rem}`,
+      `#${domId} .pg-de-tools input:focus,#${domId} .pg-de-tools select:focus{outline:2px solid #22d3ee;outline-offset:1px}`,
+      `#${domId} .pg-de-tabs{display:flex}`,
+      `#${domId} .pg-de-tabs button{min-height:44px;border:1px solid var(--line,#23304a);background:transparent;color:var(--ink-dim,#9fb3c8);font:600 .8rem system-ui;padding:.4rem .65rem;cursor:pointer}`,
+      `#${domId} .pg-de-tabs button:first-child{border-radius:9px 0 0 9px}#${domId} .pg-de-tabs button:last-child{border-radius:0 9px 9px 0}`,
+      `#${domId} .pg-de-tabs button.is-on{background:rgba(34,211,238,.12);border-color:#22d3ee;color:#22d3ee}`,
+      `#${domId} .pg-de-tablewrap{overflow:auto;border:1px solid var(--line,#23304a);border-radius:10px}`,
+      `#${domId} table{width:100%;border-collapse:collapse;font-size:.86rem}`,
+      `#${domId} th{background:rgba(20,28,46,.97);padding:0;border-bottom:1px solid var(--line,#23304a);text-align:left}`,
+      `#${domId} th button{width:100%;min-height:44px;border:0;background:transparent;color:#fff;font:650 .8rem system-ui;text-align:left;padding:.45rem .65rem;white-space:nowrap;cursor:pointer}`,
+      `#${domId} th[aria-sort=ascending] button span::after{content:" \u25B2";color:#22d3ee}#${domId} th[aria-sort=descending] button span::after{content:" \u25BC";color:#22d3ee}`,
+      `#${domId} td{padding:.5rem .65rem;border-bottom:1px solid rgba(35,48,74,.55);color:var(--ink-dim,#cdd6e6)}`,
+      `#${domId} .pg-de-bars{display:grid;gap:.55rem}`,
+      `#${domId} .pg-de-bar{display:grid;grid-template-columns:minmax(6rem,1fr) minmax(8rem,2fr) auto;gap:.55rem;align-items:center}`,
+      `#${domId} .pg-de-barname{color:var(--ink-dim,#cdd6e6);overflow:hidden;text-overflow:ellipsis}`,
+      `#${domId} .pg-de-track{height:14px;border-radius:99px;background:rgba(140,160,200,.11);overflow:hidden}`,
+      `#${domId} .pg-de-fill{height:100%;background:#22d3ee;border-radius:99px}`,
+      `#${domId} .pg-de-val{font-variant-numeric:tabular-nums;color:#22d3ee}`,
+      `#${domId} .pg-de-count{margin-top:.5rem;color:var(--ink-faint,#717d99);font-size:.8rem}`,
+      `@media(max-width:620px){#${domId} .pg-de-tools{grid-template-columns:1fr 1fr}#${domId} .pg-de-tabs{grid-column:1/-1}#${domId} .pg-de-bar{grid-template-columns:1fr auto}#${domId} .pg-de-track{grid-column:1/-1;grid-row:2}}`
+    ].join("\n");
+    const jsBody = `
+var COLS=(CONFIG.columns||[]).slice(0,8).map(String),ROWS=(CONFIG.rows||[]).slice(0,100).map(function(r){return (r||[]).slice(0,COLS.length).map(function(x){return String(x==null?'':x);});});
+var labelCol=Math.max(0,Math.min(COLS.length-1,(+CONFIG.labelColumn)||0));
+var catCol=(+CONFIG.categoryColumn);if(!isFinite(catCol)||catCol<0||catCol>=COLS.length)catCol=-1;
+var valueCol=(+CONFIG.valueColumn);if(!isFinite(valueCol)||valueCol<0||valueCol>=COLS.length)valueCol=-1;
+var search=$('[data-role=search]'),category=$('[data-role=category]'),tbody=$('[data-role=tbody]'),bars=$('[data-role=bars]');
+var tableView=$('[data-role=tableview]'),count=$('[data-role=count]'),ths=$$('[data-role=th]'),tabs=$$('[data-view]');
+var query='',cat='',sortCol=-1,sortDir=1,view=(CONFIG.initialView==='bars'&&valueCol>=0)?'bars':'table';
+function clean(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+if(catCol>=0){var cats={};ROWS.forEach(function(r){if(r[catCol])cats[r[catCol]]=1;});Object.keys(cats).sort().forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;category.appendChild(o);});}
+else{category.hidden=true;}
+if(valueCol<0){var barTab=tabs.filter(function(t){return t.getAttribute('data-view')==='bars';})[0];if(barTab)barTab.hidden=true;}
+function current(){var out=ROWS.filter(function(r){return (!cat||r[catCol]===cat)&&(!query||r.join(' ').toLowerCase().indexOf(query)>=0);});
+  if(sortCol>=0)out.sort(function(a,b){var x=a[sortCol]||'',y=b[sortCol]||'',nx=parseFloat(x),ny=parseFloat(y),cmp=(!isNaN(nx)&&!isNaN(ny))?(nx-ny):(x<y?-1:x>y?1:0);return cmp*sortDir;});return out;}
+function paint(){
+  var data=current();tbody.innerHTML=data.map(function(r){return '<tr>'+COLS.map(function(_,i){return '<td>'+clean(r[i]||'')+'</td>';}).join('')+'</tr>';}).join('');
+  var vals=data.map(function(r){return parseFloat(r[valueCol]);}).filter(function(v){return isFinite(v);}),max=vals.length?Math.max.apply(Math,vals):0;
+  bars.innerHTML=valueCol<0?'':data.slice(0,30).map(function(r){var v=parseFloat(r[valueCol]);if(!isFinite(v))v=0;var pct=max>0?Math.max(0,v/max*100):0;
+    return '<div class="pg-de-bar" role="img" aria-label="'+clean(r[labelCol]||'Row')+': '+clean(r[valueCol]||'0')+'"><span class="pg-de-barname">'+clean(r[labelCol]||'Row')+'</span><span class="pg-de-track"><span class="pg-de-fill" style="width:'+pct.toFixed(1)+'%"></span></span><span class="pg-de-val">'+clean(r[valueCol]||'0')+'</span></div>';}).join('');
+  tableView.hidden=view!=='table';bars.hidden=view!=='bars';tabs.forEach(function(t){t.classList.toggle('is-on',t.getAttribute('data-view')===view);});
+  ths.forEach(function(th,i){th.setAttribute('aria-sort',i!==sortCol?'none':(sortDir>0?'ascending':'descending'));});
+  count.textContent=data.length+' of '+ROWS.length+' rows'+(view==='bars'&&data.length>30?' \xB7 first 30 charted':'');
+}
+search.addEventListener('input',function(){query=search.value.toLowerCase();paint();});
+category.addEventListener('change',function(){cat=category.value;paint();});
+ths.forEach(function(th){th.querySelector('button').addEventListener('click',function(){var i=parseInt(th.getAttribute('data-idx'),10)||0;if(sortCol===i)sortDir=-sortDir;else{sortCol=i;sortDir=1;}paint();});});
+tabs.forEach(function(t){t.addEventListener('click',function(){view=t.getAttribute('data-view');paint();});});
+paint();
+`;
+    return { html, css, jsBody };
+  }
+};
+
+// server/playgrounds/drag-to-label.js
+var drag_to_label_default = {
+  id: "drag-to-label",
+  name: "Drag to label",
+  category: "Game",
+  description: "Place labels on an image or diagram, then check the answers. Works by drag, tap or keyboard.",
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["targets"],
+    properties: {
+      image: { type: "string", title: "Image URL (optional)" },
+      alt: { type: "string", title: "Image alt text" },
+      prompt: { type: "string", default: "Place each label on the matching target." },
+      targets: {
+        type: "array",
+        minItems: 2,
+        maxItems: 10,
+        title: "Targets and correct labels",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label"],
+          properties: {
+            label: { type: "string" },
+            x: { type: "number", minimum: 0, maximum: 100, default: 50, title: "X position (%)" },
+            y: { type: "number", minimum: 0, maximum: 100, default: 50, title: "Y position (%)" },
+            hint: { type: "string", title: "Optional hint after an incorrect check" }
+          }
+        }
+      }
+    }
+  },
+  presets: [
+    {
+      name: "Parts of a plant",
+      params: {
+        alt: "A simple plant diagram with four numbered targets",
+        prompt: "Drag a label, or select it and then choose a numbered target.",
+        targets: [
+          { label: "Flower", x: 50, y: 14, hint: "Look at the top of the stem." },
+          { label: "Leaf", x: 68, y: 40, hint: "This part catches light." },
+          { label: "Stem", x: 50, y: 58, hint: "This supports the plant." },
+          { label: "Roots", x: 50, y: 86, hint: "This part sits below the soil." }
+        ]
+      }
+    }
+  ],
+  build(params, domId) {
+    const targets = (Array.isArray(params.targets) ? params.targets : []).slice(0, 10).map((t) => {
+      const nx = Number(t && t.x), ny = Number(t && t.y);
+      return {
+        label: String(t && t.label || ""),
+        x: Number.isFinite(nx) ? Math.min(100, Math.max(0, nx)) : 50,
+        y: Number.isFinite(ny) ? Math.min(100, Math.max(0, ny)) : 50,
+        hint: String(t && t.hint || "")
+      };
+    }).filter((t) => t.label);
+    const image = params.image ? `<img src="${esc(params.image)}" alt="${esc(params.alt || "")}" loading="lazy">` : "";
+    const spots = targets.map(
+      (t, i) => `<button type="button" class="pg-dl-target" data-role="target" data-answer="${i}" style="left:${t.x}%;top:${t.y}%" aria-label="Target ${i + 1}, empty"><span>${i + 1}</span><b data-role="placed"></b></button>`
+    ).join("");
+    const labels = targets.map((t, i) => ({ ...t, i })).reverse().map(
+      (t) => `<button type="button" class="pg-dl-label" data-role="label" data-idx="${t.i}" draggable="true" aria-pressed="false">${esc(t.label)}</button>`
+    ).join("");
+    const html = `<div class="pg-stage"><div class="pg-dl-prompt">${esc(params.prompt || "Place each label on its target.")}</div><div class="pg-dl-layout"><div class="pg-dl-palette" data-role="palette" aria-label="Labels">${labels}</div><div class="pg-dl-board${params.image ? "" : " is-blank"}" data-role="board">${image}${spots}</div></div><div class="pg-dl-actions"><button type="button" data-role="check">Check labels</button><button type="button" data-role="hint">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-dl-status" data-role="status" aria-live="polite"></div></div>`;
+    const css = [
+      `#${domId} .pg-dl-prompt{color:var(--ink-dim,#9fb3c8);font-size:.9rem;margin-bottom:.7rem}`,
+      `#${domId} .pg-dl-layout{display:grid;grid-template-columns:minmax(8rem,.65fr) minmax(15rem,1.6fr);gap:.75rem;align-items:start}`,
+      `#${domId} .pg-dl-palette{display:grid;gap:.45rem}`,
+      `#${domId} .pg-dl-label{min-height:42px;text-align:left;border:1px solid var(--line,#23304a);border-radius:9px;background:rgba(140,160,200,.06);color:var(--ink-dim,#cdd6e6);font:inherit;padding:.5rem .65rem;cursor:grab}`,
+      `#${domId} .pg-dl-label[aria-pressed=true]{border-color:#22d3ee;background:rgba(34,211,238,.12);color:#fff}`,
+      `#${domId} .pg-dl-label.is-placed{opacity:.42;text-decoration:line-through}`,
+      `#${domId} .pg-dl-label:focus-visible,#${domId} .pg-dl-target:focus-visible,#${domId} .pg-dl-actions button:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}`,
+      `#${domId} .pg-dl-board{position:relative;min-height:300px;border:1px solid var(--line,#23304a);border-radius:12px;overflow:hidden;background:#0d1322}`,
+      `#${domId} .pg-dl-board.is-blank{background:linear-gradient(180deg,rgba(34,211,238,.12) 0 68%,rgba(139,92,60,.28) 68%),repeating-linear-gradient(90deg,transparent 0 31px,rgba(255,255,255,.04) 31px 32px)}`,
+      `#${domId} .pg-dl-board img{display:block;width:100%;height:auto;min-height:300px;object-fit:contain}`,
+      `#${domId} .pg-dl-target{position:absolute;transform:translate(-50%,-50%);min-width:42px;min-height:42px;max-width:9rem;border:2px solid #22d3ee;border-radius:999px;background:rgba(4,6,12,.86);color:#fff;font:inherit;padding:.3rem .55rem;cursor:pointer;display:flex;align-items:center;gap:.35rem}`,
+      `#${domId} .pg-dl-target>span{display:inline-flex;align-items:center;justify-content:center;min-width:1.35rem;height:1.35rem;border-radius:99px;background:#22d3ee;color:#04060c;font-weight:800;font-size:.72rem}`,
+      `#${domId} .pg-dl-target b{font-size:.74rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`,
+      `#${domId} .pg-dl-target.is-right{border-color:#2dd4bf}#${domId} .pg-dl-target.is-wrong{border-color:#fb7185}`,
+      `#${domId} .pg-dl-actions{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.7rem}`,
+      `#${domId} .pg-dl-actions button{min-height:42px;border:1px solid var(--line,#23304a);border-radius:9px;background:transparent;color:#22d3ee;font:600 .82rem system-ui;padding:.45rem .75rem;cursor:pointer}`,
+      `#${domId} .pg-dl-status{margin-top:.5rem;color:var(--ink-dim,#9fb3c8)}`,
+      `@media(max-width:620px){#${domId} .pg-dl-layout{grid-template-columns:1fr}#${domId} .pg-dl-palette{grid-template-columns:repeat(2,minmax(0,1fr))}#${domId} .pg-dl-board{min-height:280px}}`
+    ].join("\n");
+    const jsBody = `
+var DATA=(CONFIG.targets||[]).slice(0,10).map(function(t){return {label:String((t&&t.label)||''),hint:String((t&&t.hint)||'')};}).filter(function(t){return t.label;});
+var labels=$$('[data-role=label]'),targets=$$('[data-role=target]'),status=$('[data-role=status]');var selected=null,dragged=null;
+function labelFor(i){return labels.filter(function(b){return (+b.getAttribute('data-idx'))===i;})[0];}
+function select(i){selected=i;labels.forEach(function(b){b.setAttribute('aria-pressed',(+b.getAttribute('data-idx'))===i?'true':'false');});if(status)status.textContent='Selected '+(DATA[i]?DATA[i].label:'label')+'. Choose a target.';}
+function refresh(){
+  labels.forEach(function(b){var i=+b.getAttribute('data-idx'),used=targets.some(function(t){var raw=t.getAttribute('data-placed');return raw!==null&&(+raw)===i;});b.classList.toggle('is-placed',used);});
+  targets.forEach(function(t,j){var raw=t.getAttribute('data-placed'),i=raw===null?-1:+raw,name=(i>=0&&DATA[i])?DATA[i].label:'';var out=t.querySelector('[data-role=placed]');out.textContent=name;t.setAttribute('aria-label','Target '+(j+1)+(name?', '+name:', empty'));});
+}
+function place(t,i){if(i==null||i<0||!DATA[i])return;targets.forEach(function(x){if((+x.getAttribute('data-placed'))===i)x.removeAttribute('data-placed');});t.setAttribute('data-placed',String(i));targets.forEach(function(x){x.classList.remove('is-right','is-wrong');});selected=null;labels.forEach(function(b){b.setAttribute('aria-pressed','false');});refresh();if(status)status.textContent=DATA[i].label+' placed. Choose another label.';}
+labels.forEach(function(b){var i=+b.getAttribute('data-idx');b.addEventListener('click',function(){select(i);});b.addEventListener('dragstart',function(e){dragged=i;if(e.dataTransfer){e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(i));}catch(_){}}});});
+targets.forEach(function(t){t.addEventListener('click',function(){if(selected!=null)place(t,selected);});t.addEventListener('dragover',function(e){e.preventDefault();});t.addEventListener('drop',function(e){e.preventDefault();place(t,dragged);dragged=null;});});
+$('[data-role=check]').addEventListener('click',function(){var right=0,hints=[];targets.forEach(function(t,i){var ok=(+t.getAttribute('data-placed'))===i;t.classList.toggle('is-right',ok);t.classList.toggle('is-wrong',!ok);if(ok)right++;else if(DATA[i]&&DATA[i].hint)hints.push(DATA[i].hint);});status.textContent=right+' of '+DATA.length+' correct.'+(right===DATA.length?' All labels are in place.':hints.length?' Hint: '+hints[0]:'');});
+$('[data-role=hint]').addEventListener('click',function(){targets.forEach(function(t,i){t.setAttribute('data-placed',String(i));t.classList.add('is-right');t.classList.remove('is-wrong');});refresh();status.textContent='Solution shown.';});
+$('[data-role=reset]').addEventListener('click',function(){targets.forEach(function(t){t.removeAttribute('data-placed');t.classList.remove('is-right','is-wrong');});selected=null;labels.forEach(function(b){b.setAttribute('aria-pressed','false');});refresh();status.textContent='Labels reset.';});
+refresh();
+`;
+    return { html, css, jsBody };
+  }
+};
+
+// server/playgrounds/algorithm-builder.js
+var SHAPES = ["start", "process", "decision", "input", "end"];
+var algorithm_builder_default = {
+  id: "algorithm-builder",
+  name: "Algorithm builder",
+  category: "Diagram",
+  description: "Arrange flowchart shapes into a working algorithm, then check the flow. Drag, buttons and keyboard all work.",
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["steps", "solution"],
+    properties: {
+      prompt: { type: "string", title: "Challenge prompt" },
+      steps: {
+        type: "array",
+        minItems: 3,
+        maxItems: 12,
+        title: "Available flowchart nodes",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "label"],
+          properties: {
+            id: { type: "string", title: "Short unique id" },
+            label: { type: "string" },
+            shape: { type: "string", enum: SHAPES, default: "process" },
+            note: { type: "string", title: "Optional explanation revealed in the solution" }
+          }
+        }
+      },
+      solution: { type: "array", minItems: 3, maxItems: 12, title: "Correct order (node ids)", items: { type: "string" } },
+      hint: { type: "string", title: "Hint" }
+    }
+  },
+  presets: [
+    {
+      name: "Find the largest number",
+      params: {
+        prompt: "Arrange the shapes into an algorithm that finds the largest number in a list.",
+        steps: [
+          { id: "start", label: "Start", shape: "start" },
+          { id: "read", label: "Read the list of numbers", shape: "input" },
+          { id: "first", label: "Set largest to the first number", shape: "process" },
+          { id: "more", label: "Are there more numbers?", shape: "decision" },
+          { id: "compare", label: "Compare the next number with largest", shape: "process" },
+          { id: "update", label: "Update largest when the new number is greater", shape: "process" },
+          { id: "show", label: "Output largest", shape: "input" },
+          { id: "end", label: "End", shape: "end" }
+        ],
+        solution: ["start", "read", "first", "more", "compare", "update", "show", "end"],
+        hint: "Initialise the running value before you begin comparing later numbers."
+      }
+    }
+  ],
+  build(params, domId) {
+    const steps = (Array.isArray(params.steps) ? params.steps : []).slice(0, 12).map((s, i) => ({
+      id: String(s && s.id || `step-${i}`),
+      label: String(s && s.label || ""),
+      shape: SHAPES.includes(String(s && s.shape)) ? String(s.shape) : "process",
+      note: String(s && s.note || "")
+    })).filter((s) => s.label);
+    const shifted = steps.length > 2 ? steps.slice(2).concat(steps.slice(0, 2)) : steps;
+    const rows = shifted.map(
+      (s, i) => `<li class="pg-ab-node" data-role="node" data-id="${esc(s.id)}" draggable="true" tabindex="0" aria-label="${esc(s.label)}, position ${i + 1} of ${steps.length}. Use arrow keys to move."><span class="pg-ab-shape is-${s.shape}" aria-hidden="true"></span><span class="pg-ab-label">${esc(s.label)}</span><span class="pg-ab-moves"><button type="button" data-role="up" aria-label="Move ${esc(s.label)} up">\u25B2</button><button type="button" data-role="down" aria-label="Move ${esc(s.label)} down">\u25BC</button></span></li>`
+    ).join("");
+    const html = `<div class="pg-stage"><div class="pg-ab-prompt">${esc(params.prompt || "Arrange the flowchart into the correct order.")}</div><ol class="pg-ab-flow" data-role="flow" aria-label="Flowchart workspace">${rows}</ol><div class="pg-ab-actions"><button type="button" data-role="check">Check flow</button><button type="button" data-role="hint">Hint</button><button type="button" data-role="solution">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-ab-status" data-role="status" aria-live="polite"></div></div>`;
+    const css = [
+      `#${domId} .pg-ab-prompt{color:var(--ink-dim,#9fb3c8);line-height:1.5;margin-bottom:.8rem}`,
+      `#${domId} .pg-ab-flow{list-style:none;margin:0;padding:0;display:grid;gap:1rem;max-width:38rem}`,
+      `#${domId} .pg-ab-node{position:relative;display:flex;align-items:center;gap:.75rem;min-height:58px;border:1px solid var(--line,#23304a);border-radius:12px;background:rgba(140,160,200,.05);padding:.55rem .65rem;cursor:grab}`,
+      `#${domId} .pg-ab-node:not(:last-child)::after{content:"\u2193";position:absolute;left:1.18rem;bottom:-1.05rem;color:#22d3ee;font-weight:800}`,
+      `#${domId} .pg-ab-node:focus{outline:2px solid #22d3ee;outline-offset:2px}`,
+      `#${domId} .pg-ab-node.is-drag{opacity:.45}#${domId} .pg-ab-node.is-over{border-color:#22d3ee}`,
+      `#${domId} .pg-ab-node.is-right{border-color:#2dd4bf;background:rgba(45,212,191,.08)}#${domId} .pg-ab-node.is-wrong{border-color:#fb7185}`,
+      `#${domId} .pg-ab-shape{flex:0 0 2.1rem;width:2.1rem;height:2.1rem;border:2px solid #22d3ee;background:rgba(34,211,238,.08)}`,
+      `#${domId} .pg-ab-shape.is-start,#${domId} .pg-ab-shape.is-end{border-radius:999px}`,
+      `#${domId} .pg-ab-shape.is-decision{transform:rotate(45deg);width:1.75rem;height:1.75rem;margin:.2rem}`,
+      `#${domId} .pg-ab-shape.is-input{clip-path:polygon(18% 0,100% 0,82% 100%,0 100%)}`,
+      `#${domId} .pg-ab-label{flex:1;color:#fff;line-height:1.35}`,
+      `#${domId} .pg-ab-moves{display:flex;gap:.25rem}`,
+      `#${domId} .pg-ab-moves button{width:2rem;height:2rem;border:1px solid var(--line,#23304a);border-radius:7px;background:transparent;color:var(--ink-dim,#9fb3c8);cursor:pointer}`,
+      `#${domId} .pg-ab-moves button:disabled{opacity:.28;cursor:default}`,
+      `#${domId} .pg-ab-actions{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.85rem}`,
+      `#${domId} .pg-ab-actions button{min-height:42px;border:1px solid var(--line,#23304a);border-radius:9px;background:transparent;color:#22d3ee;font:600 .82rem system-ui;padding:.45rem .75rem;cursor:pointer}`,
+      `#${domId} .pg-ab-actions button:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}`,
+      `#${domId} .pg-ab-status{margin-top:.5rem;color:var(--ink-dim,#9fb3c8)}`,
+      `@media(max-width:620px){#${domId} .pg-ab-node{align-items:flex-start}#${domId} .pg-ab-moves{flex-direction:column}#${domId} .pg-ab-node:not(:last-child)::after{left:1rem}}`
+    ].join("\n");
+    const jsBody = `
+var flow=$('[data-role=flow]'),status=$('[data-role=status]'),solution=(CONFIG.solution||[]).map(String);if(!flow)return;
+var initial=Array.prototype.slice.call(flow.children).map(function(n){return n.getAttribute('data-id');});
+function nodes(){return $$('[data-role=node]');}
+function renumber(){var ns=nodes();ns.forEach(function(n,i){var up=n.querySelector('[data-role=up]'),down=n.querySelector('[data-role=down]');if(up)up.disabled=i===0;if(down)down.disabled=i===ns.length-1;var label=n.querySelector('.pg-ab-label');n.setAttribute('aria-label',(label?label.textContent:'Step')+', position '+(i+1)+' of '+ns.length+'. Use arrow keys to move.');});}
+function move(n,dir){var other=dir<0?n.previousElementSibling:n.nextElementSibling;if(!other)return;if(dir<0)flow.insertBefore(n,other);else flow.insertBefore(other,n);nodes().forEach(function(x){x.classList.remove('is-right','is-wrong');});renumber();}
+flow.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-role=up],[data-role=down]');if(!b)return;var n=b.closest('[data-role=node]');move(n,b.getAttribute('data-role')==='up'?-1:1);n.focus();});
+flow.addEventListener('keydown',function(e){var n=e.target&&e.target.closest&&e.target.closest('[data-role=node]');if(!n||e.target!==n)return;if(e.key==='ArrowUp'){e.preventDefault();move(n,-1);n.focus();}else if(e.key==='ArrowDown'){e.preventDefault();move(n,1);n.focus();}});
+var drag=null;flow.addEventListener('dragstart',function(e){drag=e.target.closest&&e.target.closest('[data-role=node]');if(!drag)return;drag.classList.add('is-drag');if(e.dataTransfer){e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain','step');}catch(_){}}});
+flow.addEventListener('dragover',function(e){if(!drag)return;e.preventDefault();var over=e.target.closest&&e.target.closest('[data-role=node]');if(!over||over===drag)return;nodes().forEach(function(n){n.classList.toggle('is-over',n===over);});var ns=nodes(),di=ns.indexOf(drag),oi=ns.indexOf(over);if(di<oi)flow.insertBefore(drag,over.nextElementSibling);else flow.insertBefore(drag,over);});
+flow.addEventListener('dragend',function(){nodes().forEach(function(n){n.classList.remove('is-drag','is-over','is-right','is-wrong');});drag=null;renumber();});
+function arrange(ids){ids.forEach(function(id){var n=nodes().filter(function(x){return x.getAttribute('data-id')===id;})[0];if(n)flow.appendChild(n);});renumber();}
+$('[data-role=check]').addEventListener('click',function(){var right=0;nodes().forEach(function(n,i){var ok=n.getAttribute('data-id')===solution[i];n.classList.toggle('is-right',ok);n.classList.toggle('is-wrong',!ok);if(ok)right++;});status.textContent=right===solution.length?'Flow complete \u2014 every step is connected in the expected order.':right+' of '+solution.length+' steps are in the expected position.';});
+$('[data-role=hint]').addEventListener('click',function(){status.textContent=String(CONFIG.hint||'Look for the start and end shapes, then place each decision after the information it needs.');});
+$('[data-role=solution]').addEventListener('click',function(){arrange(solution);nodes().forEach(function(n){n.classList.add('is-right');n.classList.remove('is-wrong');});status.textContent='Solution shown.';});
+$('[data-role=reset]').addEventListener('click',function(){arrange(initial);nodes().forEach(function(n){n.classList.remove('is-right','is-wrong');});status.textContent='Flow reset.';});
+renumber();
+`;
+    return { html, css, jsBody };
+  }
+};
+
+// server/playgrounds/relationship-network.js
+var relationship_network_default = {
+  id: "relationship-network",
+  name: "Relationship network",
+  category: "Diagram",
+  description: "Explore connections between people, ideas, events or organisations through a selectable network and textual relationship list.",
+  paramsSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["nodes", "links"],
+    properties: {
+      prompt: { type: "string", title: "Instruction line" },
+      nodes: {
+        type: "array",
+        minItems: 2,
+        maxItems: 12,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "label"],
+          properties: {
+            id: { type: "string" },
+            label: { type: "string" },
+            group: { type: "string", title: "Optional group" },
+            note: { type: "string", title: "Description shown when selected" }
+          }
+        }
+      },
+      links: {
+        type: "array",
+        minItems: 1,
+        maxItems: 30,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["from", "to"],
+          properties: {
+            from: { type: "string", title: "From node id" },
+            to: { type: "string", title: "To node id" },
+            label: { type: "string", title: "Relationship" }
+          }
+        }
+      }
+    }
+  },
+  presets: [
+    {
+      name: "A small creative project",
+      params: {
+        prompt: "Select a person to see their direct working relationships.",
+        nodes: [
+          { id: "writer", label: "Writer", group: "Editorial", note: "Shapes the argument and first draft." },
+          { id: "editor", label: "Editor", group: "Editorial", note: "Tests the structure and sharpens the language." },
+          { id: "designer", label: "Designer", group: "Production", note: "Turns the story into a visual system." },
+          { id: "researcher", label: "Researcher", group: "Editorial", note: "Finds evidence and verifies the details." },
+          { id: "developer", label: "Developer", group: "Production", note: "Builds and tests the interactive presentation." }
+        ],
+        links: [
+          { from: "writer", to: "editor", label: "draft and revision" },
+          { from: "writer", to: "researcher", label: "questions and evidence" },
+          { from: "editor", to: "designer", label: "structure and emphasis" },
+          { from: "designer", to: "developer", label: "visual specification" },
+          { from: "developer", to: "writer", label: "interactive constraints" }
+        ]
+      }
+    }
+  ],
+  build(params, domId) {
+    const nodes = (Array.isArray(params.nodes) ? params.nodes : []).slice(0, 12).map((n) => ({ id: String(n && n.id || ""), label: String(n && n.label || ""), group: String(n && n.group || ""), note: String(n && n.note || "") })).filter((n) => n.id && n.label);
+    const links = (Array.isArray(params.links) ? params.links : []).slice(0, 30).map((l) => ({ from: String(l && l.from || ""), to: String(l && l.to || ""), label: String(l && l.label || "") })).filter((l) => l.from && l.to);
+    const positions = {};
+    nodes.forEach((n, i) => {
+      const a = -Math.PI / 2 + Math.PI * 2 * i / nodes.length;
+      positions[n.id] = { x: 50 + Math.cos(a) * 34, y: 50 + Math.sin(a) * 34 };
+    });
+    const lines = links.map((l, i) => {
+      const a = positions[l.from], b = positions[l.to];
+      if (!a || !b) return "";
+      return `<line data-role="link" data-idx="${i}" data-from="${esc(l.from)}" data-to="${esc(l.to)}" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"/>`;
+    }).join("");
+    const buttons = nodes.map((n) => {
+      const p = positions[n.id];
+      const count = links.filter((l) => l.from === n.id || l.to === n.id).length;
+      return `<button type="button" class="pg-rn-node" data-role="node" data-id="${esc(n.id)}" style="left:${p.x.toFixed(1)}%;top:${p.y.toFixed(1)}%" aria-label="${esc(n.label)}, ${count} connection${count === 1 ? "" : "s"}"><b>${esc(n.label)}</b>${n.group ? `<span>${esc(n.group)}</span>` : ""}</button>`;
+    }).join("");
+    const textList = links.map((l) => {
+      const a = nodes.find((n) => n.id === l.from), b = nodes.find((n) => n.id === l.to);
+      return `<li><b>${esc(a ? a.label : l.from)}</b> \u2192 <b>${esc(b ? b.label : l.to)}</b>${l.label ? `: ${esc(l.label)}` : ""}</li>`;
+    }).join("");
+    const html = `<div class="pg-stage"><div class="pg-rn-prompt">${esc(params.prompt || "Select a node to explore its relationships.")}</div><div class="pg-rn-stage"><svg viewBox="0 0 100 100" aria-hidden="true">${lines}</svg>${buttons}</div><div class="pg-rn-panel" data-role="panel" aria-live="polite">Select a node to highlight its direct connections.</div><details class="pg-rn-details"><summary>All relationships</summary><ul>${textList}</ul></details></div>`;
+    const css = [
+      `#${domId} .pg-rn-prompt{color:var(--ink-dim,#9fb3c8);margin-bottom:.65rem}`,
+      `#${domId} .pg-rn-stage{position:relative;min-height:360px;border:1px solid var(--line,#23304a);border-radius:13px;background:radial-gradient(circle at center,rgba(34,211,238,.08),rgba(4,6,12,.08) 60%)}`,
+      `#${domId} .pg-rn-stage svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}`,
+      `#${domId} .pg-rn-stage line{stroke:#52617c;stroke-width:.8;vector-effect:non-scaling-stroke;transition:stroke .15s,stroke-width .15s}`,
+      `#${domId} .pg-rn-stage line.is-on{stroke:#22d3ee;stroke-width:2}`,
+      `#${domId} .pg-rn-node{position:absolute;transform:translate(-50%,-50%);min-width:7rem;max-width:9.5rem;min-height:48px;border:1px solid #52617c;border-radius:999px;background:rgba(8,13,24,.94);color:#fff;font:inherit;padding:.42rem .65rem;cursor:pointer;z-index:1}`,
+      `#${domId} .pg-rn-node b{display:block;font-size:.82rem}#${domId} .pg-rn-node span{display:block;font-size:.65rem;color:var(--ink-faint,#717d99);margin-top:.08rem}`,
+      `#${domId} .pg-rn-node.is-near{border-color:#2dd4bf}#${domId} .pg-rn-node.is-on{border-color:#22d3ee;background:rgba(34,211,238,.16)}`,
+      `#${domId} .pg-rn-node:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}`,
+      `#${domId} .pg-rn-panel{margin-top:.65rem;border:1px solid var(--line,#23304a);border-radius:10px;padding:.7rem .8rem;color:var(--ink-dim,#cdd6e6);line-height:1.5}`,
+      `#${domId} .pg-rn-panel b{color:#fff}#${domId} .pg-rn-panel ul{margin:.4rem 0 0;padding-left:1.2rem}`,
+      `#${domId} .pg-rn-details{margin-top:.6rem;color:var(--ink-dim,#9fb3c8);font-size:.82rem}#${domId} .pg-rn-details summary{cursor:pointer;color:#22d3ee}#${domId} .pg-rn-details li{margin:.25rem 0}`,
+      `@media(max-width:620px){#${domId} .pg-rn-stage{min-height:420px}#${domId} .pg-rn-node{min-width:5.5rem;max-width:7rem;padding:.35rem .45rem}#${domId} .pg-rn-node b{font-size:.72rem}}`
+    ].join("\n");
+    const jsBody = `
+var NODES=(CONFIG.nodes||[]).slice(0,12),LINKS=(CONFIG.links||[]).slice(0,30),buttons=$$('[data-role=node]'),lines=$$('[data-role=link]'),panel=$('[data-role=panel]');
+function clean(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function node(id){return NODES.filter(function(n){return n&&String(n.id)===id;})[0]||{};}
+buttons.forEach(function(btn){btn.addEventListener('click',function(){var id=btn.getAttribute('data-id'),n=node(id),near={};var related=[];
+  LINKS.forEach(function(l){if(!l)return;var from=String(l.from||''),to=String(l.to||'');if(from===id||to===id){var other=from===id?to:from;near[other]=1;related.push({other:node(other),label:String(l.label||'')});}});
+  buttons.forEach(function(b){var bid=b.getAttribute('data-id');b.classList.toggle('is-on',bid===id);b.classList.toggle('is-near',!!near[bid]);});
+  lines.forEach(function(l){l.classList.toggle('is-on',l.getAttribute('data-from')===id||l.getAttribute('data-to')===id);});
+  panel.innerHTML='<b>'+clean(n.label||id)+'</b>'+(n.note?' \u2014 '+clean(n.note):'')+(related.length?'<ul>'+related.map(function(r){return '<li><b>'+clean(r.other.label||'Unknown')+'</b>'+(r.label?' \xB7 '+clean(r.label):'')+'</li>';}).join('')+'</ul>':'<div>No direct relationships are configured.</div>');
+});});
+`;
+    return { html, css, jsBody };
+  }
+};
+
 // server/playgrounds/registry.js
 var all = [
   toggle_ab_default,
@@ -11887,7 +12754,14 @@ var all = [
   image_annotator_default,
   step_explainer_default,
   scored_quiz_default,
-  sortable_table_default
+  sortable_table_default,
+  self_assessment_default,
+  formula_calculator_default,
+  branching_scenario_default,
+  dataset_explorer_default,
+  drag_to_label_default,
+  algorithm_builder_default,
+  relationship_network_default
 ];
 var families = all.reduce((m, f) => {
   m[f.id] = f;

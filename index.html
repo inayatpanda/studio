@@ -1649,6 +1649,39 @@
     font-size:.75rem;color:var(--faint);font-weight:600;
     letter-spacing:.06em;text-transform:uppercase;margin:0 0 12px 2px}
 
+  /* ── illustrations gallery picker (pre-built R2 library) ─────────────────── */
+  /* Taller than a normal picker sheet: this is a browse-many surface, so the grid gets its
+     own scroll container and the tools/count stay pinned above it. */
+  .illus-sheet{max-height:88vh;display:flex;flex-direction:column}
+  .illus-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+  .illus-search{flex:1 1 180px;min-width:0}
+  .illus-theme{flex:0 1 auto;max-width:45%}
+  /* the style chips are Helm's global .chip / .chip.on — only the row needs layout here */
+  .illus-chips{display:flex;flex-wrap:wrap;gap:4px;width:100%;order:3}
+  .illus-count{font-size:.68rem;color:var(--faint);margin:0 0 6px 2px}
+  .illus-body{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1 1 auto;min-height:0}
+  .illus-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  @media(min-width:560px){ .illus-grid{grid-template-columns:repeat(5,1fr)} }
+  .illus-cell{
+    position:relative;aspect-ratio:1;border:1px solid var(--line);border-radius:8px;
+    overflow:hidden;cursor:pointer;background:var(--bg-1);padding:0}
+  .illus-cell img{width:100%;height:100%;object-fit:cover;display:block}
+  .illus-cell:hover{border-color:var(--accent)}
+  .illus-empty,.illus-loading{font-size:.75rem;color:var(--faint);padding:12px 2px}
+  .illus-more{height:1px}
+  .illus-close{
+    position:absolute;top:10px;right:12px;background:none;border:0;cursor:pointer;
+    color:var(--faint);font-size:1rem;line-height:1;padding:4px}
+
+  /* Standalone makers (no open post): the sheet gets .maker-standalone, which hides the
+     post-only actions (Insert / Placement) and reveals the maker-only ones. */
+  #figSheet.maker-standalone #figDrawUse,
+  #figSheet.maker-standalone #figFlipUse{display:none !important}
+  #tplLibSheet.maker-standalone #tplLibInsertBtn,
+  #tplLibSheet.maker-standalone #tplLibPlacementLbl,
+  #tplLibSheet.maker-standalone #tplLibPlacement{display:none !important}
+  #tplLibSheet:not(.maker-standalone) .tpllib-maker-only{display:none !important}
+
   .picker-grid{
     display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 
@@ -2669,7 +2702,7 @@
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
 <script>window.__LICENCE_PUBLIC_KEY='20e5e11738c29f3ee250dd38fa1b72695a327a2eb18cf4f9b817c56c664c7201';</script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260730-a4dd827";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260730-5c61199";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -3476,9 +3509,29 @@
       <p class="sub" style="margin-top:-.3rem">Everything you can drop into a post — browse what's available.</p>
       <div class="seg" id="libSeg" style="margin-bottom:1rem">
         <button class="on" data-lib="interactives">Interactive templates</button>
+        <button data-lib="makers">Make</button>
         <button data-lib="saved">Saved</button>
         <button data-lib="icons">Icons</button>
         <button data-lib="media">Images</button>
+      </div>
+
+      <!-- Makers: standalone builders that need NO open post — the Draw-canvas flipbook
+           maker and the AI custom-interactive maker. Each opens its existing sheet with a
+           save-to-Library path (and .html export) instead of a block insert. -->
+      <div id="libMakers" class="lib-pane" style="display:none">
+        <p class="sub" style="margin-top:-.3rem">Build a flipbook or a custom interactive on their own — no post needed. Save each to your Library (see <b>Saved</b>) and export a shareable file.</p>
+        <div class="lp-grid" style="margin-top:.8rem">
+          <button class="lp-card lp-primary" type="button" onclick="openFlipbookMaker()">
+            <svg class="lp-ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 20h10"/><path d="M8 9l4 3-4 3z"/></svg>
+            <span class="lp-t">Make a flipbook</span>
+            <span class="lp-s">Draw frame by frame with onion-skin, play it, then save it to your Library.</span>
+          </button>
+          <button class="lp-card lp-primary" type="button" onclick="openInteractiveMaker()">
+            <svg class="lp-ic" viewBox="0 0 24 24"><path d="M12 3l2.5 5 5.5.8-4 3.9.95 5.5L12 21l-4.9-2.8L8 12.7l-4-3.9L9.5 8z"/></svg>
+            <span class="lp-t">Make an interactive</span>
+            <span class="lp-s">Describe a widget and AI builds it. Save to Library or export a standalone .html file.</span>
+          </button>
+        </div>
       </div>
 
       <div id="libSaved" class="lib-pane" style="display:none">
@@ -3690,6 +3743,7 @@
             <input type="text" id="spImgUrl" inputmode="url" placeholder="Paste an image URL or /images/… path" autocomplete="off" />
             <button class="iconBtn" id="spImgUrlBtn" type="button">Use</button>
           </div>
+          <button class="seo-suggest" id="spImgIllusBtn" type="button">🎨 Browse illustrations</button>
           <button class="seo-suggest" id="spImgClearBtn" type="button">↺ Use generated card</button>
         </div>
 
@@ -4135,6 +4189,29 @@
   <div id="mediaBody"><p class="media-loading">Loading images…</p></div>
 </div>
 
+<!-- ===== ILLUSTRATIONS PICKER — the pre-built R2 library =====
+     Fetches ./illustrations-manifest.json ONCE (relative, so the same markup works under
+     / on the local server and at the hosted root), filters by style / theme /
+     search, lazy-loads thumbnails from R2, and inserts the FULL image by its R2 URL as an
+     image block url-reference (validateDoc trusts that one origin — isSafeIllustrationUrl).
+     Entries flagged hidden:true are skipped, so curation = flip the flag + redeploy. -->
+<div class="picker-scrim" id="illusScrim"></div>
+<div class="picker-sheet illus-sheet" id="illusSheet">
+  <div class="picker-grab"></div>
+  <h3 id="illusTitle">🎨 Illustrations</h3>
+  <div class="illus-tools">
+    <input class="illus-search" id="illusSearch" type="search" placeholder="Search illustrations — description or tag…" autocomplete="off" />
+    <div class="illus-chips" id="illusStyles"></div>
+    <select class="illus-theme" id="illusTheme" aria-label="Filter by theme"></select>
+  </div>
+  <div class="illus-count" id="illusCount"></div>
+  <div class="illus-body">
+    <p class="illus-loading" id="illusLoading" hidden>Loading illustrations…</p>
+    <div class="illus-grid" id="illusGrid"></div>
+  </div>
+  <button class="illus-close" id="illusClose" type="button" aria-label="Close">✕</button>
+</div>
+
 <!-- ===== GOBLIN MODE (bottom-sheet) — chaotic idea-hurler ===== -->
 <div class="picker-scrim" id="goblinScrim"></div>
 <div class="picker-sheet goblin-sheet" id="goblinSheet">
@@ -4169,7 +4246,7 @@
   <div class="picker-grab"></div>
   <!-- STEP 1: family browser -->
   <div id="tplLibBrowse">
-    <h3>✦ Insert interactive</h3>
+    <h3 id="tplLibTitle">✦ Insert interactive</h3>
     <!-- AI describe → build -->
     <div class="tpllib-suggest">
       <p class="tpllib-suggest-lbl">✨ Describe an interactive</p>
@@ -4209,12 +4286,13 @@
     <div class="tpllib-form" id="tplLibForm"></div>
     <p class="tpllib-lbl">Preview</p>
     <div class="tpllib-preview" id="tplLibPreview"></div>
-    <p class="tpllib-lbl">Placement</p>
+    <p class="tpllib-lbl" id="tplLibPlacementLbl">Placement</p>
     <div id="tplLibPlacement"></div>
     <p class="tpllib-err" id="tplLibErr"></p>
     <div class="tpllib-actions">
       <button class="btn" id="tplLibInsertBtn" type="button">Insert</button>
       <button class="btn ghost" id="tplLibSaveLibBtn" type="button" title="Save this interactive to your Library to reuse in any post">💾 Save to Library</button>
+      <button class="btn ghost tpllib-maker-only" id="tplLibExportHtmlBtn" type="button" title="Download this interactive as a standalone .html file you can open in any browser">⬇ Export .html</button>
       <button class="btn ghost" id="tplLibCancelBtn" type="button">Cancel</button>
     </div>
   </div>
@@ -4230,7 +4308,7 @@
   <div class="picker-grab"></div>
   <!-- STEP 1: family browser, grouped by category -->
   <div id="figBrowse">
-    <h3>◆ Insert figure</h3>
+    <h3 id="figSheetTitle">◆ Insert figure</h3>
     <!-- AI entry points: Describe (invent) / Voice (dictation) / Photo (vectorise) -->
     <div class="fig-entry" id="figEntry">
       <div class="fig-entry-tiles">
@@ -5351,7 +5429,25 @@ window.expandBlog=expandBlog;
 const PACK_PLATS=[['linkedin','LinkedIn'],['instagram','Instagram'],['x','X'],['facebook','Facebook']];
 const PLAT_LABEL={linkedin:'LinkedIn',instagram:'Instagram',x:'X'};
 const PLAT_LIMIT={x:280};
-function isNoKeyErr(t){ return /key configured/i.test(t||'') || /Settings\s*→\s*AI/i.test(t||''); }
+// Accepts the classified Error OR a plain message string. Typed signal first: the AI layer
+// tags a genuinely-unconfigured provider AI_NO_KEY, and classifyError now preserves that on
+// .code and keeps the raw text in .detail even when it rewrites .message — so this no longer
+// depends on matching prose, which is what forced P1's AI_* messages to dodge two specific
+// phrasings. The string path is kept for callers that still pass a message.
+//
+// NOT ported from Chapbook: its extra `(kind==='ai'||kind==='auth') && !_aiKeyStored()`
+// branch. That reads a BYOK key out of localStorage, which is right for Chapbook (keys live
+// in the browser) and WRONG here — Helm's Studio is server-backed and keeps AI keys in the
+// server config, so localStorage never holds one and every auth failure would be misreported
+// as "no provider configured".
+function isNoKeyErr(t){
+  if(t && typeof t==='object'){
+    if(String(t.code||'')==='AI_NO_KEY') return true;
+    if(/ai_no_key|key configured|Settings\s*→\s*AI/i.test(String(t.detail||''))) return true;
+    t=t.message||'';
+  }
+  return /key configured/i.test(t||'') || /Settings\s*→\s*AI/i.test(t||'');
+}
 
 /* Share one chunk of text via the native share sheet (manual — nothing auto-posts).
    Falls back to clipboard where Web Share is unsupported (e.g. desktop). */
@@ -5411,7 +5507,7 @@ async function socialPack(){
     if(!any) msg('reviewMsg','No variants came back — try redrafting.','err');
   }catch(e){
     const t=String(e.message||e);
-    if(isNoKeyErr(t)){
+    if(isNoKeyErr(e)){
       msg('reviewMsg','No AI provider configured.','err');
       const link=document.createElement('button'); link.type='button'; link.className='pack-settings-link';
       link.textContent='Configure a provider in Settings';
@@ -5574,7 +5670,7 @@ async function repurpose(format){
     parts.forEach((txt,i)=>{ host.appendChild(makePackCard(platform, txt, (isThread?'Tweet ':'Slide ')+(i+1)+' / '+parts.length)); });
   }catch(e){
     const t=String(e.message||e);
-    if(isNoKeyErr(t)){
+    if(isNoKeyErr(e)){
       msg('reviewMsg','No AI provider configured.','err');
       const link=document.createElement('button'); link.type='button'; link.className='pack-settings-link';
       link.textContent='Configure a provider in Settings';
@@ -9039,6 +9135,15 @@ function edImage(b, isSel){
     reuseBtn.title = 'Insert an image already committed to the repo (no re-upload)';
     reuseBtn.addEventListener('click', e => { e.stopPropagation(); openMediaPicker({ target: b }); });
     reuseRow.appendChild(reuseBtn);
+    // …and the pre-built R2 illustration library, which inserts by URL reference (no upload,
+    // nothing committed to the repo) — see openIllusPicker.
+    const illusBtn = document.createElement('button');
+    illusBtn.type = 'button';
+    illusBtn.className = 'be-img-auto';
+    illusBtn.textContent = '🎨 Illustrations';
+    illusBtn.title = 'Browse the illustration library and insert one (no upload)';
+    illusBtn.addEventListener('click', e => { e.stopPropagation(); openIllusPicker({ target: b }); });
+    reuseRow.appendChild(illusBtn);
     wrap.appendChild(reuseRow);
     // ✦ Generate (AI image) — appears below the drop area when there's no photo
     wrap.appendChild(buildGenImageRow(b));
@@ -9096,6 +9201,13 @@ function edImage(b, isSel){
     reuseBtn2.title = 'Replace with an image already committed to the repo (no re-upload)';
     reuseBtn2.addEventListener('click', e => { e.stopPropagation(); openMediaPicker({ target: b }); });
     actRow.appendChild(reuseBtn2);
+    const illusBtn2 = document.createElement('button');
+    illusBtn2.type = 'button';
+    illusBtn2.className = 'be-img-replace';
+    illusBtn2.textContent = '🎨 Illustrations';
+    illusBtn2.title = 'Replace with one from the illustration library (no upload)';
+    illusBtn2.addEventListener('click', e => { e.stopPropagation(); openIllusPicker({ target: b }); });
+    actRow.appendChild(illusBtn2);
     wrap.appendChild(actRow);
     // ✦ Generate (AI image) — regenerate / replace via prompt
     wrap.appendChild(buildGenImageRow(b, actRow));
@@ -11258,6 +11370,22 @@ async function doSchedule(){
   const when = new Date(raw);
   if(isNaN(when)){ $('schHint').textContent='That date didn’t parse.'; return; }
   if(when.getTime() <= Date.now()){ $('schHint').textContent='Pick a time in the future (a past time would publish on the next Action run).'; return; }
+  // SAFETY GATE — a scheduled post goes live later (via the site's Action) with this exact
+  // content, so it must clear the SAME pre-publish checks as the Publish button. Helm's
+  // SERVER already re-runs checkDoc inside publishBlocks on the schedule path, so this is a
+  // UX gate, not the security boundary: it surfaces the blocking issues here instead of
+  // letting the schedule fail server-side with a bare error. (Chapbook, which has no server,
+  // needs this as its ONLY barrier.)
+  try{
+    const _chk = await runPrepublishCheck();
+    if(_chk && Array.isArray(_chk.errors) && _chk.errors.length){
+      closeSchedule();
+      renderPrepublish(_chk, openSchedule);   // show the blocking issues; fix, then reschedule
+      return;
+    }
+  }catch(e){
+    if(!(await helmConfirm({ title:'Pre-publish check unavailable ('+(e.message||'error')+').', text:'Schedule anyway? The server runs the same checks and will refuse anything unsafe.', okText:'Schedule' }))) return;
+  }
   if(!currentSlug){ await reserveSlug(); }
   if(!currentSlug){ toast('Could not reserve a slug — add a title first'); return; }
   const iso = when.toISOString();
@@ -11994,6 +12122,7 @@ let _tplLibParams   = {};       // params object kept in sync with the form
 let _tplLibInsertAt = null;     // where to insert into doc.blocks (insert mode)
 let _tplLibDomId    = '';       // domId used for the current build
 let _tplLibBuilt    = null;     // last successfully-built block (for Insert/Update)
+let _tplLibStandalone = false;  // true when the sheet is the standalone Interactive maker (no post; save/export only)
 let _tplLibDebounce = null;     // preview debounce timer
 let _tplLibSeq      = 0;        // guards out-of-order async previews
 let _tplLibMode     = 'insert'; // 'insert' (new block at index) | 'update' (replace existing)
@@ -12014,6 +12143,8 @@ async function openTplLib(atIndex){
   _tplLibMode = 'insert'; _tplLibEditId = null;
   _tplLibInsertAt = atIndex;
   _tplLibFamily = null; _tplLibParams = {}; _tplLibBuilt = null;
+  _tplLibStandalone = false;
+  { const sh = $('tplLibSheet'); if(sh) sh.classList.remove('maker-standalone'); const t = $('tplLibTitle'); if(t) t.textContent = 'Insert interactive'; }
   _tplLibPlacement = { placement:'standard' };
   $('tplLibInsertBtn').textContent = 'Insert';
   renderTplLibPlacement();
@@ -12944,6 +13075,56 @@ $('tplLibCancelBtn').addEventListener('click', closeTplLib);
 $('tplLibInsertBtn').addEventListener('click', insertTplLibBlock);
 window.closeTplLib = closeTplLib;
 
+/* ── Standalone makers ───────────────────────────────────────────────────────
+   Builders that need NO open post. Each reuses its existing sheet, with the
+   .maker-standalone class hiding the post-only Insert/Placement controls, so
+   Save-to-Library (and Export) is the finish line. Nothing here touches `doc`. */
+function openInteractiveMaker(){
+  openTplLib(null);                    // resets standalone=false + opens the browse step
+  _tplLibStandalone = true;
+  const sh = $('tplLibSheet'); if(sh) sh.classList.add('maker-standalone');
+  const t = $('tplLibTitle'); if(t) t.textContent = '\u2726 Make an interactive';
+  const inp = $('tplLibSuggestInput'); if(inp) setTimeout(() => { try{ inp.focus(); }catch(_){ } }, 60);
+}
+window.openInteractiveMaker = openInteractiveMaker;
+
+function openFlipbookMaker(){
+  // single-sheet guard — mirror openFigLib
+  closePicker(); closeAiDraft(); closeStructure(); closePreviewSheet(); closeTplLib();
+  _activeForm = _figFormCtx;
+  _figStandalone = true;
+  _figMode = 'insert'; _figEditId = null; _figInsertAt = null;
+  _figFamily = null; _figParams = {}; _figBuilt = null; _figAnimate = 'motion'; _figRaw = false;
+  _figHandEdited = false; _figBase = null;
+  const sh = $('figSheet'); if(sh) sh.classList.add('maker-standalone');
+  const title = $('figSheetTitle'); if(title) title.textContent = '\u25c6 Make a flipbook';
+  const back = $('figDrawBack'); if(back) back.textContent = '\u2039 Done';
+  $('figBuild').style.display = 'none';
+  $('figBrowse').style.display = 'block';
+  $('figScrim').classList.add('open');
+  $('figSheet').classList.add('open');
+  openFigDraw();                       // straight into the Draw canvas (skips the family grid)
+  const note = $('figDrawNote');
+  if(note) note.textContent = 'Draw a frame, tap \u201c+ Frame\u201d for the next, then use onion-skin and \u25b6 Play. With 2+ frames you can \ud83d\udcbe Save to Library.';
+}
+window.openFlipbookMaker = openFlipbookMaker;
+
+/* Download the built interactive as a self-contained .html file. Reuses tplLibSrcdoc — the
+   exact document the sandboxed preview renders — so what you export is what you previewed. */
+function exportInteractiveHtml(){
+  if(!_tplLibBuilt || !(_tplLibBuilt.html || _tplLibBuilt.js)){ toast('Build an interactive first, then Export'); return; }
+  const nameHint = ($('tplLibFamName')?.textContent || 'interactive').replace(/^[^\w]+/, '').trim() || 'interactive';
+  const htmlDoc = tplLibSrcdoc(_tplLibBuilt);
+  const blob = new Blob([htmlDoc], { type: 'text/html' });
+  const fname = (nameHint.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)) || 'interactive';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = fname + '.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  toast('Exported ' + fname + '.html');
+}
+$('tplLibExportHtmlBtn')?.addEventListener('click', e => { e.stopPropagation(); exportInteractiveHtml(); });
+
 /* ═══════════════════════════════════════════════════════════════════════════
    FIGURE PANEL — Templates mode (parametric SVG line-art)
    Mirrors the interactive-template picker: GET /figures → browse families by
@@ -12971,6 +13152,7 @@ let _figPlacement = { placement:'standard' }; // placement state (mapped to 'def
 let _figRaw      = false;    // true when the current build is an AI raw-svg figure (no family/params)
 let _figHandEdited = false;  // true once tap-to-label has appended to _figBuilt.svg (drop the family link on insert)
 let _figBase     = null;     // still backdrop for the current build: { base64, alt } | null (Keep-backdrop figures)
+let _figStandalone = false;  // true when the figure sheet is the standalone Flipbook maker (no post; save/export only)
 
 // Category display order (spec) — families in unlisted categories sort after.
 const FIG_CAT_ORDER = ['Structure','Direction','Process','Compare','Relate','Quantity','Variation','Motion'];
@@ -13002,6 +13184,8 @@ async function openFigLib(atIndex){
   _figFamily = null; _figParams = {}; _figBuilt = null; _figAnimate = 'none'; _figRaw = false;
   _figHandEdited = false;
   _figBase = null;
+  _figStandalone = false;
+  { const sh = $('figSheet'); if(sh) sh.classList.remove('maker-standalone'); const t = $('figSheetTitle'); if(t) t.textContent = '◆ Insert figure'; }
   _figPlacement = { placement:'standard' };
   $('figInsertBtn').textContent = 'Insert';
   $('figInsertBtn').disabled = true;
@@ -13921,6 +14105,212 @@ async function openMediaPicker(ctx){
   }
 }
 window.openMediaPicker = openMediaPicker;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ILLUSTRATIONS GALLERY PICKER
+   Browse the pre-built illustration library (hosted on R2) and insert one into a
+   post. The index (./illustrations-manifest.json, RELATIVE so it resolves under / on
+   the local server and at the hosted root) is fetched once same-origin; thumbnails +
+   full images stay on R2 (<img src=https://…>).
+   Filter by style / theme / search, lazy-load thumbnails, insert the FULL image by
+   its R2 URL — as an image block (url-reference) OR the share/cover image.
+   Entries flagged hidden:true are SKIPPED so later curation = flip the flag + redeploy.
+   Ctx: { target } (fill an existing image block) | { insertAt } (new block) | { mode:'cover' }.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _illusData = null;                       // { baseUrl, assets(!hidden), styles[] }
+let _illusCtx = null;                        // { target?, insertAt?, mode? }
+const _illusFilter = { style: '', theme: '', q: '' };
+let _illusView = [];                         // current filtered assets
+let _illusShown = 0;                         // how many cells rendered so far
+const ILLUS_BATCH = 80;                      // cells rendered per batch (rest on scroll)
+
+async function fetchIllustrations(){
+  if(_illusData) return _illusData;
+  const r = await fetch('./illustrations-manifest.json', { cache: 'force-cache' });
+  if(!r.ok) throw new Error('Could not load the illustration library (' + r.status + ').');
+  const m = await r.json();
+  const baseUrl = String(m && m.baseUrl || '');
+  // Skip hidden entries here so every downstream path (filters, counts, grid) never sees them.
+  const assets = (Array.isArray(m && m.assets) ? m.assets : []).filter(a => a && a.hidden !== true);
+  const styles = [...new Set(assets.map(a => a.style))];
+  _illusData = { baseUrl, assets, styles };
+  return _illusData;
+}
+
+const _illusThumbUrl = (a) => _illusData.baseUrl + a.thumb;
+const _illusFullUrl  = (a) => _illusData.baseUrl + a.full;
+
+// Populate the style chips (All + each style, with live counts) and the theme <select>
+// (themes present in the active style, with counts). Rebuilt on open + on style change.
+function _illusBuildStyles(){
+  const host = $('illusStyles');
+  const count = (s) => _illusData.assets.filter(a => !s || a.style === s).length;
+  const styleChip = (val, label) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (_illusFilter.style === val ? ' on' : '');
+    b.dataset.style = val;
+    b.textContent = label + ' · ' + count(val);
+    return b;
+  };
+  host.innerHTML = '';
+  host.appendChild(styleChip('', 'All'));
+  for(const s of _illusData.styles) host.appendChild(styleChip(s, s));
+}
+function _illusBuildThemes(){
+  const sel = $('illusTheme');
+  const pool = _illusData.assets.filter(a => !_illusFilter.style || a.style === _illusFilter.style);
+  const counts = new Map();
+  for(const a of pool) counts.set(a.theme, (counts.get(a.theme) || 0) + 1);
+  const themes = [...counts.keys()].sort((x, y) => x.localeCompare(y));
+  // Keep the current theme only if still available under the new style, else fall back to All.
+  if(_illusFilter.theme && !counts.has(_illusFilter.theme)) _illusFilter.theme = '';
+  sel.innerHTML = '';
+  const all = document.createElement('option'); all.value = ''; all.textContent = 'All themes · ' + pool.length; sel.appendChild(all);
+  for(const t of themes){
+    const o = document.createElement('option'); o.value = t; o.textContent = t + ' · ' + counts.get(t);
+    sel.appendChild(o);
+  }
+  sel.value = _illusFilter.theme;
+}
+
+// Recompute the filtered view (style + theme + free-text over description + tags) and
+// render the first batch. Progressive: remaining cells render as the sheet scrolls.
+function _illusApplyFilters(){
+  const q = _illusFilter.q.trim().toLowerCase();
+  _illusView = _illusData.assets.filter(a => {
+    if(_illusFilter.style && a.style !== _illusFilter.style) return false;
+    if(_illusFilter.theme && a.theme !== _illusFilter.theme) return false;
+    if(q){
+      const hay = (a.description + ' ' + (Array.isArray(a.tags) ? a.tags.join(' ') : '')).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  _illusShown = 0;
+  $('illusGrid').innerHTML = '';
+  $('illusCount').textContent = _illusView.length + (_illusView.length === 1 ? ' illustration' : ' illustrations');
+  _illusRenderBatch();
+}
+
+function _illusRenderBatch(){
+  const grid = $('illusGrid');
+  const end = Math.min(_illusShown + ILLUS_BATCH, _illusView.length);
+  const frag = document.createDocumentFragment();
+  for(let i = _illusShown; i < end; i++){
+    const a = _illusView[i];
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'illus-cell' + (a.ext === 'svg' ? ' is-svg' : '');
+    cell.title = a.description;
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.src = _illusThumbUrl(a);
+    img.alt = a.description;
+    cell.appendChild(img);
+    const cap = document.createElement('span');
+    cap.className = 'illus-cap';
+    cap.textContent = a.description;
+    cell.appendChild(cap);
+    cell.addEventListener('click', () => illusInsert(a));
+    frag.appendChild(cell);
+  }
+  grid.appendChild(frag);
+  _illusShown = end;
+  if(!_illusView.length){
+    const e = document.createElement('p');
+    e.className = 'illus-empty';
+    e.textContent = 'No illustrations match those filters.';
+    grid.appendChild(e);
+  }
+}
+
+// Scroll-driven pagination: render the next batch as the user nears the bottom of the sheet.
+function _illusOnScroll(){
+  if(_illusShown >= _illusView.length) return;
+  const sc = $('illusSheet').querySelector('.illus-body');
+  if(!sc) return;
+  if(sc.scrollTop + sc.clientHeight > sc.scrollHeight - 500) _illusRenderBatch();
+}
+
+function illusInsert(a){
+  const ctx = _illusCtx || {};
+  const url = _illusFullUrl(a);
+  const alt = a.description || '';
+  if(ctx.mode === 'cover'){
+    _setShareImage(url);
+    closeIllusPicker();
+    toast('Cover image set ✓');
+    return;
+  }
+  if(ctx.target){
+    const b = ctx.target;
+    delete b.base64; delete b.src; delete b.file;
+    b.url = url;
+    b.alt = alt;
+    if(!b.placement) b.placement = 'standard';
+    markDirty();
+    rerenderBlock(b);
+  } else {
+    const nb = { id: mkId(), type: 'image', placement: 'standard', alt, caption: '', url };
+    const at = ctx.insertAt == null ? doc.blocks.length : ctx.insertAt;
+    doc.blocks.splice(at, 0, nb);
+    markDirty();
+    renderBlocks();
+    selectBlock(nb.id);
+  }
+  closeIllusPicker();
+  toast('Illustration inserted ✓');
+}
+
+function closeIllusPicker(){
+  $('illusScrim').classList.remove('open');
+  $('illusSheet').classList.remove('open');
+  _illusCtx = null;
+}
+
+async function openIllusPicker(ctx){
+  // single-sheet guard (mirror openMediaPicker)
+  [closePicker, closeCropEditor, closeTplLib, closeFigLib, closeMediaPicker].forEach(fn => { try{ fn && fn(); }catch{} });
+  _illusCtx = ctx || {};
+  $('illusTitle').textContent = _illusCtx.mode === 'cover' ? 'Illustrations — set cover' : 'Illustrations';
+  $('illusScrim').classList.add('open');
+  $('illusSheet').classList.add('open');
+  const sc = $('illusSheet').querySelector('.illus-body');
+  if(sc) sc.scrollTop = 0;
+  $('illusLoading').hidden = false;
+  $('illusGrid').innerHTML = '';
+  $('illusCount').textContent = '';
+  try{
+    await fetchIllustrations();
+    $('illusLoading').hidden = true;
+    _illusBuildStyles();
+    _illusBuildThemes();
+    _illusApplyFilters();
+  }catch(err){
+    $('illusLoading').hidden = true;
+    $('illusGrid').innerHTML = '';
+    const p = document.createElement('p'); p.className = 'illus-empty';
+    p.textContent = (err && err.message) || 'Could not load the illustration library.';
+    $('illusGrid').appendChild(p);
+  }
+}
+window.openIllusPicker = openIllusPicker;
+
+$('illusScrim').addEventListener('click', closeIllusPicker);
+$('illusClose').addEventListener('click', closeIllusPicker);
+$('illusSearch').addEventListener('input', () => { if(!_illusData) return; _illusFilter.q = $('illusSearch').value; _illusApplyFilters(); });
+$('illusStyles').addEventListener('click', e => {
+  const chip = e.target.closest('.chip[data-style]'); if(!chip || !_illusData) return;
+  _illusFilter.style = chip.dataset.style;
+  _illusBuildStyles();     // refresh 'on' state
+  _illusBuildThemes();     // themes depend on style
+  _illusApplyFilters();
+});
+$('illusTheme').addEventListener('change', () => { if(!_illusData) return; _illusFilter.theme = $('illusTheme').value; _illusApplyFilters(); });
+// Helm's sheet scrolls its own .illus-body (Chapbook scrolls a .surface-body).
+$('illusSheet').querySelector('.illus-body')?.addEventListener('scroll', _illusOnScroll);
 
 $('mediaScrim').addEventListener('click', closeMediaPicker);
 $('mediaSearch').addEventListener('input', () => {
@@ -15906,7 +16296,9 @@ function figDrawNote(msg){ const n = $('figDrawNote'); if(n) n.textContent = msg
   const wr = $('figDrawWidth');
   if(wr) wr.addEventListener('input', () => { _figDraw.width = Number(wr.value) || 3; });
   const tile = $('figDrawTile'); if(tile) tile.addEventListener('click', openFigDraw);
-  const back = $('figDrawBack'); if(back) back.addEventListener('click', () => closeFigDraw());
+  // Standalone flipbook maker enters straight into Draw, so there is no family grid
+  // behind it — Back closes the whole sheet instead of returning to an empty step.
+  const back = $('figDrawBack'); if(back) back.addEventListener('click', () => { if(_figStandalone){ closeFigLib(); } else { closeFigDraw(); } });
   const undo = $('figDrawUndo'); if(undo) undo.addEventListener('click', figDrawUndo);
   const clr = $('figDrawClear'); if(clr) clr.addEventListener('click', figDrawClear);
   const use = $('figDrawUse'); if(use) use.addEventListener('click', figUseDrawing);
@@ -17533,6 +17925,8 @@ $('sharePreviewPanel')?.addEventListener('click', e => { if(e.target === $('shar
 $('spImgUrlBtn')?.addEventListener('click', () => { _setShareImage($('spImgUrl').value); toast('Share image set ✓'); });
 $('spImgUrl')?.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); _setShareImage($('spImgUrl').value); toast('Share image set ✓'); } });
 $('spImgClearBtn')?.addEventListener('click', () => { _setShareImage(''); toast('Reverted to the generated card'); });
+// Cover mode: the picker calls _setShareImage() with the chosen illustration's full R2 URL.
+$('spImgIllusBtn')?.addEventListener('click', () => openIllusPicker({ mode: 'cover' }));
 $('spImgThumbs')?.addEventListener('click', e => {
   const t = e.target.closest('.sp-img-thumb'); if(!t) return;
   const choices = $('spImgThumbs')._choices || [];
@@ -18230,6 +18624,7 @@ $('libSeg')?.addEventListener('click',e=>{
   $('libSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
   const mode=b.dataset.lib;
   $('libInteractives').style.display = mode==='interactives'?'block':'none';
+  $('libMakers').style.display = mode==='makers'?'block':'none';
   $('libSaved').style.display = mode==='saved'?'block':'none';
   $('libIcons').style.display = mode==='icons'?'block':'none';
   $('libMedia').style.display = mode==='media'?'block':'none';
