@@ -17068,15 +17068,49 @@ async function putSiteConfig(gh, data, sha) {
   return gh.putFile(PATH, JSON.stringify(data, null, 2) + "\n", "studio: update site settings", sha || void 0);
 }
 
+// studio-app/core/themesConfig.js
+var PATH2 = "src/data/themes.json";
+function normaliseThemes(raw) {
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw.themes) ? raw.themes : [];
+  return list.map((t) => typeof t === "string" ? { id: t } : t).filter((t) => t && typeof t.id === "string" && t.id).map((t) => ({
+    id: t.id,
+    name: t.name || t.id.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    category: t.category || ""
+  }));
+}
+function categoryNames(raw) {
+  const cats = raw && Array.isArray(raw.categories) ? raw.categories : [];
+  const out = {};
+  for (const c of cats) if (c && c.id) out[c.id] = c.name || c.id;
+  return out;
+}
+async function getThemesConfig(gh) {
+  let f = null;
+  try {
+    f = await gh.getFile(PATH2);
+  } catch {
+    return { themes: [], categories: {} };
+  }
+  if (!f) return { themes: [], categories: {} };
+  let raw;
+  try {
+    raw = JSON.parse(f.content);
+  } catch {
+    return { themes: [], categories: {} };
+  }
+  return { themes: normaliseThemes(raw), categories: categoryNames(raw) };
+}
+
 // studio-app/core/topicsConfig.js
-var PATH2 = "src/data/topics.json";
+var PATH3 = "src/data/topics.json";
 async function getTopicsConfig(gh) {
-  const f = await gh.getFile(PATH2);
+  const f = await gh.getFile(PATH3);
   if (!f) return { data: [], sha: null };
   return { data: JSON.parse(f.content), sha: f.sha };
 }
 async function putTopicsConfig(gh, data, sha) {
-  return gh.putFile(PATH2, JSON.stringify(data, null, 2) + "\n", "studio: update topics", sha || void 0);
+  return gh.putFile(PATH3, JSON.stringify(data, null, 2) + "\n", "studio: update topics", sha || void 0);
 }
 
 // studio-app/router.js
@@ -17333,6 +17367,7 @@ function makeRouter(deps) {
       }
       return getSiteConfig(gh);
     }
+    if (a === "settings" && b === "themes") return getThemesConfig(gh);
     if (a === "settings" && b === "topics") {
       if (method === "PUT") {
         const { commit } = await putTopicsConfig(gh, body.data, body.sha);

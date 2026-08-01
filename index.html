@@ -44,6 +44,10 @@
     --glow:   0 0 22px rgba(34,211,238,.16);
     --ring:   0 0 0 3px rgba(34,211,238,.22);
     --r:      16px;
+    /* the writing/preview "paper" surface — used by the Partner draft pane so it reads as
+       paper rather than a slab of page background. Dark here, cream in the light block. */
+    --thread-canvas:#111b2a;
+    --thread-canvas-line:#263650;
     --font-display:'Space Grotesk',system-ui,sans-serif;
     --font-body:'Inter','Inter Variable',system-ui,-apple-system,sans-serif;
   }
@@ -53,6 +57,7 @@
     --line:#e4e9f0; --line-2:#d3dbe7; --acc:#0ea5a3;
     --shadow:0 14px 40px rgba(20,30,60,.12); --glow:0 0 0 1px rgba(14,165,163,.16);
     --ring:0 0 0 3px rgba(14,165,163,.2);
+    --thread-canvas:#fbfaf7; --thread-canvas-line:#e4e1db;
     /* Brand palette re-toned for the light field. The dark-mode brights (teal/cyan-400,
        violet/pink/goblin) sit near-invisibly on a light background, so colour-coded TEXT
        and the accent buttons washed out. These deeper stops keep the brand hues but clear
@@ -1909,8 +1914,17 @@
     font-size:.78rem;color:var(--mut);flex:1 1 130px;min-width:120px}
   .fig-draw-width span{flex:0 0 auto}
   .fig-draw-width input[type=range]{flex:1 1 auto;width:auto;accent-color:var(--acc);height:30px;min-width:80px}
+  /* The figure/flipbook board is a LIGHT "paper" surface in BOTH themes, with a faint dot-grid
+     guide: the default pen ink (FIG_DRAW_INK, dark) reads on paper, and the GIF/video export
+     bakes the SAME light paper (#fbfaf6) so the board previews the export. The dot grid is a CSS
+     background on the surface (behind the transparent canvas) — a drawing guide ONLY; it never
+     appears in the exported GIF/video. Fixed light in both themes so a dark board never hides a
+     dark pen or misleads the export. */
   .fig-draw-surface{position:relative;border:1px solid var(--line);border-radius:13px;
-    background:var(--surface);overflow:hidden;touch-action:auto}
+    background-color:#fbfaf6;
+    background-image:radial-gradient(rgba(27,36,51,.11) 1.1px, transparent 1.3px);
+    background-size:22px 22px;background-position:11px 11px;
+    overflow:hidden;touch-action:auto}
   #figCanvas{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair;
     background:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   .fig-draw-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem}
@@ -2630,8 +2644,12 @@
   .pt-input{display:flex;gap:.5rem;margin-top:.6rem}
   .pt-input textarea{flex:1;min-width:0}
   .pt-input .btn{flex:0 0 auto;width:auto;margin-top:0;padding-inline:1.5rem}
+  /* cream "paper" empty/loading backdrop — reuses the writing-surface token so the Partner
+     draft pane reads as paper (cream in light, dark in dark); the rendered post fills the
+     frame with its own bg once it loads. A hardcoded near-black slab dominated the pane in
+     light mode. */
   .pt-preview iframe{width:100%;min-height:60vh;border:1px solid var(--line);border-radius:16px;
-    background:#04060c;box-shadow:var(--shadow)}
+    background:var(--thread-canvas);box-shadow:var(--shadow)}
   .pt-preview{display:none}
   .pt-preview.show{display:block}
   @media(min-width:900px){
@@ -2702,7 +2720,7 @@
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
 <script>window.__LICENCE_PUBLIC_KEY='20e5e11738c29f3ee250dd38fa1b72695a327a2eb18cf4f9b817c56c664c7201';</script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260801-7c1f4d5";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260801-1eb9ef4";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -4402,7 +4420,7 @@
           <input id="figDrawWidth" type="range" min="1" max="14" step="1" value="3" />
         </label>
         <span class="fig-draw-swatches" id="figDrawSwatches" role="group" aria-label="Pen colour">
-          <button type="button" class="fig-sw on" data-c="#f4f7fd" title="Ink (default)" style="background:#f4f7fd"></button>
+          <button type="button" class="fig-sw on" data-c="#1b2433" title="Ink (default)" style="background:#1b2433"></button>
           <button type="button" class="fig-sw" data-c="#9fb3c8" title="Grey" style="background:#9fb3c8"></button>
           <button type="button" class="fig-sw" data-c="#2dd4bf" title="Teal" style="background:#2dd4bf"></button>
           <button type="button" class="fig-sw" data-c="#22d3ee" title="Cyan" style="background:#22d3ee"></button>
@@ -4765,11 +4783,22 @@ let TOKEN=localStorage.getItem('studio_token')||'';
 let state={platform:'linkedin', idea:'', post:'', hooks:[], imageDataUrl:null, imageFile:null};
 
 /* ── theme system ───────────────────────────────────────────────────────── */
-function setTheme(t){
-  // dark is the default/base (empty data-theme); light is the opt-in override
-  document.documentElement.dataset.theme = t==='light' ? 'light' : '';
-  localStorage.setItem('helm-theme', t==='light' ? 'light' : 'dark');
-  const icon = tico(t==='light' ? 'sun' : 'moon');
+// LIGHT is the default for a NEW / unset user; DARK is a first-class opt-in via the toggle.
+// Dark remains the CSS base (empty data-theme); light is the [data-theme="light"] override.
+const DEFAULT_THEME='light';
+function setTheme(t, persist){
+  const light = t==='light';
+  document.documentElement.dataset.theme = light ? 'light' : '';
+  // Only an EXPLICIT user action (toggleTheme) persists. Boot passes persist=false — the old
+  // code wrote on EVERY call, so simply loading the app silently pinned the then-current
+  // default into localStorage and it masqueraded as a real choice ever after. That is why
+  // changing the default alone would not have reached anyone who had opened the app before.
+  if(persist) localStorage.setItem('helm-theme', light ? 'light' : 'dark');
+  // Keep the browser chrome in step: a dark theme-color under a light UI paints a dark band
+  // around fixed bottom bars on phones.
+  const mc = document.querySelector('meta[name="theme-color"]');
+  if(mc) mc.content = light ? '#eef1f6' : '#04060c';
+  const icon = tico(light ? 'sun' : 'moon');
   const t1=$('themeToggleMain'), t2=$('themeToggleEditor'), t3=$('themeToggleSettings');
   if(t1) t1.innerHTML=icon;
   if(t2) t2.innerHTML=icon;
@@ -4777,13 +4806,19 @@ function setTheme(t){
 }
 function toggleTheme(){
   const cur=document.documentElement.dataset.theme;
-  setTheme(cur==='light' ? 'dark' : 'light');
+  setTheme(cur==='light' ? 'dark' : 'light', true);  // explicit choice → persist
 }
-// initialise theme — default DARK (first-party companion to the dark site).
-// One-time migration: the old build force-set 'light' on every load, so a stored
-// 'light' is not a real choice — clear it once so existing users land on dark.
+// One intended default (light) regardless of prefers-color-scheme; anyone who wants dark
+// toggles once and it sticks. One-time migrations of the stored key (helm-theme):
+//  • v2: an ancient build force-set 'light' on every load, so a stored 'light' was not a real
+//    choice — cleared once so those users fell to the then-default (dark).
+//  • v3: the build after that persisted the DARK default on every boot (setTheme always
+//    wrote), so a stored 'dark' is likewise not necessarily a real choice. Now that the
+//    default is light, clear a stored 'dark' once so returning users land on it. A genuine
+//    dark preference set AFTER this migration persists and is kept.
 if(!localStorage.getItem('helm-theme-v2')){ localStorage.removeItem('helm-theme'); localStorage.setItem('helm-theme-v2','1'); }
-setTheme(localStorage.getItem('helm-theme')||'dark');
+if(!localStorage.getItem('helm-theme-v3')){ if(localStorage.getItem('helm-theme')==='dark') localStorage.removeItem('helm-theme'); localStorage.setItem('helm-theme-v3','1'); }
+setTheme(localStorage.getItem('helm-theme')||DEFAULT_THEME, false);  // boot: never persist
 
 window.setTheme=setTheme;
 window.toggleTheme=toggleTheme;
@@ -7259,6 +7294,51 @@ function navMove(i, dir) {
   renderNavEditor();
 }
 
+/* Fill #ss-theme from the blog's OWN theme registry (src/data/themes.json, via the github
+   seam). The picker used to be a hardcoded list that had drifted badly from the site: of the
+   15 ids it offered, 12 did not exist there — choosing one wrote a defaultTheme the site
+   cannot render, Base.astro fell back to observatory, and the theme silently did not change
+   — while 17 of the site's real themes were unreachable. Reading the registry makes the list
+   correct by construction and picks up new themes with no change here.
+
+   The baked <optgroup>s are kept in the markup as an OFFLINE FALLBACK: if the fetch fails
+   (no GitHub yet, offline, registry absent on an older site) we leave the DOM untouched
+   rather than presenting an empty picker. `keep` is the currently-saved value, re-added as a
+   lone option when the registry doesn't list it, so an unknown/legacy theme is never
+   silently rewritten to something else just by opening Settings. */
+let _themeRegistry = null;
+async function populateThemePicker(keep){
+  const sel = $('ss-theme'); if(!sel) return;
+  try{
+    if(!_themeRegistry){
+      const r = await api('/settings/themes');
+      if(r && Array.isArray(r.themes) && r.themes.length) _themeRegistry = r;
+    }
+  }catch(_){ /* offline / no repo yet → keep the baked options */ }
+  const reg = _themeRegistry;
+  if(!reg || !reg.themes.length) return;               // nothing better to offer
+  const byCat = new Map();
+  for(const t of reg.themes){
+    const label = (reg.categories && reg.categories[t.category]) || t.category || 'Themes';
+    if(!byCat.has(label)) byCat.set(label, []);
+    byCat.get(label).push(t);
+  }
+  sel.innerHTML = '';
+  for(const [label, items] of byCat){
+    const g = document.createElement('optgroup'); g.label = label;
+    for(const t of items){
+      const o = document.createElement('option'); o.value = t.id; o.textContent = t.name;
+      g.appendChild(o);
+    }
+    sel.appendChild(g);
+  }
+  if(keep && !reg.themes.some(t => t.id === keep)){
+    const g = document.createElement('optgroup'); g.label = 'Currently set (not in the registry)';
+    const o = document.createElement('option'); o.value = keep; o.textContent = keep;
+    g.appendChild(o); sel.appendChild(g);
+  }
+}
+
 async function loadSiteSettings() {
   try {
     const { data, sha } = await api('/settings/site');
@@ -7271,6 +7351,10 @@ async function loadSiteSettings() {
     $('ss-role').value = d.role || '';
     $('ss-description').value = d.description || '';
     $('ss-url').value = d.url || '';
+    // Populate the theme picker from the SITE'S OWN registry before selecting the current
+    // value, so the list is exactly what the site can render. The <select>'s baked options
+    // stay as the offline fallback (see populateThemePicker).
+    await populateThemePicker(d.defaultTheme);
     $('ss-theme').value = d.defaultTheme || 'observatory';
     $('ss-core').value = d.core || 'tori';
     $('ss-linkedin').value = d.socials?.linkedin || '';
@@ -14460,7 +14544,7 @@ const _figDraw = {
   bgMode: 'trace',           // 'trace' (faint guide, not exported) | 'keep' (still base, exported)
   snap: false,               // Snap shapes: round a freehand stroke to a clean line/circle/box on lift-off
   mirror: false,             // Mirror: duplicate each completed stroke across the vertical centre axis
-  colour: '#f4f7fd',         // current pen colour (session-sticky; default = FIG_DRAW_INK)
+  colour: '#1b2433',         // current pen colour (session-sticky; default = FIG_DRAW_INK)
   fillMode: false,           // Fill: the next stroke auto-closes and renders filled (35%) + outlined
   tool: 'pen',               // 'pen' | 'text' | 'erase'
   textDrag: null,            // in-progress label drag: { frame, idx, dx, dy } | null
@@ -14588,7 +14672,10 @@ function sizeFigCanvas(){
 }
 
 /* the visible ink colour for the raster preview (matches --ink in the SVG) */
-const FIG_DRAW_INK = '#f4f7fd';
+/* the visible ink colour for the raster preview: dark ink on the light paper board + light
+   export bake (matches the light-theme --ink; default-ink strokes serialise to var(--ink),
+   so the SVG block stays theme-aware for the reader). */
+const FIG_DRAW_INK = '#1b2433';
 
 /* the faint onion-skin ink for the previous frame (translucent) */
 const FIG_ONION_INK = 'rgba(130,140,170,0.34)';
@@ -16194,7 +16281,7 @@ function renderFigFrameToCtx(ctx, fr, opts){
   const W = opts.w, H = opts.h, pad = opts.pad != null ? opts.pad : Math.round(W * 0.07);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
-  ctx.fillStyle = opts.bg || '#04060c';
+  ctx.fillStyle = opts.bg || '#fbfaf6';   // same paper as the board — board previews the export
   ctx.fillRect(0, 0, W, H);
   if(!fr) return;
   const k = Math.min((W - pad * 2) / (sw || 1), (H - pad * 2) / (sh || 1));
