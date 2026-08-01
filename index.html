@@ -17,7 +17,7 @@
 <title>Atelier</title>
 <style>
   /* ── THEME VARIABLES ─────────────────────────────────────────────────────── */
-  /* Dark is the default — The Helm is a first-party companion to the (dark) site.
+  /* Dark is the default — Atelier is a first-party companion to the (dark) site.
      A [data-theme="light"] override keeps the toggle working for anyone who wants it. */
   :root {
     --bg:       #04060c;
@@ -2702,7 +2702,7 @@
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
 <script>window.__LICENCE_PUBLIC_KEY='20e5e11738c29f3ee250dd38fa1b72695a327a2eb18cf4f9b817c56c664c7201';</script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260801-dab4677";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260801-7c1f4d5";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -18388,13 +18388,14 @@ function videoHelmReachable(){
   return false;                                                            // hosted Atelier, BYOK mode
 }
 
-// Mode-aware product name. Local Helm (or a remote tunnel to one) → "The Helm";
-// the hosted, pure-BYOK Studio → "Studio". Drives the document title and BOTH
-// mastheads (login/onboarding + the app header). Single colour by markup (no <b>).
-// Called once the mode is known (the boot gate / boot()), and re-callable if the
-// mode changes (e.g. after connecting to a remote Helm).
+// Product name. ATELIER is the composer app — the thing you write posts in — and it is
+// called that whether it is talking to a local Helm, tunnelled to a remote one, or running
+// standalone in pure-BYOK mode. (It used to rename itself per mode, "The Helm" vs "Studio",
+// which blurred the app into the backend SERVICE that Helm actually is.) Drives the document
+// title and BOTH mastheads (login/onboarding + the app header). Kept as a function, and still
+// called when the mode is known, so a future mode-dependent suffix has one place to live.
 function applyBrandName(){
-  const name = videoHelmReachable() ? 'The Helm' : 'Atelier';
+  const name = 'Atelier';
   document.title = name;
   const login = document.getElementById('loginBrand');     if(login)  login.textContent  = name;
   const header = document.getElementById('appHeaderTitle'); if(header) header.textContent = name;
