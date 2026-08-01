@@ -1,6 +1,6 @@
 {
-  "name": "Helm Studio",
-  "short_name": "Helm Studio",
+  "name": "Atelier",
+  "short_name": "Atelier",
   "description": "Capture an idea, draft a post, publish.",
   "start_url": "/",
   "scope": "/",

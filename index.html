@@ -10,11 +10,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Helm Studio" />
+<meta name="apple-mobile-web-app-title" content="Atelier" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-<title>Helm Studio</title>
+<title>Atelier</title>
 <style>
   /* ── THEME VARIABLES ─────────────────────────────────────────────────────── */
   /* Dark is the default — The Helm is a first-party companion to the (dark) site.
@@ -2702,15 +2702,15 @@
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
 <script>window.__LICENCE_PUBLIC_KEY='20e5e11738c29f3ee250dd38fa1b72695a327a2eb18cf4f9b817c56c664c7201';</script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260730-03daf55";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260801-dab4677";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
 
 <!-- ===== LICENCE GATE (shown before everything when no valid key is stored) ===== -->
 <div id="licence" class="wrap" style="display:none">
-  <h1>Activate Helm Studio</h1>
-  <p class="sub">Enter your Helm Studio-access key to use Helm Studio. Contact the author to obtain one.</p>
+  <h1>Activate Atelier</h1>
+  <p class="sub">Enter your Atelier-access key to use Atelier. Contact the author to obtain one.</p>
   <input id="licKey" type="text" placeholder="IPL1.…" autocomplete="off" spellcheck="false" />
   <button class="btn" onclick="submitLicence()">Activate</button>
   <div id="licMsg" class="msg err"></div>
@@ -2720,7 +2720,7 @@
 
 <!-- ===== LOGIN ===== -->
 <div id="login" class="wrap" style="display:none">
-  <h1 id="loginBrand">Helm Studio</h1>
+  <h1 id="loginBrand">Atelier</h1>
   <p class="sub">Enter your Helm admin password.</p>
   <input id="pw" type="password" placeholder="Password" autocomplete="current-password" />
   <button class="btn" onclick="login()">Unlock</button>
@@ -2737,7 +2737,7 @@
 <div class="wrap">
   <header>
     <div>
-      <h1 id="appHeaderTitle">Helm Studio</h1>
+      <h1 id="appHeaderTitle">Atelier</h1>
       <div class="sub" id="appHeaderSub" style="margin:0">draft · approve · share</div>
     </div>
     <div style="display:flex;align-items:center;gap:.5rem">
@@ -3136,7 +3136,7 @@
 
     <button class="btn" id="aiSaveBtn" onclick="saveSettings()">Save keys</button>
     <div id="settingsMsg" class="msg"></div>
-    <p class="sub" style="margin-top:.6rem">Paste a key and tap <b>Use this</b> — Helm Studio picks that provider's current model automatically. Keys are write-only (never shown again); save a new key before testing it.</p>
+    <p class="sub" style="margin-top:.6rem">Paste a key and tap <b>Use this</b> — Atelier picks that provider's current model automatically. Keys are write-only (never shown again); save a new key before testing it.</p>
 
     <!-- ===== About you / Your voice (the author profile that steers every AI feature) ===== -->
     <div id="profileCard" class="card" style="margin-top:1.1rem">
@@ -3229,8 +3229,8 @@
 
     <!-- ===== Build / version stamp (unobtrusive) — set from window.__STUDIO_BUILD, which
              the deploy pipeline injects at build time (scripts/deploy-studio.sh). ===== -->
-    <p class="sub" id="buildStamp" style="margin-top:1.6rem;opacity:.5;font:.72rem var(--font-mono,ui-monospace,monospace)">Helm Studio · local build</p>
-    <script>(function(){var b=window.__STUDIO_BUILD,el=document.getElementById('buildStamp');if(el)el.textContent=b?('Helm Studio '+b):'Helm Studio · local build';})();</script>
+    <p class="sub" id="buildStamp" style="margin-top:1.6rem;opacity:.5;font:.72rem var(--font-mono,ui-monospace,monospace)">Atelier · local build</p>
+    <script>(function(){var b=window.__STUDIO_BUILD,el=document.getElementById('buildStamp');if(el)el.textContent=b?('Atelier '+b):'Atelier · local build';})();</script>
   </section>
 
   <!-- ===== SITE SETTINGS ===== -->
@@ -4041,7 +4041,7 @@
     <div class="pp-head"><span aria-hidden="true">🎬</span><strong id="vidTitle">Make a video</strong><button class="pp-x" id="vidClose" aria-label="Close" onclick="closeVideo()">✕</button></div>
     <div class="pp-body">
       <div id="vidLocalOnly" class="vid-local" hidden>
-        <p>Video rendering runs in your <strong>local Helm</strong> (<code>npm start</code>), not the hosted Helm Studio. Open Helm Studio on the machine running Helm to render and download a video.</p>
+        <p>Video rendering runs in your <strong>local Helm</strong> (<code>npm start</code>), not the hosted Atelier. Open Atelier on the machine running Helm to render and download a video.</p>
       </div>
       <div id="vidEditor">
         <!-- Mode: a regular storyboard (title/point/figure) vs a caption-centric
@@ -4745,6 +4745,11 @@
 <script type="module">
 import { resizeToBase64, decodeImage, encodeSource, MAX_EDGE } from '/resize.js';
 import { initDarkroom } from '/darkroom-upload.js';
+// On-device dictation. The heavy parts (transformers.js, the ONNX WASM runtime, the Whisper
+// model) are NOT in this bundle — `npm run stage:stt` places them same-origin and the worker
+// loads them lazily on first use, so a Studio that never dictates pays nothing for this.
+import { STT_MAX_RECORD_MS, appendDictation, whisperSupported as sttWhisperSupported,
+         createWhisperProvider as sttCreateWhisperProvider } from '/stt.js';
 
 const $=id=>document.getElementById(id);
 /* ── one icon language: Tabler sprite refs (icons-sprite.svg, ids ti-<name>) ──
@@ -6834,7 +6839,7 @@ async function latestModelFor(id){
 }
 let _aiModels={}; // last-loaded model per provider, to detect changes on save
 
-// Connection-mode status (hosted Helm Studio only). Shows "Connected to your Helm ✓"
+// Connection-mode status (hosted Atelier only). Shows "Connected to your Helm ✓"
 // in remote mode, or "Local-only (this device)" in BYOK. Hidden in the local build.
 function refreshConnStatus(){
   const row=$('connRow'); if(!row) return;
@@ -7067,7 +7072,7 @@ window.saveSettings=saveSettings;
 
 /* ── R2 video storage (BYOK direct-to-R2) ──────────────────────────────────
    Pure browser concern: reads/writes window.__studioConfig (config.r2). Only
-   shown in the hosted Helm Studio (where __studioConfig exists); the local same-origin
+   shown in the hosted Atelier (where __studioConfig exists); the local same-origin
    Helm build uses its server config instead. The secret is browser-only. */
 function loadR2Settings(){
   const row=$('r2Row'); if(!row) return;
@@ -9599,7 +9604,7 @@ function edEmbed(b, isSel){
 
   // Helm-mode: upload a local video → Helm archives the original, transcodes a web
   // copy + poster, pushes to the media host, and fills this block with the public URLs.
-  // Capability-probed: on 503/VIDEO_LOCAL_ONLY (BYOK / hosted Helm Studio) the control hides,
+  // Capability-probed: on 503/VIDEO_LOCAL_ONLY (BYOK / hosted Atelier) the control hides,
   // leaving BYOK users the paste-a-URL path. Filling the block leaves it a DRAFT — the
   // owner still publishes the POST explicitly (never auto-published here).
   const up = document.createElement('div');
@@ -16719,41 +16724,141 @@ function appendFigLabel(pt, text){
   toast('Label added');
 }
 
-/* ── Tweak-field dictation (reuses the Web Speech pattern, targets #figTweakText) */
-let _figTweakRecog = null;
-let _figTweakRecBase = '';
-function stopFigTweakDictation(){
-  if(_figTweakRecog){ try{ _figTweakRecog.stop(); }catch(_){} }
-  _figTweakRecog = null;
-  const mic = $('figTweakMic');
-  if(mic){ mic.classList.remove('rec'); mic.setAttribute('aria-pressed','false'); mic.textContent = '🎙 Dictate'; }
-}
-function startFigTweakDictation(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR) return;
-  const inp = $('figTweakText');
-  _figTweakRecBase = inp.value ? (inp.value.replace(/\s+$/,'') + ' ') : '';
-  try{ _figTweakRecog = new SR(); }catch(_){ _figTweakRecog = null; return; }
-  _figTweakRecog.lang = (navigator.language || 'en-GB');
-  _figTweakRecog.interimResults = true;
-  _figTweakRecog.continuous = true;
-  _figTweakRecog.onresult = (ev) => {
-    let txt = ''; for(let i = 0; i < ev.results.length; i++){ txt += ev.results[i][0].transcript; }
-    inp.value = _figTweakRecBase + txt;
+/* ── Private field dictation ─────────────────────────────────────────────────
+   The figure Describe + Tweak fields use the same self-hosted, on-device Whisper path
+   as the main mic. They deliberately do NOT call SpeechRecognition: that API can be
+   cloud-routed (the browser vendor receives the audio), which is the wrong default for
+   the owner's private notes. One shared provider keeps a single worker/model alive
+   across both short fields. Falls back to hiding the button where Whisper cannot run.
+   Ported from Chapbook. */
+let _fieldDictationActive = null;
+
+function makePrivateFieldDictation(buttonId, inputId){
+  const btn = $(buttonId), input = $(inputId);
+  if(!btn || !input || !sttWhisperSupported()) return null;
+  let state = 'idle', session = 0, stream = null, recorder = null, chunks = [], capT = 0;
+  const paint = (label='🎙 Dictate', pressed=false, busy=false) => {
+    btn.textContent = label;
+    btn.classList.toggle('rec', pressed);
+    btn.classList.toggle('busy', busy);
+    btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    const a11y = pressed ? 'Stop dictation' : busy ? label.replace(/^🎙\s*/, '') : 'Dictate';
+    btn.setAttribute('aria-label', a11y); btn.title = a11y;
   };
-  _figTweakRecog.onerror = () => { stopFigTweakDictation(); };
-  _figTweakRecog.onend = () => {
-    _figTweakRecBase = $('figTweakText').value;
-    const mic = $('figTweakMic');
-    if(mic){ mic.classList.remove('rec'); mic.setAttribute('aria-pressed','false'); mic.textContent = '🎙 Dictate'; }
-    _figTweakRecog = null;
+  const dropStream = () => {
+    if(stream){ try{ stream.getTracks().forEach(t => t.stop()); }catch(_){} stream = null; }
   };
-  try{
-    _figTweakRecog.start();
-    const mic = $('figTweakMic');
-    if(mic){ mic.classList.add('rec'); mic.setAttribute('aria-pressed','true'); mic.textContent = '■ Stop'; }
-  }catch(_){ stopFigTweakDictation(); }
+  const idle = () => {
+    clearTimeout(capT); capT = 0; recorder = null; chunks = []; dropStream();
+    state = 'idle'; if(_fieldDictationActive === api) _fieldDictationActive = null;
+    paint();
+  };
+  const cancel = () => {
+    session++;
+    const r = recorder; recorder = null;
+    try{ if(r && r.state !== 'inactive') r.stop(); }catch(_){}
+    dropStream();
+    if(state === 'preparing' || state === 'transcribing'){
+      _fieldWhisper.cancel();
+      _fieldWhisperPrepared = false;
+    }
+    idle();
+  };
+  const fail = (message) => { idle(); toast(message); };
+  const transcribe = async (mySession) => {
+    dropStream();
+    const blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || 'audio/webm' });
+    chunks = [];
+    if(!blob.size){ idle(); toast('No audio was captured.'); return; }
+    state = 'transcribing'; paint('Cancel transcription', false, true);
+    toast('Transcribing privately on this device…');
+    try{
+      const text = await _fieldWhisper.transcribe(blob);
+      if(mySession !== session) return;
+      if(text){
+        input.value = appendDictation(input.value, text);
+        input.dispatchEvent(new Event('input', { bubbles:true }));
+        toast('Transcript added.');
+      } else { toast('No speech was detected.'); }
+      idle();
+    }catch(e){
+      if(mySession !== session) return;
+      fail(String(e && e.message || 'Transcription failed on this device. Try again.'));
+    }
+  };
+  const stopRecording = () => {
+    if(state !== 'recording') return;
+    clearTimeout(capT); capT = 0;
+    const r = recorder;
+    if(!r){ cancel(); return; }
+    state = 'transcribing'; paint('Cancel transcription', false, true);
+    try{ r.stop(); }catch(_){ fail('Recording failed. Try again.'); }
+  };
+  const startRecorder = async (mySession) => {
+    try{ stream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
+    catch(e){
+      if(mySession !== session) return;
+      fail(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+        ? 'Microphone access is blocked. Allow it in your browser settings to dictate.'
+        : 'No microphone was found for dictation.');
+      return;
+    }
+    if(mySession !== session){ dropStream(); return; }
+    try{ recorder = new MediaRecorder(stream); }
+    catch(_){ fail('Recording is not supported in this browser.'); return; }
+    chunks = [];
+    recorder.ondataavailable = (e) => { if(e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => { recorder = null; if(mySession === session && state === 'transcribing') transcribe(mySession); };
+    try{
+      recorder.start();
+      state = 'recording'; paint('■ Stop', true);
+      toast('Listening — tap Stop when you finish.');
+      capT = setTimeout(() => {
+        if(mySession === session && state === 'recording'){
+          toast('Dictation reached the 5-minute limit — transcribing.');
+          stopRecording();
+        }
+      }, STT_MAX_RECORD_MS);
+    }catch(_){ fail('Recording failed. Try again.'); }
+  };
+  const start = async () => {
+    if(_fieldDictationActive && _fieldDictationActive !== api) _fieldDictationActive.cancel();
+    _fieldDictationActive = api;
+    const mySession = ++session;
+    if(!_fieldWhisperPrepared){
+      state = 'preparing'; paint('Cancel preparation', false, true);
+      toast('Preparing dictation — downloading the private on-device model (~68 MB) once…');
+      try{
+        await _fieldWhisper.preload({ onProgress:(p) => {
+          if(mySession === session && state === 'preparing' && p.pct) paint('Preparing ' + p.pct + '%', false, true);
+        } });
+      }catch(e){
+        if(mySession !== session) return;
+        fail(String(e && e.message || 'The dictation model could not be loaded. Check your connection and try again.'));
+        return;
+      }
+      if(mySession !== session) return;
+      _fieldWhisperPrepared = true;
+      toast('Dictation ready — speak now.');
+    }
+    await startRecorder(mySession);
+  };
+  const toggle = () => {
+    if(state === 'recording'){ stopRecording(); return; }
+    if(state === 'preparing' || state === 'transcribing'){ cancel(); toast('Dictation cancelled.'); return; }
+    start();
+  };
+  const api = { cancel, toggle, isActive:() => state !== 'idle' };
+  btn.hidden = false;
+  paint();
+  btn.addEventListener('click', toggle);
+  return api;
 }
+
+
+let _figTweakDictation = null;
+function stopFigTweakDictation(){ _figTweakDictation?.cancel(); }
+function startFigTweakDictation(){ _figTweakDictation?.toggle(); }
 
 /* refine wiring */
 $('figTweakGo').addEventListener('click', runFigTweak);
@@ -16762,116 +16867,15 @@ $('figTweakText').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.pr
 $('figSuggestLabels').addEventListener('click', runFigSuggestLabels);
 $('figLabelMode').addEventListener('click', () => setFigLabelMode(!_figLabelMode));
 (function initFigTweakMic(){
-  const mic = $('figTweakMic');
-  if(!mic) return;
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ mic.hidden = true; return; }
-  mic.hidden = false;
-  mic.addEventListener('click', () => {
-    if(_figTweakRecog) stopFigTweakDictation();
-    else startFigTweakDictation();
-  });
+  _figTweakDictation = makePrivateFieldDictation('figTweakMic', 'figTweakText');
 })();
 
-/* ── Voice dictation (Web Speech API; degrades gracefully) ────────────────── */
-let _figRecog = null;       // active SpeechRecognition instance
-let _figRecBase = '';       // textarea text captured when dictation started
+let _figDictation = null;
+function stopFigDictation(){ _figDictation?.cancel(); }
+function startFigDictation(){ _figDictation?.toggle(); }
 
-function stopFigDictation(){
-  if(_figRecog){ try{ _figRecog.stop(); }catch(_){} }
-  _figRecog = null;
-  const mic = $('figMicBtn');
-  if(mic){ mic.classList.remove('rec'); mic.setAttribute('aria-pressed','false'); mic.textContent = '🎙 Dictate'; }
-}
-
-function startFigDictation(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR) return;   // unsupported — button stays hidden, OS keyboard mic still works
-  const ta = $('figDescribeText');
-  _figRecBase = ta.value ? (ta.value.replace(/\s+$/,'') + ' ') : '';
-  try{
-    _figRecog = new SR();
-  }catch(_){ _figRecog = null; return; }
-  _figRecog.lang = (navigator.language || 'en-GB');
-  _figRecog.interimResults = true;
-  _figRecog.continuous = true;
-  _figRecog.onresult = (ev) => {
-    let txt = '';
-    for(let i = 0; i < ev.results.length; i++){ txt += ev.results[i][0].transcript; }
-    ta.value = _figRecBase + txt;
-  };
-  _figRecog.onerror = () => { stopFigDictation(); };
-  _figRecog.onend = () => {
-    // commit the final value as the new base; clear the active flag/UI
-    _figRecBase = $('figDescribeText').value;
-    const mic = $('figMicBtn');
-    if(mic){ mic.classList.remove('rec'); mic.setAttribute('aria-pressed','false'); mic.textContent = '🎙 Dictate'; }
-    _figRecog = null;
-  };
-  try{
-    _figRecog.start();
-    const mic = $('figMicBtn');
-    if(mic){ mic.classList.add('rec'); mic.setAttribute('aria-pressed','true'); mic.textContent = '■ Stop'; }
-  }catch(_){ stopFigDictation(); }
-}
-
-/* AI-entry wiring */
-$('figDescribeTile').addEventListener('click', () => openFigCompose('describe'));
-$('figPhotoTile').addEventListener('click', () => openFigCompose('photo'));
-$('figDescribeGo').addEventListener('click', () => runFigInvent($('figDescribeText').value));
-$('figDescribeText').addEventListener('click', e => e.stopPropagation());
-$('figPhotoPick').addEventListener('click', () => $('figPhotoInput').click());
-$('figPhotoInput').addEventListener('change', (e) => {
-  const f = e.target.files && e.target.files[0];
-  runFigVectorise(f);
-  e.target.value = '';   // allow re-picking the same file
-});
-$('figRegenBtn').addEventListener('click', regenFig);
-
-/* Sticker forge wiring: open the palette, search-filter, tap-to-place, AI generate. */
-{
-  const stTile = $('figStickerTile'); if(stTile) stTile.addEventListener('click', () => openFigCompose('sticker'));
-  const stSearch = $('figStickerSearch');
-  if(stSearch){
-    stSearch.addEventListener('click', e => e.stopPropagation());
-    stSearch.addEventListener('input', () => renderFigStickers(stSearch.value));
-  }
-  const stBody = $('figStickerBody');
-  if(stBody) stBody.addEventListener('click', e => {
-    const cell = e.target.closest('.fig-sticker-cell'); if(!cell) return;
-    placeFigSticker(cell.dataset.sticker);
-  });
-  const stAiText = $('figStickerAiText');
-  if(stAiText){
-    stAiText.addEventListener('click', e => e.stopPropagation());
-    stAiText.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); runFigSticker(stAiText.value); } });
-  }
-  const stAiGo = $('figStickerAiGo');
-  if(stAiGo) stAiGo.addEventListener('click', () => runFigSticker($('figStickerAiText').value));
-}
-
-/* "Slap onto an image" (build step) wiring — reuses the figure base-image path. */
-{
-  const pick = $('figOnImagePick'), input = $('figOnImageInput'), clr = $('figOnImageClear');
-  if(pick && input){
-    pick.addEventListener('click', () => { input.value = ''; input.click(); });
-    input.addEventListener('change', () => { const f = input.files && input.files[0]; if(f) figOnImagePick(f); });
-  }
-  if(clr) clr.addEventListener('click', figOnImageClear);
-}
-
-/* reveal the mic only where the Web Speech API exists; otherwise it stays hidden
-   (the OS keyboard's own mic still dictates into the textarea). Must not throw. */
 (function initFigMic(){
-  const mic = $('figMicBtn');
-  if(!mic) return;
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ mic.hidden = true; return; }
-  mic.hidden = false;
-  mic.addEventListener('click', () => {
-    if(_figRecog) stopFigDictation();
-    else startFigDictation();
-  });
+  _figDictation = makePrivateFieldDictation('figMicBtn', 'figDescribeText');
 })();
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -18377,11 +18381,11 @@ function videoLibExplainer(html){
 
 // Is a Helm backend reachable for this Studio session? Mirrors helmReachable() in
 // studio-app/app.js: remote-tunnel-to-Helm OR the local same-origin Helm build count;
-// the hosted Helm Studio in pure-BYOK mode (window.__studioConfig present, not remote) does not.
+// the hosted Atelier in pure-BYOK mode (window.__studioConfig present, not remote) does not.
 function videoHelmReachable(){
   if(window.__studioRemote && window.__studioRemote.active) return true;   // remote tunnel → local Helm
   if(!window.__studioConfig) return true;                                  // local same-origin Helm build
-  return false;                                                            // hosted Helm Studio, BYOK mode
+  return false;                                                            // hosted Atelier, BYOK mode
 }
 
 // Mode-aware product name. Local Helm (or a remote tunnel to one) → "The Helm";
@@ -18390,7 +18394,7 @@ function videoHelmReachable(){
 // Called once the mode is known (the boot gate / boot()), and re-callable if the
 // mode changes (e.g. after connecting to a remote Helm).
 function applyBrandName(){
-  const name = videoHelmReachable() ? 'The Helm' : 'Helm Studio';
+  const name = videoHelmReachable() ? 'The Helm' : 'Atelier';
   document.title = name;
   const login = document.getElementById('loginBrand');     if(login)  login.textContent  = name;
   const header = document.getElementById('appHeaderTitle'); if(header) header.textContent = name;
@@ -18429,11 +18433,11 @@ async function loadVideoLibrary(){
     const r = await api('/media/video/list');
     list = Array.isArray(r) ? r : (r && Array.isArray(r.videos) ? r.videos : []);
   }catch(e){
-    // 503/local-only (BYOK or hosted Helm Studio) → explain where video lives; otherwise a
+    // 503/local-only (BYOK or hosted Atelier) → explain where video lives; otherwise a
     // missing endpoint / network blip → the same gentle empty state (no fake rows).
     if(e && (e.status === 503 || e.code === 'VIDEO_LOCAL_ONLY')){
       videoLibExplainer(
-        `<b>Video lives on your local Helm.</b><br>Uploading, transcoding and self-hosting clips runs in the Helm on your Mac (<code>npm&nbsp;start</code>), not the hosted Helm Studio. Open Helm Studio on that machine to browse and add videos.`
+        `<b>Video lives on your local Helm.</b><br>Uploading, transcoding and self-hosting clips runs in the Helm on your Mac (<code>npm&nbsp;start</code>), not the hosted Atelier. Open Atelier on that machine to browse and add videos.`
       );
     } else {
       videoLibExplainer(
@@ -18683,7 +18687,13 @@ async function loadLibInteractives(){
     grid.appendChild(card);
     f._frame=card.querySelector('iframe');
   }
-  for(const f of fams){
+  // Build a preview ONLY when its card comes near the viewport. Eagerly building every
+  // family meant 2 server round-trips each (preset + build) for all of them — 80 families
+  // is 160 sequential calls before the grid settles, and 80 live iframes mounted at once.
+  // With the observer only the handful on screen are built; the rest arrive on scroll.
+  const buildPreview=async(f)=>{
+    if(f._built||!f._frame) return;
+    f._built=true;
     try{
       let params={};
       const pname=(f.presets&&f.presets[0]&&f.presets[0].name)||null;
@@ -18691,6 +18701,20 @@ async function loadLibInteractives(){
       const r=await api('/playgrounds/build',{method:'POST',body:JSON.stringify({familyId:f.id,params,domId:'lib-'+f.id})});
       if(r&&r.block&&f._frame) f._frame.srcdoc=tplLibSrcdoc(r.block);
     }catch(e){ if(f._frame) f._frame.srcdoc='<!doctype html><body style="margin:0;background:#04060c;color:#6f7e98;font:13px system-ui;display:grid;place-items:center;height:100%">preview unavailable</body>'; }
+  };
+  if('IntersectionObserver' in window){
+    const observer=new IntersectionObserver((entries)=>{
+      for(const entry of entries){
+        if(!entry.isIntersecting) continue;
+        observer.unobserve(entry.target);
+        const f=fams.find(x=>x._frame===entry.target);
+        if(f) buildPreview(f);
+      }
+    },{rootMargin:'600px 0px'});   // start building a screen or so before it is visible
+    fams.forEach(f=>{ if(f._frame) observer.observe(f._frame); });
+  }else{
+    // Old WebViews with no observer: keep the behaviour, just sequenced as before.
+    for(const f of fams) await buildPreview(f);
   }
 }
 
@@ -18799,7 +18823,7 @@ $('libIconGrid')?.addEventListener('click',e=>{ const t=e.target.closest('.gp-ti
    ordered scene cards (add / remove / reorder / per-scene seconds + format), then
    render the Remotion PostVideo to an MP4 via the LOCAL render-job route and poll to
    done → preview + download + (Web Share where available). Rendering is local-only;
-   the BYOK hosted Helm Studio reports a 503 and we show the friendly local-only message. */
+   the BYOK hosted Atelier reports a 503 and we show the friendly local-only message. */
 const _vid = { storyboard:null, scenes:[], format:'9:16', transition:'fade', audio:null, pollTimer:null, blobUrl:null, slug:null, mode:'story' };
 
 async function makeVideo(p){
@@ -19226,7 +19250,7 @@ applyBrandName();
 
    NOTE: client-side verification is a DETERRENT, not tamper-proof — a determined
    user can edit the bundle in their own browser. The real gate is the Helm
-   startup check (server/index.js); this stops casual use of the hosted Helm Studio.
+   startup check (server/index.js); this stops casual use of the hosted Atelier.
 
    Modes:
      • LOCAL Helm (server-backed build): try GET /api/licence first, so the
