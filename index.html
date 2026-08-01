@@ -103,7 +103,18 @@
     letter-spacing:.09em;text-transform:uppercase}
 
   /* ── FORM ELEMENTS ───────────────────────────────────────────────────────── */
-  textarea,input[type=text],input[type=password],input[type=search],select{
+  /* Text-like inputs are selected by EXCLUSION, not by listing types. The old rule named
+     text/password/search only, so every input added later with another type silently fell
+     back to the browser's native control — 149px wide, 13px system font, no padding, grey
+     hairline border. That is what happened to all six type=url fields (Site URL, the three
+     Socials, newsletter + contact endpoints): they looked broken in Site settings while the
+     text fields beside them looked right. Excluding the handful of types that genuinely need
+     their own treatment means any future type (email, tel, date…) is styled by default. The
+     specific rules for those excluded types, and the scoped overrides (.tlf-field, .vsc,
+     .share-card-maker), all come later in the sheet and still win. */
+  textarea,
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=submit]):not([type=button]),
+  select{
     width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:12px;
     color:var(--ink);padding:.8em .9em;font:inherit;resize:vertical;
     transition:border-color .15s,box-shadow .15s,background .15s}
@@ -174,7 +185,12 @@
 
   /* ── HOME: your apps (owner Helm dashboard — status + quick access only) ───── */
   .apps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.7rem}
-  .app-card{background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line);
+  /* Column + stretch so every card in a row is the same height and their button rows line
+     up. Titles wrap to one, two or three lines ("Publishing Pipeline (Phase 3)"), which
+     previously pushed each card's actions to its own arbitrary height and made the grid
+     look ragged. The actions get margin-top:auto so they sit on a common baseline. */
+  .app-card{display:flex;flex-direction:column;align-items:stretch;
+    background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line);
     border-radius:14px;padding:.9rem 1rem 1rem;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.04)}
   .app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem}
   .app-head strong{font:700 .98rem var(--font-display);color:var(--ink)}
@@ -185,7 +201,12 @@
   .app-badge.ok{background:rgba(45,212,191,.14);color:var(--acc);border:1px solid rgba(45,212,191,.3)}
   .app-badge.muted{background:var(--bg-1);color:var(--faint);border:1px solid var(--line)}
   .app-stats{margin:.55rem 0 0;font-size:.78rem;color:var(--faint);font-family:var(--font-display)}
-  .app-actions{display:flex;gap:.5rem;margin-top:.8rem}
+  .app-actions{display:flex;gap:.5rem;margin-top:auto;padding-top:.8rem}
+  .topic-pair{display:grid;grid-template-columns:1fr;gap:0 .8rem}
+  @media(min-width:640px){ .topic-pair{grid-template-columns:1fr 1fr} }
+  /* label has a global margin-top:1rem; the first one in each cell would push the two
+     columns out of alignment with each other and with the swatch row above. */
+  .topic-pair > div > label:first-child{margin-top:0}
   .app-actions .btn{margin-top:0;flex:1;padding:.6em;font-size:.85rem}
   .app-actions a.btn{text-decoration:none}
   .app-hint{margin:.5rem 0 0;font-size:.72rem}
@@ -193,8 +214,12 @@
   /* ── REVIEW ACTIONS (compact secondary row; give the draft more room) ──────── */
   #v-review #draftText{min-height:clamp(220px,42vh,460px)}
   #v-review .btn-row .btn{padding:.66em}            /* primary Redraft/Share — less bulky */
-  .rv-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.55rem}
-  .rv-actions .rv-sec{flex:1 1 30%;margin-top:0;min-width:140px;padding:.5em .7em;
+  /* Grid, not a flex wrap. With `flex:1 1 30%` the five buttons wrapped 3 + 2 and each row
+     grew its items to fill the width, so a row of two had visibly wider buttons than the row
+     of three above it. Equal columns keep every button the same width on every row. */
+  .rv-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:.5rem;margin-top:.55rem}
+  .rv-actions .rv-sec{margin-top:0;padding:.5em .7em;
     font-size:.82rem;font-weight:600;background:transparent}
   .rv-actions .rv-sec:hover{background:var(--surface-2)}
   .rv-link{margin-top:1rem}
@@ -217,6 +242,9 @@
   .share-parked-name{flex:1 1 auto;font-size:.85rem;color:var(--ink)}
   .share-parked .btn{margin-top:0;width:auto}
   .share-img-grid:empty{display:none}
+  /* The "no images yet" note is a GRID ITEM, so it was being squeezed into a single 93px
+     column and wrapped to four words-per-line. Empty states span the whole track. */
+  .share-img-grid > .sub{grid-column:1/-1}
   .share-img{position:relative;padding:0;border:2px solid var(--line);border-radius:10px;overflow:hidden;
     background:var(--bg);cursor:pointer;aspect-ratio:1/1;transition:border-color .15s,box-shadow .15s}
   .share-img img{width:100%;height:100%;object-fit:cover;display:block}
@@ -294,6 +322,14 @@
   .cam-fab:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(34,211,238,.5);filter:brightness(1.05)}
   .cam-fab:active{transform:translateY(0)}
   .cam-fab:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+  /* A fixed FAB sits on top of whatever happens to scroll under it — on mobile Home that was
+     a card's "Open" button, so the shortcut covered a control you were reaching for. It now
+     withdraws while you scroll DOWN (you are travelling, not aiming) and comes back as soon
+     as you scroll up or stop. Reduced-motion users keep it permanently visible rather than
+     getting an abrupt appear/disappear. */
+  .cam-fab.stowed{transform:translateY(calc(100% + 1.4rem));opacity:0;pointer-events:none}
+  .cam-fab{transition:transform .22s ease,opacity .18s ease,box-shadow .2s,filter .2s}
+  @media(prefers-reduced-motion:reduce){ .cam-fab.stowed{transform:none;opacity:1;pointer-events:auto} }
   .cam-fab svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:2;
     stroke-linecap:round;stroke-linejoin:round}
   @media (min-width:900px){
@@ -324,9 +360,44 @@
   /* ── SECONDARY NAV (sub-views within a section) ───────────────────────────
      A scrollable pill bar shown under the section header when a section owns
      >1 view (Write, Media, Share, Settings). Single-view sections hide it. */
-  .subnav{display:flex;gap:.4rem;overflow-x:auto;-webkit-overflow-scrolling:touch;
-    scrollbar-width:none;padding:.2rem 0 .1rem;margin:0 auto;
+  /* A real BAR, not a floating pill row. It previously had no background and no border, so
+     the pills sat loose against the page and the whole top block shifted vertically between
+     tabs (the tagline appeared only on Home). Tinted with the brand gradient at low alpha so
+     it reads as chrome, with a hairline under it to separate bar from content. Full-bleed
+     background, inner content still constrained to the reading column. */
+  .subnav-bar{background:
+      linear-gradient(180deg, color-mix(in srgb, var(--acc) 9%, transparent), transparent),
+      var(--surface);
+    border-bottom:1px solid var(--line);
+    backdrop-filter:saturate(1.4) blur(6px);
+    position:sticky;top:0;z-index:30}
+  .subnav-bar[hidden]{display:none}
+  /* One row: brand, then the section's views, then the app actions. The brand USED to sit in
+     a separate <header> below this bar, which read as the app being named by whatever tab you
+     had open. Brand belongs above its own navigation, and a "brand bar" should carry it. */
+  .subnav-inner{display:flex;align-items:center;gap:.75rem;margin:0 auto;
     width:min(680px,calc(100vw - 1.6rem))}
+  .brand{flex:0 0 auto;font-size:1.05rem;font-weight:750;letter-spacing:-.01em;margin:0;
+    white-space:nowrap}
+  .bar-actions{flex:0 0 auto;display:flex;align-items:center;gap:.5rem}
+  /* min-width:0 is what lets the pill row actually scroll instead of stretching the flex row
+     and pushing the actions off-screen on narrow viewports. */
+  .subnav{flex:1 1 auto;min-width:0;
+    display:flex;gap:.4rem;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;padding:.55rem 0 .5rem;
+    /* Holds the bar's height on sections that render no pills at all, so navigating between
+       a 1-view and a 3-view section still doesn't move the page. 33px = the pill's own box
+       (.82rem/normal line-height + .5em padding + 1px borders). */
+    /* border-box, so this must include the row's own padding: 33px pill + .55rem + .5rem.
+       The desktop breakpoint changes that padding and overrides this to match. */
+    min-height:calc(33px + 1.05rem);
+    /* The row scrolls when the pills outrun it. Without a fade the last pill is simply
+       sliced mid-word hard against the theme toggle and reads as broken rather than as
+       "there is more this way". */
+    -webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%);
+    mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%)}
+  /* No overflow → no fade, otherwise the last pill looks faded for no reason. */
+  .subnav:not(.scrolls){-webkit-mask-image:none;mask-image:none}
   .subnav::-webkit-scrollbar{display:none}
   .subnav[hidden]{display:none}
   .subnav button{flex:0 0 auto;background:var(--bg-1);border:1px solid var(--line);
@@ -336,7 +407,8 @@
   .subnav button:hover{color:var(--ink);border-color:var(--line-2)}
   .subnav button.on{background:var(--grad-pub);color:#042018;border-color:transparent;box-shadow:var(--glow)}
   @media(min-width:900px){
-    .subnav{width:min(940px,calc(100vw - 88px - 3rem));padding-top:1.1rem}
+    .subnav-inner{width:min(940px,calc(100vw - 88px - 3rem))}
+    .subnav{padding:.65rem 0 .6rem;min-height:calc(33px + 1.25rem)}
   }
 
   /* ── VIEWS ───────────────────────────────────────────────────────────────── */
@@ -413,6 +485,21 @@
   .pm-act{flex:1 1 auto;min-width:64px;font:inherit;font-size:.8rem;padding:.45em .6em;
     border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--ink);cursor:pointer}
   .pm-act:hover{border-color:var(--acc);color:var(--acc)}
+  /* Overflow menu. Six or seven buttons (scheduled posts add two more) wrapped to a second,
+     right-aligned row, so every post row was ragged and drafts never matched live posts.
+     Two primaries stay inline; the rest live here. <details> keeps it dependency-free and
+     keyboard-operable, and the buttons stay in the row so their existing wiring is untouched. */
+  .pm-more{position:relative;flex:0 0 auto}
+  .pm-more>summary{list-style:none;cursor:pointer;min-width:40px;text-align:center;
+    letter-spacing:.06em;line-height:1.15}
+  .pm-more>summary::-webkit-details-marker{display:none}
+  .pm-more[open]>summary{border-color:var(--acc);color:var(--acc)}
+  .pm-menu{position:absolute;right:0;top:calc(100% + .35rem);z-index:40;min-width:184px;
+    display:flex;flex-direction:column;gap:.25rem;padding:.4rem;
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 14px 36px rgba(0,0,0,.22)}
+  .pm-menu .pm-act{width:100%;flex:0 0 auto;text-align:left;border-color:transparent}
+  .pm-menu .pm-act:hover{background:var(--surface-2)}
   .pm-act.danger{color:#f472b6;border-color:rgba(244,114,182,.4)}
   .pm-act.danger:hover{background:rgba(244,114,182,.12)}
   /* row mid-delete: dim + freeze so it reads as "going away" and can't be re-tapped */
@@ -980,6 +1067,18 @@
   .set-row{display:flex;align-items:center;justify-content:space-between;gap:.9rem;
     background:var(--surface);border:1px solid var(--line);border-radius:12px;
     padding:.6rem .85rem;margin-top:.55rem}
+  /* .btn is width:100% by design (it is a full-width primary elsewhere). As a flex item in
+     a space-between row that made "Open" span most of the settings row while its label sat
+     in a narrow column — the row read as one enormous button. Natural width here. */
+  .set-row .btn{width:auto;flex:0 0 auto;margin-top:0;padding:.55em 1.4em;font-size:.85rem;border-radius:999px}
+  /* type=file cannot be styled directly, but its BUTTON part can, and the control itself can
+     sit in a bordered well like every other field. */
+  .file-input{width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:12px;
+    color:var(--mut);padding:.6em .7em;font:inherit;font-size:.85rem;cursor:pointer}
+  .file-input::file-selector-button{margin-right:.8em;border:1px solid var(--line);
+    background:var(--surface-2);color:var(--ink);border-radius:999px;padding:.45em 1.1em;
+    font:600 .82rem var(--font-display);cursor:pointer}
+  .file-input::file-selector-button:hover{border-color:var(--acc);color:var(--acc)}
   .set-row strong{font-size:.9rem}
   .set-row .sub{font-size:.78rem}
   /* Pages & tabs (nav) editor — one row per built-in page */
@@ -1484,6 +1583,20 @@
     line-height:1;display:none;align-items:center;justify-content:center}
   .media-cell:hover .media-copy{display:flex}
   .media-empty,.media-loading{font-size:.85rem;color:var(--mut);padding:1rem 2px;line-height:1.5}
+  /* Empty views were a bare sentence pinned to the top-left of an otherwise blank page —
+     on a 1440px desktop that is one line of grey text above 650px of nothing, which reads
+     as "broken" rather than "nothing here yet". This gives them a bounded, centred card so
+     the emptiness looks deliberate. Opt-in: .sub is used for ordinary subtitles too, so it
+     cannot be restyled globally. */
+  .empty-state{max-width:34rem;margin:1.4rem auto;padding:1.6rem 1.5rem;text-align:center;
+    background:var(--surface);border:1px dashed var(--line-2);border-radius:14px;
+    color:var(--mut);font-size:.88rem;line-height:1.6}
+  /* ONLY the leading <b> is the heading. Scoping this to every <b> promoted inline emphasis
+     mid-sentence to its own line — "drop in a / Video / block" — which is worse than the
+     bare text it replaced. Same for the <br>: hide just the one following that heading. */
+  .empty-state > b:first-child,.empty-state > strong:first-child{
+    display:block;margin-bottom:.35rem;font:700 1rem var(--font-display);color:var(--ink)}
+  .empty-state > b:first-child + br,.empty-state > strong:first-child + br{display:none}
 
   /* embed block */
   .be-embed{display:flex;flex-direction:column;gap:.55rem;padding:.2em 0}
@@ -2271,6 +2384,10 @@
   .q-item .q-due.due{color:var(--acc)} .q-item .q-due.overdue{color:#f472b6}
   .q-item .q-text{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--ink);
     font:inherit;font-size:.88rem;line-height:1.5;padding:.55em .65em;margin:0 0 .55rem;resize:vertical;min-height:4.5em}
+  /* Only when the text actually overflows the cap — a short idea gets no fade. */
+  .q-item .q-text.clipped{-webkit-mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 26px),transparent 100%);
+    mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 26px),transparent 100%)}
+  .q-item .q-text.clipped:focus{-webkit-mask-image:none;mask-image:none}   /* never fade while editing */
   .q-item .q-text:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(34,211,238,.18)}
   .q-item .q-controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.55rem}
   .q-item .q-controls input[type=date],.q-item .q-controls select{background:var(--bg);border:1px solid var(--line);
@@ -2328,8 +2445,15 @@
   .glyph-prev .gp-3d{position:absolute;bottom:1px;right:2px;font-size:.5rem;font-weight:700;color:var(--acc)}
   .glyph-prev{position:relative}
   .gp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:.5rem;overflow:auto}
-  .gp-tile{display:flex;flex-direction:column;align-items:center;gap:.3rem;padding:.7rem .3rem .45rem;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--mut);cursor:pointer;transition:color .15s,border-color .15s,background .15s}
-  .gp-tile:hover{color:var(--acc);border-color:var(--acc);background:var(--surface)}
+  .gp-tile{display:flex;flex-direction:column;align-items:center;gap:.3rem;padding:.7rem .3rem .45rem;border:1px solid var(--line);border-radius:10px;background:var(--bg);cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+  /* Line tiles are tinted per category (--h set inline from the manifest); dark is the base
+     theme, so it gets the lighter, more saturated pair and light overrides below. */
+  .gp-tile{color:hsl(var(--h,212) 62% 68%)}
+  :root[data-theme="light"] .gp-tile{color:hsl(var(--h,212) 55% 40%)}
+  /* Colour tiles carry their own fills — no currentColor to set, and hover must not tint them. */
+  .gp-tile.colour,:root[data-theme="light"] .gp-tile.colour{color:inherit}
+  .gp-tile:hover{border-color:var(--acc);background:var(--surface)}
+  .gp-tile:not(.colour):hover{color:var(--acc)}
   .gp-tile svg{width:26px;height:26px}
   .gp-tile .nm{font-size:.55rem;color:var(--faint);text-align:center;line-height:1.15;word-break:break-word}
   .gp-more{text-align:center;margin-top:.8rem}
@@ -2650,6 +2774,14 @@
      light mode. */
   .pt-preview iframe{width:100%;min-height:60vh;border:1px solid var(--line);border-radius:16px;
     background:var(--thread-canvas);box-shadow:var(--shadow)}
+  /* The placeholder occupies the pane and the iframe is hidden until there is a draft;
+     .has-draft flips them. Sized to the same min-height so the column doesn't jump. */
+  .pt-preview-empty{display:none;min-height:60vh;place-content:center;text-align:center;
+    padding:2rem 1.6rem;border:1px dashed var(--line-2);border-radius:16px;
+    background:var(--thread-canvas);color:var(--mut);font-size:.88rem;line-height:1.6}
+  .pt-preview-empty b{display:block;margin-bottom:.35rem;font:700 1rem var(--font-display);color:var(--ink)}
+  .pt-preview:not(.has-draft) .pt-preview-empty{display:grid}
+  .pt-preview:not(.has-draft) iframe{display:none}
   .pt-preview{display:none}
   .pt-preview.show{display:block}
   @media(min-width:900px){
@@ -2665,14 +2797,26 @@
   }
 
   /* ── LIBRARY (catalogue) ───────────────────────────────────────────────── */
-  .lib-ix-grid{display:grid;grid-template-columns:1fr;gap:1rem;margin-top:.4rem}
-  @media(min-width:760px){ .lib-ix-grid{grid-template-columns:repeat(2,1fr)} }
-  @media(min-width:1200px){ .lib-ix-grid{grid-template-columns:repeat(3,1fr)} }
+  /* the outer grid now STACKS category sections; the cards tile inside .lib-ix-grid-sub */
+  .lib-ix-grid{display:block;margin-top:.4rem}
   .lib-ix-card{background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line);
     border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.04);display:flex;flex-direction:column}
   .lib-ix-frame{width:100%;height:230px;border:0;border-bottom:1px solid var(--line);background:#04060c;display:block}
   .lib-ix-meta{padding:.8rem 1rem 1rem}
-  .lib-ix-cat{font:600 .62rem var(--font-display);letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
+  /* category section heading + its own sub-grid (the outer .lib-ix-grid becomes a stack) */
+  .lib-ix-cathead{font:600 .68rem var(--font-display);letter-spacing:.12em;text-transform:uppercase;
+    color:var(--cyan);margin:1.6rem 0 .6rem 2px;grid-column:1/-1}
+  .lib-ix-cathead:first-child{margin-top:.2rem}
+  .lib-ix-grid-sub{display:grid;grid-template-columns:1fr;gap:1rem}
+  @media(min-width:760px){ .lib-ix-grid-sub{grid-template-columns:repeat(2,1fr)} }
+  @media(min-width:1200px){ .lib-ix-grid-sub{grid-template-columns:repeat(3,1fr)} }
+  .lib-ix-actions{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem}
+  .lib-ix-use{font:600 .74rem var(--font-display);padding:.45em 1em;border-radius:999px;cursor:pointer;
+    border:0;background:var(--grad-pub);color:#042018;box-shadow:var(--glow)}
+  .lib-ix-pchip{font:.7rem var(--font-body);padding:.4em .8em;border-radius:999px;cursor:pointer;
+    border:1px solid var(--line);background:transparent;color:var(--mut)}
+  .lib-ix-pchip:hover,.lib-ix-use:hover{border-color:var(--acc);color:var(--ink)}
+  .lib-ix-use:hover{color:#042018}
   .lib-ix-name{font:600 1rem var(--font-display);margin-top:.2rem}
   .lib-ix-desc{font-size:.82rem;color:var(--mut);margin-top:.35rem;line-height:1.5}
   .lib-ix-presets{font-size:.72rem;color:var(--faint);margin-top:.5rem}
@@ -2720,7 +2864,13 @@
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
 <script>window.__LICENCE_PUBLIC_KEY='20e5e11738c29f3ee250dd38fa1b72695a327a2eb18cf4f9b817c56c664c7201';</script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260801-1eb9ef4";</script>
+<!-- Pure helper modules (quotes, calendar, domain, tour, post-list, share intents).
+     Loaded by BOTH builds. The hosted build additionally loads studio.js, which carries
+     the same modules plus the mode wiring; lib-entry assigns with ??= so the two can't
+     clobber each other. Without this the local build had none of them — see
+     studio-app/lib-entry.js. -->
+<script type="module" src="./studio-lib.js"></script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260801-207449c";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -2751,18 +2901,17 @@
      active section (e.g. Write → Compose/Partner/Inbox). Populated by renderSubnav().
      Lives directly in #app (before .wrap) so it shows for views inside AND outside .wrap
      (Partner & Library sit outside .wrap). Hidden for single-view sections. -->
-<div class="subnav" id="subnav" hidden></div>
-<div class="wrap">
-  <header>
-    <div>
-      <h1 id="appHeaderTitle">Atelier</h1>
-      <div class="sub" id="appHeaderSub" style="margin:0">draft · approve · share</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:.5rem">
+<div class="subnav-bar" id="subnavBar">
+  <div class="subnav-inner">
+    <h1 id="appHeaderTitle" class="brand">Atelier</h1>
+    <div class="subnav" id="subnav"></div>
+    <div class="bar-actions">
       <button class="themeBtn" id="themeToggleMain" title="Toggle theme" onclick="toggleTheme()">☀️</button>
       <button class="install" id="installBtn">⤓ Install</button>
     </div>
-  </header>
+  </div>
+</div>
+<div class="wrap">
 
   <!-- ===== NEW POST (Write default: start a blog post) ===== -->
   <!-- Landing for Write. Clicking "Write" LANDS here (enterNewPost is a no-op) — it
@@ -2807,7 +2956,10 @@
     <textarea id="idea" rows="4" placeholder="e.g. the café that changed how I think about mornings; or paste an article to riff on; or 'why I switched to plain text'"></textarea>
 
     <label>Optional image</label>
-    <input id="img" type="file" accept="image/*" />
+    <!-- Styled by exclusion elsewhere (see the input rule at the top), which deliberately
+         skips type=file because the native control cannot be restyled directly. Wrapping it
+         lets the row match the rest of the form instead of showing raw browser chrome. -->
+    <input id="img" class="file-input" type="file" accept="image/*" />
     <img id="imgPreview" class="preview" style="display:none" />
 
     <button class="btn" id="draftBtn" onclick="doDraft()">✦ Draft it</button>
@@ -2832,7 +2984,7 @@
         <button class="btn" onclick="shareNow()">Share →</button>
       </div>
       <div class="rv-actions">
-        <button class="btn ghost rv-sec" onclick="expandBlog()">✎ Expand into blog post</button>
+        <button class="btn ghost rv-sec" onclick="expandBlog()" title="Expand this draft into a full blog post">✎ Expand to post</button>
         <button class="btn ghost rv-sec" onclick="socialPack()">✦ Social pack</button>
         <button class="btn ghost rv-sec" onclick="repurpose('x-thread')">✦ Thread</button>
         <button class="btn ghost rv-sec" onclick="repurpose('li-carousel')">✦ Carousel</button>
@@ -3248,7 +3400,7 @@
     <!-- ===== Build / version stamp (unobtrusive) — set from window.__STUDIO_BUILD, which
              the deploy pipeline injects at build time (scripts/deploy-studio.sh). ===== -->
     <p class="sub" id="buildStamp" style="margin-top:1.6rem;opacity:.5;font:.72rem var(--font-mono,ui-monospace,monospace)">Atelier · local build</p>
-    <script>(function(){var b=window.__STUDIO_BUILD,el=document.getElementById('buildStamp');if(el)el.textContent=b?('Atelier '+b):'Atelier · local build';})();</script>
+    <script>(function(){var n=(window.__STUDIO_BRAND||'Atelier'),b=window.__STUDIO_BUILD,el=document.getElementById('buildStamp');if(el)el.textContent=b?(n+' '+b):(n+' · local build');})();</script>
   </section>
 
   <!-- ===== SITE SETTINGS ===== -->
@@ -3422,6 +3574,7 @@
       <div class="bar" style="border:0;padding-bottom:.3rem"><h1 style="font-size:.95rem">Your apps</h1></div>
       <p class="sub" style="margin:0 0 .6rem">The apps this Helm backs — status and quick access.</p>
       <div id="homeAppsGrid" class="apps-grid"></div>
+      <p class="sub" id="homeAppsNote" hidden style="margin:.6rem 0 0"></p>
     </div>
 
     <p class="sub" style="margin-top:1.7rem;text-align:center">
@@ -3515,7 +3668,15 @@
             <button class="btn" id="ptSend">Send</button></div>
           <div class="btn-row" style="margin-top:.5rem"><button class="btn ghost" id="ptUndo">Undo turn</button><button class="btn" id="ptPublish">Publish</button></div>
         </div>
-        <div class="pt-preview" id="ptPreview"><iframe id="ptFrame" title="Post preview"></iframe></div>
+        <div class="pt-preview" id="ptPreview">
+          <!-- Placeholder while no draft exists. The iframe is ~840x700 of blank cream until
+               the first turn produces something, which looked like a pane that failed to
+               load rather than one waiting for input. -->
+          <div class="pt-preview-empty" id="ptPreviewEmpty">
+            <b>Your draft appears here.</b>Send an idea on the left and the post builds in this pane, updating after every turn.
+          </div>
+          <iframe id="ptFrame" title="Post preview"></iframe>
+        </div>
       </div>
     </div>
   </section>
@@ -3572,6 +3733,10 @@
       </div>
 
       <div id="libIcons" class="lib-pane" style="display:none">
+        <div class="chips" id="libIconSetChips" style="margin-bottom:.55rem">
+          <button class="chip on" data-set="2d">Line</button>
+          <button class="chip" data-set="colour">Colour</button>
+        </div>
         <div class="lib-icon-controls">
           <input id="libIconSearch" type="search" placeholder="Search 5,000+ icons by name or keyword…" autocomplete="off" />
           <select id="libIconCat" aria-label="Filter by category"><option value="">All categories</option></select>
@@ -3814,37 +3979,6 @@
       </div>
     </div>
   </div>
-  <!-- Quote Library (overlay) — browse a curated, categorised set of public-domain quotes and
-       insert one into the active Quote block. "Write your own" stays in the block itself. -->
-  <div id="quoteLibPanel" class="pp-overlay" hidden>
-    <div class="pp-card ql-card">
-      <div class="pp-head"><strong>Quote library</strong><button class="pp-x" id="qlClose" aria-label="Close">✕</button></div>
-      <div class="ql-body">
-        <input id="qlSearch" class="ql-search" type="text" inputmode="search" autocomplete="off"
-               placeholder="Search quotes or authors — e.g. courage, Twain, time">
-        <div class="ql-facets">
-          <div class="ql-facet-row">
-            <span class="ql-facet-label">Theme</span>
-            <div class="ql-chips" id="qlThemeChips"></div>
-          </div>
-          <div class="ql-facet-row">
-            <span class="ql-facet-label">Tone</span>
-            <div class="ql-chips" id="qlToneChips"></div>
-          </div>
-          <div class="ql-facet-row">
-            <span class="ql-facet-label">Author</span>
-            <select id="qlAuthorSel" class="ql-author-sel"><option value="">All authors</option></select>
-          </div>
-        </div>
-        <div class="ql-count" id="qlCount"></div>
-      </div>
-      <ul class="ql-results" id="qlResults"></ul>
-      <div class="pp-foot">
-        <button class="btn ghost" id="qlReset">Clear filters</button>
-        <button class="btn ghost" id="qlDone">Close</button>
-      </div>
-    </div>
-  </div>
   <!-- Mobile post settings — a slide-up bottom-sheet (reuses the picker-scrim /
        picker-sheet pattern), opened by the "Post settings" button on narrow screens.
        Grouped Topic & series / Look / Publishing, mirroring the desktop rail. -->
@@ -4019,6 +4153,42 @@
   <!-- Existing series names (from listPosts) so the field autocompletes & names stay consistent -->
   <datalist id="seriesNames"></datalist>
 </section><!-- /#v-editor -->
+
+<!-- Quote library — a sibling of #v-editor, NOT a child of it. It lives inside a
+     .pp-overlay (position:fixed; inset:0), but a fixed element still gets no box when
+     an ancestor is display:none, and #v-editor is display:none unless the editor is
+     open. It is opened from TWO places — the editor's Quote block and the Share tab's
+     card maker (cardFromQuote) — so from Share it used to unhide into a hidden section
+     and render 0x0: no panel, no error, and _qlBlock left armed. -->
+  <div id="quoteLibPanel" class="pp-overlay" hidden>
+    <div class="pp-card ql-card">
+      <div class="pp-head"><strong>Quote library</strong><button class="pp-x" id="qlClose" aria-label="Close">✕</button></div>
+      <div class="ql-body">
+        <input id="qlSearch" class="ql-search" type="text" inputmode="search" autocomplete="off"
+               placeholder="Search quotes or authors — e.g. courage, Twain, time">
+        <div class="ql-facets">
+          <div class="ql-facet-row">
+            <span class="ql-facet-label">Theme</span>
+            <div class="ql-chips" id="qlThemeChips"></div>
+          </div>
+          <div class="ql-facet-row">
+            <span class="ql-facet-label">Tone</span>
+            <div class="ql-chips" id="qlToneChips"></div>
+          </div>
+          <div class="ql-facet-row">
+            <span class="ql-facet-label">Author</span>
+            <select id="qlAuthorSel" class="ql-author-sel"><option value="">All authors</option></select>
+          </div>
+        </div>
+        <div class="ql-count" id="qlCount"></div>
+      </div>
+      <ul class="ql-results" id="qlResults"></ul>
+      <div class="pp-foot">
+        <button class="btn ghost" id="qlReset">Clear filters</button>
+        <button class="btn ghost" id="qlDone">Close</button>
+      </div>
+    </div>
+  </div>
 
 <!-- ===== EDITOR UX: slash menu / command palette / focus meter ===== -->
 <!-- Inline slash "/" insert menu (positioned at the caret) -->
@@ -4702,7 +4872,8 @@
   </div>
   <input id="glyphSearch" type="search" placeholder="Search — castle, rocket, cpu, tree, leaf…" autocomplete="off" />
   <div id="glyphMode" class="gp-mode">
-    <button class="chip on" type="button" data-mode="2d">2D flat</button>
+    <button class="chip on" type="button" data-mode="2d">2D line</button>
+    <button class="chip" type="button" data-mode="colour">Colour</button>
     <button class="chip" type="button" data-mode="3d">3D wireframe</button>
   </div>
   <div id="glyphCount" class="gp-count">Loading…</div>
@@ -5116,15 +5287,62 @@ window.goSection=goSection;
 // Secondary nav: render the pill bar for the section that owns `view`.
 function renderSubnav(view){
   const sub=$('subnav'); if(!sub) return;
+  // The bar is PERSISTENT chrome. It used to appear only for multi-view sections, so the
+  // page header jumped 53px whenever you moved between e.g. Posts (1 view) and Media (3) —
+  // the same vertical shift the tagline used to cause, just relocated. Home and Posts own a
+  // single view, so they show their section name as a static label instead of a lone pill:
+  // the bar keeps its height, and the label tells you where you are. Only the full-screen
+  // editor hides it outright, where chrome would compete with the writing surface.
+  // The BAR stays put — it carries the brand, theme toggle and install button, so hiding it
+  // would take those with it. Only the pill row is emptied for the full-screen editor.
   const sectionId=VIEW_SECTION[view];
   const def=sectionId && SECTIONS[sectionId];
-  // hide for unknown views, single-view sections, and the full-screen editor.
-  if(!def || def.views.length<2 || view==='editor'){ sub.hidden=true; sub.innerHTML=''; return; }
-  sub.hidden=false;
+  if(!def || view==='editor'){ sub.innerHTML=''; return; }
+  // Single-view sections render NOTHING here. They used to show the section name as a
+  // static label, which duplicated the page's own <h1> one line below it — the bar read
+  // "Atelier  HOME" directly above a heading saying "Home". The bar keeps its height from
+  // .subnav's min-height instead, so the page still never jumps.
+  if(def.views.length < 2){ sub.innerHTML=''; return; }
   sub.innerHTML = def.views.map(o=>
     `<button type="button" class="${o.v===view?'on':''}" data-subv="${o.v}">${o.label}</button>`
   ).join('');
+  // Only fade the trailing edge when the row genuinely overflows. Measured after layout,
+  // and re-measured on resize, because whether it overflows depends on the viewport.
+  requestAnimationFrame(()=>syncSubnavFade());
 }
+function syncSubnavFade(){
+  const sub=document.getElementById('subnav'); if(!sub) return;
+  sub.classList.toggle('scrolls', sub.scrollWidth > sub.clientWidth + 1);
+}
+window.addEventListener('resize', syncSubnavFade);
+
+// The camera FAB withdraws while scrolling DOWN and returns on scroll up or when scrolling
+// stops, so it stops covering whatever control happens to be under it. Threshold of 8px
+// ignores the jitter that would otherwise make it flicker; below 120px it always shows,
+// since near the top there is nothing to get out of the way of.
+(function camFabScroll(){
+  const fab=document.getElementById('camFab'); if(!fab) return;
+  let last=0, idle=null;
+  addEventListener('scroll', ()=>{
+    const y=Math.max(0, window.scrollY||0), dy=y-last;
+    if(Math.abs(dy)>8){
+      fab.classList.toggle('stowed', dy>0 && y>120);
+      last=y;
+    }
+    clearTimeout(idle);
+    idle=setTimeout(()=>fab.classList.remove('stowed'), 320);   // back as soon as you stop
+  }, {passive:true});
+})();
+
+// <details> has no light dismiss, so an open row menu would stay open while you clicked
+// elsewhere — including on another row's menu, leaving two open at once.
+document.addEventListener('click', (e)=>{
+  document.querySelectorAll('details.pm-more[open]').forEach(d=>{ if(!d.contains(e.target)) d.open=false; });
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape') document.querySelectorAll('details.pm-more[open]').forEach(d=>{ d.open=false; });
+});
+
 // delegated click — switch sub-view within the active section.
 $('subnav').addEventListener('click',e=>{
   const b=e.target.closest('button[data-subv]'); if(!b) return;
@@ -5154,7 +5372,6 @@ function go(v){
   renderSubnav(v);
   // drop the always-on "draft → approve → share" banner away from Home — it's only
   // a meaningful welcome on the dashboard; elsewhere the section header carries context.
-  const sub=$('appHeaderSub'); if(sub) sub.style.display = (v==='getting-started') ? '' : 'none';
   window.scrollTo(0,0);
 }
 window.go=go;
@@ -5186,7 +5403,6 @@ function renderAppCard(a){
   const openBtn = a.url
     ? `<a class="btn ghost" href="${esc(a.url)}" target="_blank" rel="noopener">Open</a>`
     : '<button class="btn ghost" type="button" disabled title="Add a url to this app in config to enable Open">Open</button>';
-  const openHint = a.url ? '' : '<div class="app-hint sub">Add a URL in config to enable Open.</div>';
   const recs = Number(a.records) || 0, usrs = Number(a.users) || 0;
   return `<div class="app-card">
     <div class="app-head">
@@ -5198,7 +5414,6 @@ function renderAppCard(a){
       <button class="btn ghost app-backup" type="button" data-app="${esc(a.id)}">Backup</button>
       ${openBtn}
     </div>
-    ${openHint}
   </div>`;
 }
 async function loadHomeApps(){
@@ -5213,6 +5428,17 @@ async function loadHomeApps(){
     grid.innerHTML = apps.length
       ? apps.map(renderAppCard).join('')
       : '<p class="sub" style="margin:0">No apps configured on this Helm.</p>';
+    // Said ONCE, under the grid, instead of on every card. Seven of eight apps have no url,
+    // so the identical hint was repeating seven times and drowning the actual card content.
+    // The disabled Open buttons still carry it as a title for per-app context.
+    const missing = apps.filter(a => !a.url).length;
+    const note = $('homeAppsNote');
+    if(note){
+      note.textContent = missing
+        ? `${missing} app${missing===1?'' : 's'} ${missing===1?'has':'have'} no URL in config, so Open is disabled for ${missing===1?'it':'them'}.`
+        : '';
+      note.hidden = !missing;
+    }
   }catch(e){
     grid.innerHTML = '<p class="sub" style="margin:0">Couldn’t load your apps right now.</p>';
   }
@@ -5871,7 +6097,7 @@ window.loadInbox=loadInbox;
 function renderInbox(){
   const host=$('ideaList'), cnt=$('inboxCount');
   if(cnt) cnt.textContent=_ideas.length?`${_ideas.length} idea${_ideas.length===1?'':'s'} in the backlog`:'';
-  if(!_ideas.length){ host.innerHTML='<p class="sub">Nothing captured yet. Jot the first idea above.</p>'; return; }
+  if(!_ideas.length){ host.innerHTML='<p class="empty-state"><b>Nothing captured yet.</b>Jot a one-line idea in the box above and press Enter — you can promote any of them to a draft later.</p>'; return; }
   host.innerHTML='';
   for(const it of _ideas) host.appendChild(makeIdeaRow(it));
 }
@@ -6054,6 +6280,22 @@ function makeQueueItem(d, today){
   item.appendChild(meta);
 
   const ta=document.createElement('textarea'); ta.className='q-text'; ta.value=d.text||''; item.appendChild(ta);
+  // A planner idea is a whole social post, so the box (63px) held a fraction of the content
+  // (438px) and cut the last visible line horizontally through the glyphs. Grow to fit, up to
+  // a cap — beyond that it scrolls, but on a line boundary so no row is ever sliced.
+  // A planner idea is a whole social post: the fixed 63px box showed a fraction of 438px of
+  // text and cut the last visible line through the glyphs. Grow to fit up to a cap, and when
+  // it IS capped mark it so CSS can fade the bottom edge — trying to land the height on an
+  // exact line boundary does not survive sub-pixel line-heights, whereas a fade makes the cut
+  // read as "there is more below" instead of as a rendering fault.
+  const fit=()=>{
+    ta.style.height='auto';
+    const max=Math.round(parseFloat(getComputedStyle(ta).lineHeight||'20')*8);
+    const want=ta.scrollHeight;
+    ta.style.height=Math.min(want,max)+'px';
+    ta.classList.toggle('clipped', want>max+1);
+  };
+  ta.addEventListener('input', fit); requestAnimationFrame(fit);
 
   // controls: intended date + platform picker
   const ctl=document.createElement('div'); ctl.className='q-controls';
@@ -6167,8 +6409,8 @@ function renderPosts(){
   const vis=new Set(_postSelect.visible);
   for(const s of [..._postSelect.sel]) if(!vis.has(s)) _postSelect.sel.delete(s);
   if(cnt) cnt.textContent=_posts.length?`${rows.length} of ${_posts.length} post${_posts.length===1?'':'s'}`:'';
-  if(!_posts.length){ list.innerHTML='<p class="sub">No posts yet.</p>'; updateBulkUI(); return; }
-  if(!rows.length){ list.innerHTML='<p class="sub">No posts match.</p>'; updateBulkUI(); return; }
+  if(!_posts.length){ list.innerHTML='<p class="empty-state"><b>No posts yet.</b>Publish one from the editor and it will show up here.</p>'; updateBulkUI(); return; }
+  if(!rows.length){ list.innerHTML='<p class="empty-state"><b>No posts match.</b>Try a different search or clear the filters.</p>'; updateBulkUI(); return; }
   list.innerHTML='';
   if(_postFilter.group==='topic'){
     // group each post under its primary topic (first non-"interactive" tag); posts with
@@ -6220,18 +6462,28 @@ function makePostRow(p){
     </div>
     <div class="pm-actions">
       <button class="pm-act" data-act="edit">Edit</button>
-      ${scheduled?'<button class="pm-act" data-act="reschedule">Reschedule</button><button class="pm-act" data-act="unschedule">Cancel schedule</button>':''}
       ${p.draft?'':'<button class="pm-act" data-act="share">Share / Social</button>'}
-      <button class="pm-act" data-act="video">Make a video</button>
-      ${scheduled?'':`<button class="pm-act" data-act="toggle">${p.draft?'Publish':'Take down'}</button>`}
-      <button class="pm-act" data-act="dup">Duplicate</button>
-      <button class="pm-act danger" data-act="del">Delete</button>
+      ${(!scheduled && p.draft)?'<button class="pm-act" data-act="toggle">Publish</button>':''}
+      <details class="pm-more">
+        <summary class="pm-act pm-more-btn" title="More actions" aria-label="More actions">⋯</summary>
+        <div class="pm-menu">
+          ${scheduled?'<button class="pm-act" data-act="reschedule">Reschedule</button><button class="pm-act" data-act="unschedule">Cancel schedule</button>':''}
+          <button class="pm-act" data-act="video">Make a video</button>
+          ${(!scheduled && !p.draft)?'<button class="pm-act" data-act="toggle">Take down</button>':''}
+          <button class="pm-act" data-act="dup">Duplicate</button>
+          <button class="pm-act danger" data-act="del">Delete</button>
+        </div>
+      </details>
     </div>`;
   // In select mode, tapping the row (or its checkbox) toggles selection instead of opening.
   const toggleSel=()=>{ if(_postSelect.sel.has(p.slug)) _postSelect.sel.delete(p.slug); else _postSelect.sel.add(p.slug);
     row.classList.toggle('sel',_postSelect.sel.has(p.slug));
     const cb=row.querySelector('.pm-selcb'); if(cb) cb.checked=_postSelect.sel.has(p.slug);
     updateBulkUI(); };
+  // Every action still lives in the row, so the per-button querySelector wiring below is
+  // unchanged — the menu only moves them in the DOM. Close it once something is chosen.
+  const det=row.querySelector('.pm-more');
+  if(det) row.querySelectorAll('.pm-menu .pm-act').forEach(b=>b.addEventListener('click',()=>{ det.open=false; }));
   const open=()=>{ if(_postSelect.mode){ toggleSel(); return; } openBlockEditor(p.slug); };
   const main=row.querySelector('.pm-main');
   main.addEventListener('click',open);
@@ -6790,7 +7042,7 @@ async function loadPhotos(slug){
   grid.innerHTML='<p class="sub">Loading…</p>';
   try{
     const photos=await api('/posts/'+slug+'/photos');
-    if(!photos.length){ grid.innerHTML='<p class="sub">No photos.</p>'; return; }
+    if(!photos.length){ grid.innerHTML='<p class="empty-state"><b>No photos in this post yet.</b>Drop images above to fill its gallery.</p>'; return; }
     grid.innerHTML='';
     for(const ph of photos){
       const cell=document.createElement('div');
@@ -7584,6 +7836,7 @@ function renderTopicsEditor() {
   }
   _topics.forEach((t) => {
     const card = document.createElement('div');
+    card.className = 'topic-card';
     card.style.cssText = 'border:1px solid var(--line,#1b2540);border-radius:12px;padding:.9rem;margin-bottom:.8rem';
     const head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;gap:.6rem;margin-bottom:.7rem';
@@ -7597,16 +7850,25 @@ function renderTopicsEditor() {
     tag.className = 'sub'; tag.style.cssText = 'margin:0;font-family:ui-monospace,monospace;opacity:.7';
     tag.textContent = 'tag: ' + (t.tag || '—') + ' · fixed';
     head.append(colour, tag);
+    // Name and Category are short values that were each given a full ~900px row, which made
+    // one topic 370px tall and the page 2,800px for six of them. They pair on one row from
+    // 640px up; the grid collapses to a single column below that.
+    const pair = document.createElement('div'); pair.className = 'topic-pair';
+    const nameField = document.createElement('div');
+    const subField = document.createElement('div');
     const nameL = document.createElement('label'); nameL.textContent = 'Name';
     const name = document.createElement('input'); name.type = 'text'; name.value = t.name || ''; name.placeholder = 'Section name (e.g. The Workshop)';
     name.addEventListener('input', () => { t.name = name.value; });
-    const subL = document.createElement('label'); subL.textContent = 'Category'; subL.style.marginTop = '.6rem';
+    const subL = document.createElement('label'); subL.textContent = 'Category';
     const sub = document.createElement('input'); sub.type = 'text'; sub.value = t.subtitle || ''; sub.placeholder = 'Plain category (e.g. Technology)';
     sub.addEventListener('input', () => { t.subtitle = sub.value; });
     const blurbL = document.createElement('label'); blurbL.textContent = 'Blurb'; blurbL.style.marginTop = '.6rem';
     const blurb = document.createElement('textarea'); blurb.rows = 2; blurb.value = t.blurb || ''; blurb.placeholder = 'One line shown on the section page';
     blurb.addEventListener('input', () => { t.blurb = blurb.value; });
-    card.append(head, nameL, name, subL, sub, blurbL, blurb);
+    nameField.append(nameL, name);
+    subField.append(subL, sub);
+    pair.append(nameField, subField);
+    card.append(head, pair, blurbL, blurb);
     wrap.appendChild(card);
   });
 }
@@ -17779,21 +18041,36 @@ document.addEventListener('focusout', () => {
 });
 
 /* ── glyph icon picker ─────────────────────────────────────────────────────── */
-const GLYPH_SPRITE = '/icons-sprite.svg';
-let _glyphManifest = null, _glyphFiltered = [], _glyphShown = 0, _glyphMode = '2d';
+// Three glyph looks, one table. 2D and 3D deliberately share the Tabler set: `icon3d:`
+// extrudes that icon's STROKE paths into a spinning wireframe, so it only works on line art.
+// The colour set is filled multi-path art with no strokes to extrude, so it is 2D-only —
+// that is why `sym` and `sprite` are per-mode but the two line modes point at the same files.
+const GLYPH_SETS = {
+  '2d':     { sprite:'/icons-sprite.svg',        manifest:'/icons-manifest.json',        sym:'ti-', prefix:'icon:',   label:'2D line' },
+  '3d':     { sprite:'/icons-sprite.svg',        manifest:'/icons-manifest.json',        sym:'ti-', prefix:'icon3d:', label:'3D wireframe' },
+  'colour': { sprite:'/icons-colour-sprite.svg', manifest:'/icons-colour-manifest.json', sym:'fc-', prefix:'iconc:',  label:'colour' },
+};
+const GLYPH_SPRITE = GLYPH_SETS['2d'].sprite;   // kept: other call sites render line glyphs
+let _glyphManifests = {}, _glyphFiltered = [], _glyphShown = 0, _glyphMode = '2d';
 const GLYPH_PAGE = 120;
+function glyphSet(){ return GLYPH_SETS[_glyphMode] || GLYPH_SETS['2d']; }
 
 // A glyph name is always an icon id (word chars + hyphens). Validate before interpolating
 // into the <use href> so a crafted meta.glyph can't break out of the attribute / inject. (L5)
-function glyphUse(name){
+function glyphUse(name, set){
   if(!/^[\w-]+$/.test(String(name||''))) return '';
-  return `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="${GLYPH_SPRITE}#ti-${esc(name)}"></use></svg>`;
+  const S = set || GLYPH_SETS['2d'];
+  // Colour symbols are authored on a 48px grid, line symbols on 24px. The <use> inherits the
+  // symbol's own viewBox, but the outer svg needs the matching box or the art is cropped.
+  const box = S.sym === 'fc-' ? '0 0 48 48' : '0 0 24 24';
+  return `<svg viewBox="${box}" aria-hidden="true"><use href="${S.sprite}#${S.sym}${esc(name)}"></use></svg>`;
 }
 
 function syncGlyphUI(){
   const g = meta.glyph || '';
   let html;
   if(g.startsWith('icon3d:')) html = glyphUse(g.slice(7)) + '<span class="gp-3d">3D</span>';
+  else if(g.startsWith('iconc:')) html = glyphUse(g.slice(6), GLYPH_SETS['colour']);
   else if(g.startsWith('icon:')) html = glyphUse(g.slice(5));
   else if(g && g !== 'none') html = `<span class="gp-none">${esc(g)}</span>`;   // a built-in 3D glyph name (L5)
   else html = `<span class="gp-none">default</span>`;
@@ -17808,32 +18085,54 @@ function openGlyphPicker(){
 }
 function closeGlyphPicker(){ $('glyphScrim').classList.remove('open'); $('glyphSheet').classList.remove('open'); }
 
+// Cached per manifest URL, so switching 2D <-> 3D is free (same file) and the colour set is
+// fetched at most once — and only if the user actually opens that tab.
 async function loadGlyphManifest(){
-  if(_glyphManifest) { applyGlyphSearch(); return; }
+  const url = glyphSet().manifest;
+  if(_glyphManifests[url]) { applyGlyphSearch(); return; }
   $('glyphCount').textContent = 'Loading…';
-  try{ _glyphManifest = await (await fetch('/icons-manifest.json')).json(); }
+  try{ _glyphManifests[url] = await (await fetch(url)).json(); }
   catch(e){ $('glyphCount').textContent = 'Could not load icons.'; return; }
+  _glyphHues = null;
   applyGlyphSearch();
 }
 function renderGlyphGrid(reset){
   const grid = $('glyphGrid');
   if(reset){ grid.innerHTML=''; _glyphShown=0; }
   const next = _glyphFiltered.slice(_glyphShown, _glyphShown+GLYPH_PAGE);
+  const S = glyphSet(), colour = S.sym === 'fc-';
   grid.insertAdjacentHTML('beforeend', next.map(it =>
-    `<button class="gp-tile" type="button" data-n="${it.n}" title="${it.n}">${glyphUse(it.n)}<span class="nm">${it.n}</span></button>`).join(''));
+    `<button class="gp-tile${colour?' colour':''}" type="button" data-n="${it.n}" title="${it.n}"` +
+    // Line icons are drawn in currentColor, so the grid was 5,093 identical grey glyphs and
+    // scanning it was miserable. Tinting each tile by its category turns the wall of grey into
+    // something you can navigate by colour. Colour tiles carry their own fills and are left alone.
+    `${colour?'':` style="--h:${glyphHue(it.c)}"`}>` +
+    `${glyphUse(it.n, S)}<span class="nm">${it.n}</span></button>`).join(''));
   _glyphShown += next.length;
   $('glyphCount').textContent = `${_glyphFiltered.length.toLocaleString()} icon${_glyphFiltered.length===1?'':'s'}${_glyphShown<_glyphFiltered.length?` · showing ${_glyphShown}`:''}`;
   $('glyphMoreBtn').hidden = _glyphShown >= _glyphFiltered.length;
 }
+// Hue per category, spread evenly around the wheel by sorted index — derived rather than
+// hand-mapped so it stays correct if the icon set gains or loses categories (there are 41
+// today). Saturation/lightness live in CSS so each theme picks its own legible pair.
+let _glyphHues = null;
+function glyphHue(cat){
+  if(!_glyphHues){
+    const cats = [...new Set((_glyphManifests[glyphSet().manifest] || []).map(x => x.c).filter(Boolean))].sort();
+    _glyphHues = {};
+    cats.forEach((c, i) => { _glyphHues[c] = Math.round(i * 360 / (cats.length || 1)); });
+  }
+  return _glyphHues[cat] ?? 212;
+}
 function applyGlyphSearch(){
   const q = ($('glyphSearch').value || '').trim().toLowerCase();
-  _glyphFiltered = (_glyphManifest || []).filter(it => !q || it.n.includes(q) || it.t.includes(q) || (it.c||'').toLowerCase().includes(q));
+  _glyphFiltered = (_glyphManifests[glyphSet().manifest] || []).filter(it => !q || it.n.includes(q) || it.t.includes(q) || (it.c||'').toLowerCase().includes(q));
   renderGlyphGrid(true);
 }
 function pickGlyph(name){
-  meta.glyph = (_glyphMode === '3d' ? 'icon3d:' : 'icon:') + name;
+  meta.glyph = glyphSet().prefix + name;
   syncGlyphUI(); if(typeof markDirty==='function') markDirty();
-  closeGlyphPicker(); toast(`Glyph set ✓ (${_glyphMode === '3d' ? '3D wireframe' : '2D'})`);
+  closeGlyphPicker(); toast(`Glyph set ✓ (${glyphSet().label})`);
 }
 function clearGlyph(){ meta.glyph = ''; syncGlyphUI(); if(typeof markDirty==='function') markDirty(); }
 
@@ -17847,8 +18146,12 @@ $('glyphSearch')?.addEventListener('input', () => { clearTimeout(window._glyphT)
 $('glyphGrid')?.addEventListener('click', e => { const t = e.target.closest('.gp-tile'); if(t) pickGlyph(t.dataset.n); });
 $('glyphMode')?.addEventListener('click', e => {
   const b = e.target.closest('[data-mode]'); if(!b) return;
+  if(b.dataset.mode === _glyphMode) return;
   _glyphMode = b.dataset.mode;
   $('glyphMode').querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === b));
+  // 2D/3D share a manifest so this is a no-op re-render for them; colour needs its own fetch.
+  _glyphHues = null;
+  loadGlyphManifest();
 });
 
 async function doPreview(){
@@ -18132,6 +18435,10 @@ function ptAddMsg(role, text){ const t=$('ptThread'); const d=document.createEle
 // black text on the dark iframe background. Mirror the editor preview exactly —
 // inline preview.css + the data-post-theme="dark" article wrapper.
 async function ptRender(html){
+  // One switch, at the only place the preview is ever written: empty string (a fresh or
+  // reset session) shows the placeholder, anything else shows the iframe.
+  const pane = $('ptPreview');
+  if(pane) pane.classList.toggle('has-draft', !!(html && String(html).trim()));
   const css = await getPreviewCss();
   $('ptFrame').srcdoc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style></head>'
     + '<body><article data-post-theme="dark"><div class="pv-frame"><div class="article-body">'+(html||'')+'</div></div></article></body></html>';
@@ -18199,6 +18506,11 @@ const ICON_KW={
   Film:['movie','clapper','video','device-tv','ticket','popcorn','cinema','theater','camera','3d','film','playlist','playstation','vinyl','music','microphone','headphones'],
 };
 let _libIxLoaded=false, _libIconsInit=false, _libIcons=null, _libIconFiltered=[], _libIconShown=0, _libIconCat='__real';
+// Which glyph set the Library is browsing. The picker inside the editor has the same switch;
+// they are deliberately independent, because the Library is a browse-and-copy tool you may be
+// using for a different purpose than the post you happen to have open.
+let _libIconSet='2d';
+function libSet(){ return GLYPH_SETS[_libIconSet] || GLYPH_SETS['2d']; }
 let _libSavedInit=false, _libSavedKind='', _libSavedQuery='';
 const LIB_ICON_PAGE=140;
 
@@ -18369,7 +18681,7 @@ function renderLibSaved(){
       + '<p class="sub">When you build a figure or interactive, tap <b>💾 Save to Library</b> to keep it here and reuse it in any post.</p></div>';
     return;
   }
-  if(!items.length){ body.innerHTML = '<p class="sub">No saved items match your search.</p>'; return; }
+  if(!items.length){ body.innerHTML = '<p class="empty-state"><b>Nothing saved matches that.</b>Clear the search to see everything you have saved.</p>'; return; }
   body.innerHTML = '';
   const grid = document.createElement('div'); grid.className = 'lib-saved-grid';
   for(const it of items){
@@ -18463,7 +18775,7 @@ function setVideoLibIntro(){
 
 function videoLibExplainer(html){
   const body = $('videoLibBody'); if(!body) return;
-  body.innerHTML = `<div class="media-empty" style="text-align:left;line-height:1.55">${html}</div>`;
+  body.innerHTML = `<div class="media-empty empty-state">${html}</div>`;
 }
 
 // Is a Helm backend reachable for this Studio session? Mirrors helmReachable() in
@@ -18758,22 +19070,53 @@ async function loadLibInteractives(){
   try{ fams=await api('/playgrounds'); }
   catch(e){ cnt.textContent='Could not load templates: '+(e.message||e); _libIxLoaded=false; return; }
   fams=Array.isArray(fams)?fams:[];
-  cnt.textContent=`${fams.length} interactive template${fams.length===1?'':'s'} — drop any into a post (Compose → Interactive) and customise.`;
-  // render cards immediately, then build live previews one at a time (no AI, just the build engine)
-  for(const f of fams){
-    const card=document.createElement('div');
-    card.className='lib-ix-card';
-    const presets=(f.presets||[]).map(p=>p.name).filter(Boolean);
-    card.innerHTML=`
-      <iframe class="lib-ix-frame" title="${esc(f.name||f.id)} preview" sandbox="allow-scripts" loading="lazy"></iframe>
-      <div class="lib-ix-meta">
-        <div class="lib-ix-cat">${esc(f.category||'other')}</div>
-        <div class="lib-ix-name">${esc(f.name||f.id)}</div>
-        <div class="lib-ix-desc">${esc(f.description||'')}</div>
-        ${presets.length?`<div class="lib-ix-presets">${presets.length} preset${presets.length===1?'':'s'}: ${esc(presets.slice(0,4).join(' · '))}</div>`:''}
-      </div>`;
-    grid.appendChild(card);
-    f._frame=card.querySelector('iframe');
+  cnt.textContent=`${fams.length} interactive template${fams.length===1?'':'s'} — tap any card to customise it and drop it into your post.`;
+  // GROUPED by category, like the picker's own family list — a flat grid of 80 in registry
+  // order made the catalogue hard to scan, and the per-card category label did no organising
+  // work on its own. Categories are alphabetical; each becomes a labelled section.
+  const byCat = {};
+  for(const f of fams){ const c = f.category || 'other'; (byCat[c] = byCat[c] || []).push(f); }
+  for(const cat of Object.keys(byCat).sort()){
+    const h = document.createElement('div');
+    h.className = 'lib-ix-cathead';
+    h.textContent = cat + '  ·  ' + byCat[cat].length;
+    grid.appendChild(h);
+    const sub = document.createElement('div');
+    sub.className = 'lib-ix-grid-sub';
+    grid.appendChild(sub);
+    for(const f of byCat[cat]){
+      const card=document.createElement('div');
+      card.className='lib-ix-card';
+      const presets=(f.presets||[]).map(p=>p.name).filter(Boolean);
+      card.innerHTML=`
+        <iframe class="lib-ix-frame" title="${esc(f.name||f.id)} preview" sandbox="allow-scripts" loading="lazy"></iframe>
+        <div class="lib-ix-meta">
+          <div class="lib-ix-name">${esc(f.name||f.id)}</div>
+          <div class="lib-ix-desc">${esc(f.description||'')}</div>
+          <div class="lib-ix-actions"></div>
+        </div>`;
+      // The catalogue used to be browse-ONLY: no click handler anywhere on the grid, so the
+      // copy had to send you to Compose → Interactive to find the same template again. Each
+      // card now opens the picker on that family (chooseTplLibFamily), and each preset chip
+      // jumps straight in with that preset loaded — the same entry points the picker's own
+      // list uses. The preview iframe stays interactive in place; the buttons sit beneath it
+      // so trying a widget never triggers a navigation.
+      const acts = card.querySelector('.lib-ix-actions');
+      const use = document.createElement('button');
+      use.type='button'; use.className='lib-ix-use';
+      use.textContent='Customise & insert';
+      use.addEventListener('click', () => chooseTplLibFamily(f.id));
+      acts.appendChild(use);
+      for(const pn of presets.slice(0,3)){
+        const chip=document.createElement('button');
+        chip.type='button'; chip.className='lib-ix-pchip';
+        chip.textContent=pn; chip.title='Insert “'+pn+'”';
+        chip.addEventListener('click', (e)=>{ e.stopPropagation(); chooseTplLibFamily(f.id, pn); });
+        acts.appendChild(chip);
+      }
+      sub.appendChild(card);
+      f._frame=card.querySelector('iframe');
+    }
   }
   // Build a preview ONLY when its card comes near the viewport. Eagerly building every
   // family meant 2 server round-trips each (preset + build) for all of them — 80 families
@@ -18841,20 +19184,39 @@ $('libMediaSearch')?.addEventListener('input', () => {
 
 async function loadLibIcons(){
   const cnt=$('libIconCount'); cnt.textContent='Loading icons…';
-  if(!_libIcons){
-    try{ _libIcons=_glyphManifest || await (await fetch('/icons-manifest.json')).json(); _glyphManifest=_libIcons; }
+  // Shares _glyphManifests with the editor's picker, so opening the Library after using the
+  // picker (or vice versa) costs no second fetch for a set that is already in memory.
+  const url=libSet().manifest;
+  if(!_glyphManifests[url]){
+    try{ _glyphManifests[url]=await (await fetch(url)).json(); }
     catch(e){ cnt.textContent='Could not load icons.'; _libIconsInit=false; return; }
   }
+  _libIcons=_glyphManifests[url];
   buildLibIconCats();
   syncLibIconCatUI();
   applyLibIconSearch();
 }
 // build the category dropdown + quick chips from the manifest (counts per category)
 function buildLibIconCats(){
+  const sel0=$('libIconCat'), chips0=$('libIconCatChips');
+  // Rebuild whenever the set changes: the two sets have entirely different taxonomies (41
+  // Tabler categories vs 11 of ours), so the old build-once guard would have left the colour
+  // set filtered by categories none of its icons carry — an empty grid with no explanation.
+  if(sel0 && sel0.dataset.set===_libIconSet && chips0 && chips0.dataset.set===_libIconSet) return;
+  if(sel0){ sel0.innerHTML='<option value="">All categories</option>'; sel0.dataset.set=_libIconSet; }
+  if(chips0){ chips0.innerHTML=''; chips0.dataset.set=_libIconSet; }
   const counts={};
   (_libIcons||[]).forEach(it=>{ const c=it.c||'Other'; counts[c]=(counts[c]||0)+1; });
   const cats=Object.keys(counts).sort();
   const realCount=(_libIcons||[]).filter(it=>REAL_WORLD_CATS.includes(it.c||'Other')).length;
+  // The colour set is 329 icons with our own flat categories — no "real-world" grouping and
+  // no keyword themes, both of which are Tabler-specific heuristics. Plain category chips.
+  if(_libIconSet!=='2d'){
+    if(sel0) cats.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c+' ('+counts[c]+')'; sel0.appendChild(o); });
+    if(chips0) chips0.innerHTML=`<button class="chip${_libIconCat===''?' on':''}" data-cat="">All</button>`+
+      cats.map(c=>`<button class="chip${c===_libIconCat?' on':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+    return;
+  }
   const sel=$('libIconCat');
   if(sel && sel.options.length<=1){
     // surface "Real-world" first, then real-world cats, then everything else
@@ -18882,10 +19244,25 @@ function renderLibIcons(reset){
   const grid=$('libIconGrid');
   if(reset){ grid.innerHTML=''; _libIconShown=0; }
   const next=_libIconFiltered.slice(_libIconShown,_libIconShown+LIB_ICON_PAGE);
-  grid.insertAdjacentHTML('beforeend', next.map(it=>`<button class="gp-tile" type="button" data-n="${it.n}" title="${esc(it.n)}">${glyphUse(it.n)}<span class="nm">${esc(it.n)}</span></button>`).join(''));
+  const S=libSet(), colour=S.sym==='fc-';
+  grid.insertAdjacentHTML('beforeend', next.map(it=>
+    `<button class="gp-tile${colour?' colour':''}" type="button" data-n="${it.n}" title="${esc(it.n)}"` +
+    `${colour?'':` style="--h:${libHue(it.c)}"`}>` +
+    `${glyphUse(it.n,S)}<span class="nm">${esc(it.n)}</span></button>`).join(''));
   _libIconShown+=next.length;
   $('libIconCount').textContent=`${_libIconFiltered.length.toLocaleString()} icon${_libIconFiltered.length===1?'':'s'}${_libIconShown<_libIconFiltered.length?` · showing ${_libIconShown}`:''} · tap to copy`;
   $('libIconMore').hidden=_libIconShown>=_libIconFiltered.length;
+}
+// Same evenly-spread-by-sorted-index scheme as the picker, but cached separately because the
+// Library and the picker can be showing different sets at the same time.
+let _libHues=null, _libHuesFor=null;
+function libHue(cat){
+  if(!_libHues || _libHuesFor!==_libIconSet){
+    const cats=[...new Set((_libIcons||[]).map(x=>x.c).filter(Boolean))].sort();
+    _libHues={}; _libHuesFor=_libIconSet;
+    cats.forEach((c,i)=>{ _libHues[c]=Math.round(i*360/(cats.length||1)); });
+  }
+  return _libHues[cat] ?? 212;
 }
 function applyLibIconSearch(){
   const q=($('libIconSearch').value||'').trim().toLowerCase();
@@ -18904,7 +19281,17 @@ $('libIconSearch')?.addEventListener('input',()=>{ clearTimeout(window._libIconT
 $('libIconCat')?.addEventListener('change',e=>{ _libIconCat=e.target.value||''; syncLibIconCatUI(); applyLibIconSearch(); });
 $('libIconCatChips')?.addEventListener('click',e=>{ const b=e.target.closest('[data-cat]'); if(!b) return; _libIconCat=b.dataset.cat||''; syncLibIconCatUI(); applyLibIconSearch(); });
 $('libIconMore')?.addEventListener('click',()=>renderLibIcons(false));
-$('libIconGrid')?.addEventListener('click',e=>{ const t=e.target.closest('.gp-tile'); if(!t) return; const tok='icon:'+t.dataset.n; (navigator.clipboard&&navigator.clipboard.writeText(tok)); toast('Copied “'+tok+'”'); });
+$('libIconSetChips')?.addEventListener('click',e=>{
+  const b=e.target.closest('[data-set]'); if(!b || b.dataset.set===_libIconSet) return;
+  _libIconSet=b.dataset.set;
+  $('libIconSetChips').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===b));
+  // '__real' is a Tabler-only bucket; carrying it into the colour set would filter to nothing.
+  _libIconCat = _libIconSet==='2d' ? '__real' : '';
+  const sr=$('libIconSearch');
+  if(sr) sr.placeholder = _libIconSet==='2d' ? 'Search 5,000+ icons by name or keyword…' : 'Search 329 colour icons…';
+  loadLibIcons();
+});
+$('libIconGrid')?.addEventListener('click',e=>{ const t=e.target.closest('.gp-tile'); if(!t) return; const tok=libSet().prefix+t.dataset.n; (navigator.clipboard&&navigator.clipboard.writeText(tok)); toast('Copied “'+tok+'”'); });
 
 /* ══ MAKE A VIDEO — storyboard editor + local render job ═══════════════════════
    Derive a storyboard from a post (server buildStoryboard), let the owner edit the

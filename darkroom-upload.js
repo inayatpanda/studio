@@ -285,7 +285,7 @@ function renderGrid() {
   const summary = $("dkSummary");
   if (!grid) return;
   if (!photos.length) {
-    grid.innerHTML = '<p class="sub" style="color:var(--faint);text-align:center;padding:1.4rem 0">No photos staged yet. Drop some above.</p>';
+    grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1"><b>No photos staged yet.</b>Drop a batch above, or use Take a photo.</p>';
     if (summary) summary.textContent = "";
     $("dkBulkBar").style.display = "none";
     $("dkCommit").disabled = true;
