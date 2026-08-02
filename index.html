@@ -224,25 +224,37 @@
      up. Titles wrap to one, two or three lines ("Publishing Pipeline (Phase 3)"), which
      previously pushed each card's actions to its own arbitrary height and made the grid
      look ragged. The actions get margin-top:auto so they sit on a common baseline. */
+  /* Same edge weight and flat fill as the landing cards, so the two grids on Home belong to
+     one page. No gradient or inset highlight: at this contrast the edge does the work, and a
+     soft-shadowed card next to a hard-edged one reads as a different component. Unlike the
+     landing cards these are NOT tinted per column — there are a dozen of them and a hue would
+     imply a grouping that does not exist. The status badges carry the colour instead. */
   .app-card{display:flex;flex-direction:column;align-items:stretch;
-    background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line);
-    border-radius:14px;padding:.9rem 1rem 1rem;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.04)}
+    background:var(--surface);border:1.5px solid var(--card-edge);
+    border-radius:12px;padding:.95rem 1.05rem 1.05rem;box-shadow:none;
+    transition:border-color .15s}
+  .app-card:hover{border-color:var(--card-edge-strong)}
   .app-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem}
-  .app-head strong{font:700 .98rem var(--font-display);color:var(--ink)}
+  .app-head strong{font:700 1.02rem var(--font-display);color:var(--ink);letter-spacing:-.01em}
   .app-badges{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:flex-end}
   .app-badge{font:700 .6rem var(--font-display);letter-spacing:.05em;text-transform:uppercase;
     padding:.2em .55em;border-radius:999px;white-space:nowrap}
-  .app-badge.clinical{background:rgba(129,140,248,.16);color:var(--violet);border:1px solid rgba(129,140,248,.35)}
-  .app-badge.ok{background:rgba(45,212,191,.14);color:var(--acc);border:1px solid rgba(45,212,191,.3)}
-  .app-badge.muted{background:var(--bg-1);color:var(--faint);border:1px solid var(--line)}
-  .app-stats{margin:.55rem 0 0;font-size:.78rem;color:var(--faint);font-family:var(--font-display)}
+  /* Badges reuse the landing tints so the whole page draws from one palette. */
+  .app-badge.clinical{background:var(--tint-c);color:var(--ink-c);border:1.5px solid currentColor}
+  .app-badge.ok{background:var(--tint-a);color:var(--ink-a);border:1.5px solid currentColor}
+  .app-badge.muted{background:transparent;color:var(--mut);border:1.5px solid var(--card-edge)}
+  .app-stats{margin:.55rem 0 0;font-size:.8rem;color:var(--mut);font-family:var(--font-display)}
   .app-actions{display:flex;gap:.5rem;margin-top:auto;padding-top:.8rem}
   .topic-pair{display:grid;grid-template-columns:1fr;gap:0 .8rem}
   @media(min-width:640px){ .topic-pair{grid-template-columns:1fr 1fr} }
   /* label has a global margin-top:1rem; the first one in each cell would push the two
      columns out of alignment with each other and with the swatch row above. */
   .topic-pair > div > label:first-child{margin-top:0}
-  .app-actions .btn{margin-top:0;flex:1;padding:.6em;font-size:.85rem}
+  /* Outlined like the section pills rather than filled, for the same reason. */
+  .app-actions .btn{margin-top:0;flex:1;padding:.55em;font-size:.85rem;border-radius:999px;
+    background:transparent;border:1.5px solid var(--card-edge);color:var(--ink);box-shadow:none}
+  .app-actions .btn:hover:not(:disabled){border-color:var(--acc-deep);color:var(--acc-deep);background:var(--pill-hover)}
+  .app-actions .btn:disabled{opacity:.45;cursor:not-allowed}
   .app-actions a.btn{text-decoration:none}
   .app-hint{margin:.5rem 0 0;font-size:.72rem}
 
@@ -2918,7 +2930,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260802-75cb07f";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260802-f69df13";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>

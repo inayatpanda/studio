@@ -1,6 +1,6 @@
 // Minimal service worker — enables "Add to Home Screen" / installable PWA.
 // Network-first; we never want stale drafts, so we don't aggressively cache.
-const CACHE = 'studio-v79';
+const CACHE = 'studio-v80';
 const SHELL = ['/', '/index.html', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/resize.js', '/preview.css'];
 
 // Cache the shell per-entry, NOT with addAll(): addAll() rejects the whole install if a
