@@ -1,8 +1,8 @@
-// studio-app/darkroom-upload.src.js
+// src/darkroom-upload.src.js
 import { resizeToBase64 } from "./resize.js";
 import exifr from "./vendor/exifr.esm.js";
 
-// studio-app/core/darkroomMeta.js
+// src/core/darkroomMeta.js
 function titleCase(s) {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
@@ -128,7 +128,7 @@ function mergeMeta(existing, additions) {
   return out;
 }
 
-// studio-app/darkroom-upload.src.js
+// src/darkroom-upload.src.js
 var IMG_DIR = (slug) => `src/content/blog/_images/${slug}`;
 var META_PATH = (slug) => `${IMG_DIR(slug)}/meta.json`;
 var EXIF_PICK = ["DateTimeOriginal", "Make", "Model", "GPSLatitude", "GPSLongitude"];

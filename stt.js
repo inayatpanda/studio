@@ -1,4 +1,4 @@
-// studio-app/core/stt.js
+// src/core/stt.js
 var STT_PROVIDERS = {
   whisper: {
     id: "whisper",
@@ -60,7 +60,7 @@ function preloadPct(files) {
   return Math.max(0, Math.min(100, Math.round(loaded / total * 100)));
 }
 
-// studio-app/stt.src.js
+// src/stt.src.js
 function whisperSupported() {
   try {
     return !!(globalThis.Worker && globalThis.WebAssembly && globalThis.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && globalThis.AudioContext && globalThis.OfflineAudioContext);

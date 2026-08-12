@@ -1,4 +1,4 @@
-// studio-app/stt-worker.src.js
+// src/stt-worker.src.js
 var STT_BASE = new URL("./", self.location.href).pathname;
 var STT_VENDOR_PATH = STT_BASE + "vendor/stt/";
 var STT_MODEL_PATH = STT_BASE + "models/";

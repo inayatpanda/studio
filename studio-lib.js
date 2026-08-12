@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// studio-app/core/domain.js
+// src/core/domain.js
 var domain_exports = {};
 __export(domain_exports, {
   GH_PAGES_A: () => GH_PAGES_A,
@@ -85,7 +85,7 @@ function pagesDomainStatus(pages, expectedInput) {
   return { configured, matches, cname, built, httpsEnforced, certState, certReady, ok, message };
 }
 
-// studio-app/core/tour.js
+// src/core/tour.js
 var tour_exports = {};
 __export(tour_exports, {
   TOUR_DONE_KEY: () => TOUR_DONE_KEY,
@@ -208,7 +208,7 @@ function shouldAutoOpen(store) {
   return isPending(store) && !isDone(store);
 }
 
-// studio-app/core/quotes.js
+// src/core/quotes.js
 var quotes_exports = {};
 __export(quotes_exports, {
   QUOTES: () => QUOTES,
@@ -221,7 +221,7 @@ __export(quotes_exports, {
   toneFacets: () => toneFacets
 });
 
-// studio-app/data/quotes.json
+// src/data/quotes.json
 var quotes_default = {
   version: 1,
   note: "Curated public-domain / widely-attributed quotations for the Studio Quote Library. Every author is long-deceased (text in the public domain) or the line is a widely-attributed aphorism. No modern copyrighted lyrics or book passages. themes: Life, Love, Work & ambition, Creativity & art, Science & knowledge, Failure & resilience, Time, Nature, Wisdom, Humour, Freedom, Courage. tone: inspiring, wry, reflective, defiant, tender.",
@@ -616,7 +616,7 @@ var quotes_default = {
   ]
 };
 
-// studio-app/core/quotes.js
+// src/core/quotes.js
 var QUOTES = Object.freeze(
   (Array.isArray(quotes_default?.quotes) ? quotes_default.quotes : []).map((q, i) => Object.freeze({
     id: "q" + i,
@@ -677,7 +677,7 @@ function quoteForInsert(q) {
   return { text: (q?.text || "").trim(), cite: formatAttribution(q) };
 }
 
-// studio-app/core/postCalendar.js
+// src/core/postCalendar.js
 var postCalendar_exports = {};
 __export(postCalendar_exports, {
   MAX_YEAR: () => MAX_YEAR,
@@ -835,7 +835,7 @@ function agendaForMonth(byDay, year, month) {
   return out.sort((a, b) => a.iso.localeCompare(b.iso));
 }
 
-// studio-app/core/shareIntents.js
+// src/core/shareIntents.js
 var shareIntents_exports = {};
 __export(shareIntents_exports, {
   PLATFORM_CAP: () => PLATFORM_CAP,
@@ -950,7 +950,7 @@ function shareSheetText(lines, url) {
   return t || u;
 }
 
-// studio-app/core/postList.js
+// src/core/postList.js
 var postList_exports = {};
 __export(postList_exports, {
   isAlreadyDeleted: () => isAlreadyDeleted,
@@ -967,7 +967,7 @@ function isAlreadyDeleted(err) {
   return /\bnot found\b|already (?:deleted|gone)/.test(text);
 }
 
-// studio-app/lib-entry.js
+// src/lib-entry.js
 window.__studioDomain ??= domain_exports;
 window.__studioTour ??= tour_exports;
 window.__studioQuotes ??= quotes_exports;

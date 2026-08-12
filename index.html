@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-product="atelier">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -2102,9 +2102,27 @@
     background:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   .fig-draw-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem}
   .fig-draw-actions .btn{margin-top:0;flex:1 1 auto;width:auto;white-space:nowrap}
+  .fig-canvas-format{display:flex;align-items:center;justify-content:center;gap:.65rem;flex-wrap:wrap;
+    margin:.15rem 0 .75rem;padding:.55rem .7rem;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+  .fig-canvas-format>.lbl{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+  .fig-canvas-format .hint{font-size:.74rem;color:var(--mut)}
+  .fig-canvas-zoom{display:flex;align-items:center;justify-content:center;gap:.4rem;margin:-.25rem 0 .55rem}
+  .fig-canvas-zoom .btn{margin:0;width:auto;min-width:42px;min-height:38px;padding:.42rem .7rem}
+  .fig-canvas-zoom output{min-width:64px;text-align:center;font-size:.78rem;font-weight:700;color:var(--ink)}
+  .fig-canvas-zoom .pan-on{background:var(--acc)!important;border-color:var(--acc)!important;color:#07111a!important}
+  .fig-canvas-viewport{max-height:min(60vh,600px);overflow:auto;overscroll-behavior:contain;
+    padding:.2rem;border-radius:16px;scrollbar-gutter:stable both-edges;background:color-mix(in srgb,var(--bg) 72%,transparent)}
+  .fig-canvas-stage{position:relative;margin-inline:auto}
+  .fig-canvas-stage .fig-draw-surface{transform-origin:top left;will-change:transform;
+    transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+  .fig-canvas-viewport.is-panning #figCanvas{cursor:grab}
+  .fig-canvas-viewport.is-panning.is-dragging #figCanvas{cursor:grabbing}
+  @media(prefers-reduced-motion:reduce){.fig-canvas-stage .fig-draw-surface{transition:none}}
   .fig-frames{margin-top:.55rem;padding:.5rem .55rem;border:1px solid var(--line);
     border-radius:12px;background:var(--surface);display:flex;flex-direction:column;gap:.45rem}
   .fig-frames-row{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+  .fig-frame-nav-row .fig-frame-label{flex:1 1 auto}
+  .fig-frame-actions{align-items:stretch}
   .fig-frame-nav,.fig-frame-act{margin-top:0;flex:0 0 auto;width:auto;
     padding:.5em .7em;min-height:42px;white-space:nowrap;font-size:.82rem}
   .fig-frame-nav{min-width:46px;font-size:1rem}
@@ -2138,11 +2156,16 @@
     #figDrawBox .fig-draw-width{flex:1 1 7rem}
     #figDrawBox .fig-draw-swatches{order:10;flex-basis:100%;justify-content:flex-start}
     #figDrawBox .fig-draw-tool{padding:.4rem .6rem}
+    #figDrawBox .fig-frame-actions .fig-frame-act{flex:1 1 auto}
   }
   /* pen colours + fill/text tools + floating text editor */
   .fig-draw-swatches{display:inline-flex;gap:.3rem;align-items:center;flex-wrap:wrap}
   .fig-sw{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
   .fig-sw.on{border-color:#fff;box-shadow:0 0 0 2px var(--acc)}
+  .fig-custom-colour{width:30px;height:30px;flex:0 0 30px;border-radius:50%;border:2px solid var(--line);
+    overflow:hidden;position:relative;cursor:pointer;background:conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+  .fig-custom-colour.on{border-color:#fff;box-shadow:0 0 0 2px var(--acc)}
+  .fig-custom-colour input{position:absolute;inset:-8px;width:46px;height:46px;opacity:0;cursor:pointer}
   .fig-draw-tool.on{border-color:var(--acc);color:var(--acc);background:rgba(45,212,191,.1)}
   .fig-text-input{position:absolute;z-index:5;min-width:9rem;background:var(--bg);border:1px solid var(--acc);
     border-radius:8px;color:var(--ink);padding:.35rem .55rem;font:600 .9rem var(--font-display);outline:none}
@@ -2205,6 +2228,12 @@
   .fig-sticker-ai{display:flex;gap:.5rem;align-items:stretch;flex-wrap:wrap;margin:.1rem 0 .5rem}
   .fig-sticker-ai .ai-input{flex:1 1 180px;width:auto;margin:0;font-size:.88rem}
   .fig-sticker-ai .btn{margin-top:0;flex:0 0 auto;width:auto;white-space:nowrap}
+  .sticker-genre-tabs{display:flex;gap:.4rem;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    padding:.1rem 0 .55rem;margin:0 0 .45rem;border-bottom:1px solid var(--line);scrollbar-width:thin}
+  .sticker-genre-tabs button{flex:none;margin:0;min-height:40px;padding:.45rem .7rem;border:1px solid var(--line);
+    border-radius:999px;background:var(--surface);color:var(--mut);font:600 .74rem system-ui;cursor:pointer}
+  .sticker-genre-tabs button.on,.sticker-genre-tabs button[aria-selected="true"]{
+    border-color:var(--acc);background:var(--acc);color:#042018}
   .fig-stickers-grid-wrap{display:flex;flex-direction:column;gap:.5rem;max-height:46vh;
     overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px}
   .fig-sticker-group-lbl{font:600 .68rem var(--font-display,system-ui);letter-spacing:.08em;
@@ -2343,6 +2372,24 @@
   .chat-acts button{min-width:42px;min-height:38px;border:1px solid var(--line);border-radius:9px;
     background:rgba(140,160,200,.06);color:var(--ink);cursor:pointer;font-size:.9rem}
   .chat-acts button:hover{border-color:var(--acc)}
+  .chat-acts button:disabled{opacity:.38;cursor:not-allowed;border-color:var(--line)}
+  /* CHAT-10: an in-compose route to the existing final rendered preview. */
+  #chatReviewDock{display:none}
+  #v-editor.chat-on #chatReviewDock{display:flex;justify-content:flex-end;
+    position:sticky;top:3.6rem;z-index:8;height:0;overflow:visible;padding:0 .6rem}
+  #chatReviewBtn{display:inline-flex;align-items:center;gap:.4em;margin-top:.55rem;
+    border:1px solid var(--line);border-radius:999px;cursor:pointer;background:var(--surface);
+    color:var(--mut);font:600 .78rem var(--font-display);padding:.42em .9em;
+    box-shadow:0 4px 14px rgba(0,0,0,.18)}
+  :root[data-theme="light"] #chatReviewBtn{box-shadow:0 4px 14px rgba(30,41,59,.12)}
+  #chatReviewBtn:hover{border-color:var(--acc);color:var(--acc)}
+  #chatReviewBtn:disabled{opacity:.5;cursor:default}
+  #chatReviewBtn .tico{width:15px;height:15px}
+  @media(max-width:640px){
+    #v-editor.chat-on #chatReviewDock{top:6.2rem}
+    #chatReviewBtn .tpv-lbl{display:none}
+    #chatReviewBtn{padding:.5em;min-width:34px;min-height:34px;justify-content:center}
+  }
   #chatSheet{position:fixed;inset:0;z-index:70;background:rgba(2,4,10,.6)}
   .chat-sheet-card{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
     border-radius:16px 16px 0 0;padding:1rem .9rem calc(1rem + env(safe-area-inset-bottom));
@@ -2920,6 +2967,7 @@
   .lib-icon-controls #libIconCat{flex:1 1 30%;min-width:160px}
   #libIconCatChips{margin:.5rem 0 .2rem}
 </style>
+<link rel="stylesheet" href="/premium.css" />
 <!-- Baked-in licence verify key (hex Ed25519 public key). Patched by `npm run licence:init`
      and carried through to the hosted build. Empty until init runs → gate stays open
      (no key configured) so a fresh checkout still loads. -->
@@ -2930,7 +2978,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260802-f69df13";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260812-a2efdc1";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -3301,7 +3349,10 @@
       <input id="dkInput" type="file" accept="image/*" multiple style="display:none" />
     </div>
     <div class="dk-add-row">
-      <button type="button" class="btn ghost" id="dkCamBtn">📷 Take a photo</button>
+      <button type="button" class="btn ghost camera-action" id="dkCamBtn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span>Take a photo</span>
+      </button>
       <!-- capture="environment" opens the rear camera on mobile; a normal file picker on desktop. -->
       <input id="dkCamInput" type="file" accept="image/*" capture="environment" multiple style="display:none" />
     </div>
@@ -3588,6 +3639,31 @@
     <div id="tsMsg" class="msg"></div>
   </section>
 
+  <!-- ===== WEBSITE + STUDIO DESTINATIONS ===== -->
+  <section class="view" id="v-more">
+    <div class="bar"><h1>Website &amp; studio</h1></div>
+    <div class="premium-kicker">INAYATPANDA.COM</div>
+    <p class="sub" style="margin:.55rem 0 0">Manage the public site, publish through Helm, or open the live destination you want to inspect.</p>
+    <div class="premium-grid">
+      <button class="premium-destination" type="button" onclick="go('site-settings');loadSiteSettings()"><strong>Site identity &amp; navigation</strong><small>Brand, public tabs, social links and forms.</small></button>
+      <button class="premium-destination" type="button" onclick="go('topics-settings');loadTopicsSettings()"><strong>Observatory</strong><small>Shape the constellations and topic labels.</small></button>
+      <button class="premium-destination" type="button" onclick="go('review');initShareReview()"><strong>Publishing desk</strong><small>Review finished work and publish via Helm.</small></button>
+      <button class="premium-destination" type="button" onclick="go('queue');loadQueue()"><strong>Social planner</strong><small>Prepare and track posts for social channels.</small></button>
+      <button class="premium-destination" type="button" onclick="go('connect');loadConnect()"><strong>Helm connection</strong><small>Connection, repository and publishing status.</small></button>
+      <button class="premium-destination" type="button" onclick="go('settings');loadSettings()"><strong>Keys &amp; preferences</strong><small>Private integrations, AI and app behaviour.</small></button>
+    </div>
+    <h2 style="font-size:1rem;margin:1.7rem 0 .15rem">Open the live website</h2>
+    <div class="premium-live-links" aria-label="Live website sections">
+      <a href="https://inayatpanda.com/" target="_blank" rel="noopener">Home ↗</a>
+      <a href="https://inayatpanda.com/explore/" target="_blank" rel="noopener">Observatory ↗</a>
+      <a href="https://inayatpanda.com/posts/" target="_blank" rel="noopener">Posts ↗</a>
+      <a href="https://inayatpanda.com/darkroom/" target="_blank" rel="noopener">Darkroom ↗</a>
+      <a href="https://inayatpanda.com/apps/" target="_blank" rel="noopener">Apps ↗</a>
+      <a href="https://inayatpanda.com/about/" target="_blank" rel="noopener">About ↗</a>
+      <a href="https://inayatpanda.com/contact/" target="_blank" rel="noopener">Contact ↗</a>
+    </div>
+  </section>
+
   <!-- ===== HOME (launchpad + owner apps dashboard) =====
        Home is a LAUNCHPAD for everyone: friendly, tappable action cards → the main
        tabs (each just calls goSection()). When the Studio is backed by a Helm
@@ -3613,17 +3689,27 @@
         <span class="lp-t">Posts</span>
         <span class="lp-s">Manage everything you've written.</span>
       </button>
+      <button class="lp-card" type="button" onclick="go('create-flipbook');openFlipbookWorkspace()">
+        <svg class="lp-ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 20h10"/><path d="M9 8l6 3.5L9 15z"/></svg>
+        <span class="lp-t">Make a flipbook</span>
+        <span class="lp-s">Draw frame by frame, animate it, then export a GIF or video.</span>
+      </button>
+      <button class="lp-card" type="button" onclick="go('create-interactive');openInteractiveWorkspace()">
+        <svg class="lp-ic" viewBox="0 0 24 24"><path d="M12 3l2.5 5 5.5.8-4 3.9.95 5.5L12 21l-4.9-2.8L8 12.7l-4-3.9L9.5 8z"/></svg>
+        <span class="lp-t">Make an interactive</span>
+        <span class="lp-s">Build a live widget with an editor and preview side by side.</span>
+      </button>
     </div>
 
     <div class="lp-sec">
       <button class="lp-link" type="button" onclick="goSection('media')">
         <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 16l-5-5-9 8"/></svg>Media
       </button>
-      <button class="lp-link" type="button" onclick="goSection('share')">
+      <button class="lp-link" type="button" onclick="go('review');initShareReview()">
         <svg viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.6"/></svg>Share
       </button>
-      <button class="lp-link" type="button" onclick="goSection('settings')">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v3M12 17.5v3M4.6 7.8l2.6 1.5M16.8 14.7l2.6 1.5M4.6 16.2l2.6-1.5M16.8 9.3l2.6-1.5"/></svg>Settings
+      <button class="lp-link" type="button" onclick="goSection('more')">
+        <svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="19" cy="5" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="19" r="1"/><circle cx="12" cy="19" r="1"/><circle cx="19" cy="19" r="1"/></svg>More
       </button>
     </div>
 
@@ -3690,6 +3776,41 @@
     <button class="btn" style="margin-top:1.25rem;width:100%" type="button" onclick="dismissGettingStarted()">Done — don't show again</button>
   </section>
 
+  <!-- ===== CREATE: first-class standalone creative tools ================= -->
+  <section class="view create-view" id="v-create-flipbook">
+    <div class="bar"><h1>Flipbook studio</h1></div>
+    <div class="create-hero create-hero--flipbook">
+      <div class="create-art" aria-hidden="true">
+        <span class="create-frame create-frame--1"></span><span class="create-frame create-frame--2"></span><span class="create-frame create-frame--3"></span>
+        <svg viewBox="0 0 24 24"><path d="M9 7l7 5-7 5z"/></svg>
+      </div>
+      <div class="create-copy">
+        <span class="create-kicker">Draw · animate · export</span>
+        <h2>Bring a sketch to life.</h2>
+        <p>Draw one frame at a time with onion skinning, preview the movement, then keep it in your Library or export a GIF or video.</p>
+        <button class="btn create-launch" type="button" onclick="openFlipbookWorkspace()">Open the flipbook canvas</button>
+      </div>
+    </div>
+    <div class="create-inline-host" id="flipbookInlineHost" aria-live="polite"></div>
+  </section>
+
+  <section class="view create-view" id="v-create-interactive">
+    <div class="bar"><h1>Interactive studio</h1></div>
+    <div class="create-hero create-hero--interactive">
+      <div class="create-art create-art--interactive" aria-hidden="true">
+        <span class="create-orbit"></span><span class="create-dot create-dot--1"></span><span class="create-dot create-dot--2"></span><span class="create-dot create-dot--3"></span>
+        <svg viewBox="0 0 24 24"><path d="M12 3l2.5 5 5.5.8-4 3.9.95 5.5L12 21l-4.9-2.8L8 12.7l-4-3.9L9.5 8z"/></svg>
+      </div>
+      <div class="create-copy">
+        <span class="create-kicker">Describe · build · explore</span>
+        <h2>Turn an idea into something people can use.</h2>
+        <p>Start from a template or describe your own widget. Test it live, save it to your Library, or export a standalone HTML file.</p>
+        <button class="btn create-launch" type="button" onclick="openInteractiveWorkspace()">Open the interactive builder</button>
+      </div>
+    </div>
+    <div class="create-inline-host" id="interactiveInlineHost" aria-live="polite"></div>
+  </section>
+
 </div><!-- /.wrap -->
 
 <!-- ===== First-run "write your first post" tour (coach card) =====
@@ -3729,13 +3850,9 @@
           <div class="btn-row" style="margin-top:.5rem"><button class="btn ghost" id="ptUndo">Undo turn</button><button class="btn" id="ptPublish">Publish</button></div>
         </div>
         <div class="pt-preview" id="ptPreview">
-          <!-- Placeholder while no draft exists. The iframe is ~840x700 of blank cream until
-               the first turn produces something, which looked like a pane that failed to
-               load rather than one waiting for input. -->
-          <div class="pt-preview-empty" id="ptPreviewEmpty">
-            <b>Your draft appears here.</b>Send an idea on the left and the post builds in this pane, updating after every turn.
-          </div>
-          <iframe id="ptFrame" title="Post preview"></iframe>
+          <div class="pt-preview-head"><div><strong>Live draft</strong><span>Updates as the Partner shapes your post.</span></div><span class="pt-preview-live">Preview</span></div>
+          <div class="pt-preview-empty" id="ptPreviewEmpty"><span>✦</span><strong>Your post will take shape here.</strong><p>Choose a prompt or send an idea. The preview updates with every turn.</p></div>
+          <iframe id="ptFrame" title="Post preview" sandbox="allow-scripts"></iframe>
         </div>
       </div>
     </div>
@@ -3748,6 +3865,7 @@
       <p class="sub" style="margin-top:-.3rem">Everything you can drop into a post — browse what's available.</p>
       <div class="seg" id="libSeg" style="margin-bottom:1rem">
         <button class="on" data-lib="interactives">Interactive templates</button>
+        <button data-lib="stickers">Stickers</button>
         <button data-lib="makers">Make</button>
         <button data-lib="saved">Saved</button>
         <button data-lib="icons">Icons</button>
@@ -3790,6 +3908,13 @@
       <div id="libInteractives" class="lib-pane">
         <p class="sub" id="libIxCount">Loading templates…</p>
         <div id="libIxGrid" class="lib-ix-grid"></div>
+      </div>
+
+      <div id="libStickers" class="lib-pane" style="display:none">
+        <p class="sub" style="margin-top:-.3rem">Browse Scribble's complete retro sticker collection. Pick one to preview, resize, place on an image, save, or insert into the post you have open.</p>
+        <input class="media-search" id="libStickerSearch" type="search" placeholder="Search this sticker genre…" autocomplete="off" />
+        <div class="sticker-genre-tabs" id="libStickerGenres" role="tablist" aria-label="Sticker genres"></div>
+        <div class="fig-sticker-grid" id="libStickerGrid"><p class="media-loading">Loading stickers…</p></div>
       </div>
 
       <div id="libIcons" class="lib-pane" style="display:none">
@@ -4119,6 +4244,9 @@
     <!-- CENTRE: document canvas -->
     <div id="editorInner">
       <input class="title-in" id="editorTitle" placeholder="Post title…" />
+      <div id="chatReviewDock">
+        <button id="chatReviewBtn" type="button" title="Review the final note" aria-label="Review the final note"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-eye"/></svg><span class="tpv-lbl">Review note</span></button>
+      </div>
       <div id="blockList"></div>
       <div id="editorActions">
         <button id="addBlockBtn">＋ Add block</button>
@@ -4397,11 +4525,13 @@
     <button class="ptile" data-type="image"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-photo"/></svg><span class="nm">Image</span></button>
     <button class="ptile" data-type="quote"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-quote"/></svg><span class="nm">Quote</span></button>
     <button class="ptile" data-type="gallery"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-library-photo"/></svg><span class="nm">Gallery</span></button>
+    <button class="ptile" id="illusTile" data-type="__illus"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-library-photo"/></svg><span class="nm">Illustration library</span></button>
     <button class="ptile" data-type="embed"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-video"/></svg><span class="nm">Video</span></button>
     <button class="ptile" data-type="table"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-table"/></svg><span class="nm">Table</span></button>
     <button class="ptile" data-type="playground"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-terminal-2"/></svg><span class="nm">Playground</span></button>
     <button class="ptile" id="tplLibTile" data-type="__tpllib"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-wand"/></svg><span class="nm">Interactive (template)</span></button>
     <button class="ptile" id="figTile" data-type="__figure"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-chart-dots"/></svg><span class="nm">Figure</span></button>
+    <button class="ptile" id="stickerTile" data-type="__sticker"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-sticker"/></svg><span class="nm">Stickers</span></button>
     <button class="ptile" data-type="divider"><svg class="tico" aria-hidden="true"><use href="/icons-sprite.svg#ti-separator"/></svg><span class="nm">Divider</span></button>
   </div>
 </div>
@@ -4446,7 +4576,7 @@
 <div class="picker-scrim" id="illusScrim"></div>
 <div class="picker-sheet illus-sheet" id="illusSheet">
   <div class="picker-grab"></div>
-  <h3 id="illusTitle">🎨 Illustrations</h3>
+  <h3 id="illusTitle">🎨 Illustration library</h3>
   <div class="illus-tools">
     <input class="illus-search" id="illusSearch" type="search" placeholder="Search illustrations — description or tag…" autocomplete="off" />
     <div class="illus-chips" id="illusStyles"></div>
@@ -4538,20 +4668,35 @@
         <p class="tpllib-suggest-msg" id="tplLibModifyMsg"></p>
       </div>
     </div>
-    <p class="tpllib-lbl" id="tplLibPresetLbl">Preset</p>
-    <div class="chips" id="tplLibPresets"></div>
-    <p class="tpllib-lbl" id="tplLibSettingsLbl">Settings</p>
-    <div class="tpllib-form" id="tplLibForm"></div>
-    <p class="tpllib-lbl">Preview</p>
-    <div class="tpllib-preview" id="tplLibPreview"></div>
-    <p class="tpllib-lbl" id="tplLibPlacementLbl">Placement</p>
-    <div id="tplLibPlacement"></div>
-    <p class="tpllib-err" id="tplLibErr"></p>
-    <div class="tpllib-actions">
-      <button class="btn" id="tplLibInsertBtn" type="button">Insert</button>
-      <button class="btn ghost" id="tplLibSaveLibBtn" type="button" title="Save this interactive to your Library to reuse in any post">💾 Save to Library</button>
-      <button class="btn ghost tpllib-maker-only" id="tplLibExportHtmlBtn" type="button" title="Download this interactive as a standalone .html file you can open in any browser">⬇ Export .html</button>
-      <button class="btn ghost" id="tplLibCancelBtn" type="button">Cancel</button>
+    <div class="tpllib-build-top">
+      <p class="tpllib-lbl" id="tplLibPresetLbl">Preset</p>
+      <div class="chips" id="tplLibPresets"></div>
+    </div>
+    <div class="tpllib-mobile-switch" role="tablist" aria-label="Interactive builder view">
+      <button type="button" id="tplLibEditTab" role="tab" aria-selected="true">Edit</button>
+      <button type="button" id="tplLibPreviewTab" role="tab" aria-selected="false">Preview</button>
+    </div>
+    <div class="tpllib-workspace" id="tplLibWorkspace" data-panel="edit">
+      <div class="tpllib-editor-pane" id="tplLibEditorPane">
+        <p class="tpllib-lbl" id="tplLibSettingsLbl">Settings</p>
+        <div class="tpllib-form" id="tplLibForm"></div>
+        <p class="tpllib-lbl" id="tplLibPlacementLbl">Placement</p>
+        <div id="tplLibPlacement"></div>
+      </div>
+      <aside class="tpllib-preview-pane" id="tplLibPreviewPane" aria-label="Live interactive preview">
+        <div class="tpllib-preview-head">
+          <div><strong>Live preview</strong><span>Updates as you edit</span></div>
+          <span class="tpllib-preview-status" id="tplLibPreviewStatus" role="status" aria-live="polite">Preparing…</span>
+        </div>
+        <div class="tpllib-preview" id="tplLibPreview"></div>
+        <p class="tpllib-err" id="tplLibErr" role="alert"></p>
+        <div class="tpllib-actions">
+          <button class="btn" id="tplLibInsertBtn" type="button">Insert</button>
+          <button class="btn ghost" id="tplLibSaveLibBtn" type="button" title="Save this interactive to your Library to reuse in any post">💾 Save to Library</button>
+          <button class="btn ghost tpllib-maker-only" id="tplLibExportHtmlBtn" type="button" title="Download this interactive as a standalone .html file you can open in any browser">⬇ Export .html</button>
+          <button class="btn ghost" id="tplLibCancelBtn" type="button">Cancel</button>
+        </div>
+      </aside>
     </div>
   </div>
 </div>
@@ -4619,8 +4764,9 @@
         <p class="fig-compose-lbl">Slap a sticker</p>
         <div class="fig-sticker-tools">
           <input class="ai-input fig-sticker-search" id="figStickerSearch" type="search"
-            placeholder="Search stickers — plane, atom, heart…" autocomplete="off" />
+            placeholder="Search this sticker genre…" autocomplete="off" />
         </div>
+        <div class="sticker-genre-tabs" id="figStickerGenres" role="tablist" aria-label="Sticker genres"></div>
         <!-- AI generate-a-sticker row -->
         <div class="fig-sticker-ai">
           <input class="ai-input" id="figStickerAiText" type="text"
@@ -4657,6 +4803,9 @@
           <button type="button" class="fig-sw" data-c="#818cf8" title="Violet" style="background:#818cf8"></button>
           <button type="button" class="fig-sw" data-c="#f59e0b" title="Amber" style="background:#f59e0b"></button>
           <button type="button" class="fig-sw" data-c="#fb7185" title="Rose" style="background:#fb7185"></button>
+          <label class="fig-custom-colour" title="Custom colour">
+            <input id="figCustomColour" type="color" value="#1b2433" aria-label="Custom colour" />
+          </label>
         </span>
         <button class="btn ghost fig-draw-tool" id="figFillMode" type="button" aria-pressed="false" title="Fill: your next stroke closes into a filled shape">◧ Fill</button>
         <button class="btn ghost fig-draw-tool" id="figTextMode" type="button" aria-pressed="false" title="Text: tap to place a label, tap a label to edit, drag to move">T Text</button>
@@ -4709,15 +4858,36 @@
         </span>
         <button class="btn ghost fig-draw-tool" id="figImgRemove" type="button" title="Remove the image">✕ Remove image</button>
       </div>
-      <div class="fig-draw-surface" id="figDrawSurface">
-        <canvas id="figCanvas"></canvas>
+      <div class="fig-canvas-format" aria-label="Canvas and export format">
+        <span class="lbl">Canvas &amp; export</span>
+        <span class="seg" id="figFlipAspect" role="group" aria-label="Canvas and export format">
+          <button type="button" data-a="16:9" aria-pressed="true">▭ Landscape</button>
+          <button type="button" data-a="1:1" aria-pressed="false">□ Square</button>
+          <button type="button" data-a="9:16" aria-pressed="false">▯ Portrait</button>
+        </span>
+        <span class="hint" id="figAspectHint">16:9 widescreen video</span>
+      </div>
+      <div class="fig-canvas-zoom" role="group" aria-label="Canvas zoom">
+        <button class="btn ghost" id="figZoomOut" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+        <button class="btn ghost" id="figZoomReset" type="button" title="Reset zoom to 100%"><output id="figZoomOutVal">100%</output></button>
+        <button class="btn ghost" id="figZoomIn" type="button" title="Zoom in" aria-label="Zoom in">＋</button>
+        <button class="btn ghost" id="figPanMode" type="button" title="Pan around a zoomed canvas" aria-pressed="false">✋ Pan</button>
+      </div>
+      <div class="fig-canvas-viewport" id="figCanvasViewport" tabindex="0" aria-label="Scrollable drawing canvas">
+        <div class="fig-canvas-stage" id="figCanvasStage">
+          <div class="fig-draw-surface" id="figDrawSurface">
+            <canvas id="figCanvas"></canvas>
+          </div>
+        </div>
       </div>
       <!-- Flipbook frame controls: navigate / add / duplicate / delete frames, onion skin, playback -->
       <div class="fig-frames" id="figFrames">
-        <div class="fig-frames-row">
+        <div class="fig-frames-row fig-frame-nav-row">
           <button class="btn ghost fig-frame-nav" id="figFramePrev" type="button" title="Previous frame" aria-label="Previous frame">◀</button>
           <span class="fig-frame-label" id="figFrameLabel" aria-live="polite">Frame 1 / 1</span>
           <button class="btn ghost fig-frame-nav" id="figFrameNext" type="button" title="Next frame" aria-label="Next frame">▶</button>
+        </div>
+        <div class="fig-frames-row fig-frame-actions">
           <button class="btn ghost fig-frame-act" id="figFrameAdd" type="button" title="Add a blank frame">+ Frame</button>
           <button class="btn ghost fig-frame-act" id="figFrameDup" type="button" title="Duplicate this frame">⧉ Duplicate</button>
           <button class="btn ghost fig-frame-act" id="figFrameDel" type="button" title="Delete this frame">🗑 Delete</button>
@@ -4751,14 +4921,6 @@
             <span class="seg" id="figFlipLoop" role="group" aria-label="Loop">
               <button type="button" data-loop="loop" aria-pressed="true">Loop</button>
               <button type="button" data-loop="pingpong" aria-pressed="false">Ping-pong</button>
-            </span>
-          </span>
-          <span class="fig-flip-seg" title="Shape of the exported GIF / video (square feed, portrait feed, story)">
-            <span class="lbl">Export</span>
-            <span class="seg" id="figFlipAspect" role="group" aria-label="Export shape">
-              <button type="button" data-a="1:1" aria-pressed="true">1:1</button>
-              <button type="button" data-a="4:5" aria-pressed="false">4:5</button>
-              <button type="button" data-a="9:16" aria-pressed="false">9:16</button>
             </span>
           </span>
         </div>
@@ -4966,7 +5128,7 @@
   </div>
 </div>
 
-<!-- ===== PRIMARY NAV — 5 sections + Home =====================================
+<!-- ===== PRIMARY NAV — 5 focused destinations ================================
      Bottom tab bar on phones, fixed left rail on desktop (see nav.bottom CSS).
      Each button lands on its section's DEFAULT view via goSection(); the secondary
      #subnav pills switch between the views within a multi-view section. -->
@@ -4977,16 +5139,19 @@
   <button data-section="write" onclick="goSection('write')">
     <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Write
   </button>
+  <button data-section="create" onclick="goSection('create')">
+    <svg viewBox="0 0 24 24"><path d="M12 3l2.5 5 5.5.8-4 3.9.95 5.5L12 21l-4.9-2.8L8 12.7l-4-3.9L9.5 8z"/></svg>Create
+  </button>
   <button data-section="posts" onclick="goSection('posts')">
     <svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h12"/></svg>Posts
   </button>
   <button data-section="media" onclick="goSection('media')">
     <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 16l-5-5-9 8"/></svg>Media
   </button>
-  <button data-section="share" onclick="goSection('share')">
-    <svg viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.6"/></svg>Share
+  <button data-section="more" onclick="goSection('more')">
+    <svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="19" cy="5" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="19" r="1"/><circle cx="12" cy="19" r="1"/><circle cx="19" cy="19" r="1"/></svg>More
   </button>
-  <button data-section="settings" onclick="goSection('settings')">
+  <button data-section="settings" onclick="go('settings');loadSettings()">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings
   </button>
 </nav>
@@ -5029,11 +5194,14 @@ function setTheme(t, persist){
   // around fixed bottom bars on phones.
   const mc = document.querySelector('meta[name="theme-color"]');
   if(mc) mc.content = light ? '#eef1f6' : '#04060c';
-  const icon = tico(light ? 'sun' : 'moon');
+  const nextThemeLabel = light ? 'Dark' : 'Light';
+  const icon = tico(light ? 'moon' : 'sun');
   const t1=$('themeToggleMain'), t2=$('themeToggleEditor'), t3=$('themeToggleSettings');
-  if(t1) t1.innerHTML=icon;
-  if(t2) t2.innerHTML=icon;
-  if(t3) t3.innerHTML=icon;
+  [t1,t2,t3].filter(Boolean).forEach(btn=>{
+    btn.innerHTML=`${icon}<span>${nextThemeLabel}</span>`;
+    btn.title=`Switch to ${nextThemeLabel.toLowerCase()} theme`;
+    btn.setAttribute('aria-label',btn.title);
+  });
 }
 function toggleTheme(){
   const cur=document.documentElement.dataset.theme;
@@ -5285,7 +5453,7 @@ function closeFirstPostTour(done){
 window.closeFirstPostTour=closeFirstPostTour;
 
 /* ── nav / view switching ─────────────────────────────────────────────────
-   Two-level IA: 5 sections + Home (primary nav) → each owns one or more views.
+   Two-level IA: 5 focused primary destinations → each owns one or more views.
    The flat list of view ids is preserved; sections are a routing layer over them.
    • goSection(id)  — primary nav entry point: lands on the section's default view.
    • renderSubnav() — draws the secondary pill bar for multi-view sections.
@@ -5298,6 +5466,8 @@ const SECTIONS = {
   write:    { label:'Write',    views:[ {v:'newpost',         label:'New post',       run:'enterNewPost'},
                                         {v:'partner',         label:'Partner',        run:'initPartner'},
                                         {v:'inbox',           label:'Inbox',          run:'loadInbox'} ] },
+  create:   { label:'Create',   views:[ {v:'create-flipbook', label:'Flipbook',       run:'openFlipbookWorkspace'},
+                                        {v:'create-interactive',label:'Interactive',   run:'openInteractiveWorkspace'} ] },
   posts:    { label:'Posts',    views:[ {v:'posts',           label:'Posts',          run:'loadPosts'} ] },
   // Media = Darkroom (photo uploader) · Library (browse droppables) · Video
   // (browse uploaded videos). #v-photos is an EDITOR sub-view (the Gallery-block
@@ -5305,14 +5475,7 @@ const SECTIONS = {
   media:    { label:'Media',    views:[ {v:'darkroom',        label:'Darkroom',       run:'__darkroom'},
                                         {v:'library',         label:'Library',        run:'initLibrary'},
                                         {v:'video',           label:'Video',          run:'initVideoLibrary'} ] },
-  // Share = review/queue + the social Compose (moved here from Write).
-  share:    { label:'Share',    views:[ {v:'review',          label:'Review',         run:'initShareReview'},
-                                        {v:'queue',           label:'Social Planner', run:'loadQueue'},
-                                        {v:'compose',          label:'Compose',        run:null} ] },
-  settings: { label:'Settings', views:[ {v:'site-settings',   label:'Site',           run:'loadSiteSettings'},
-                                        {v:'topics-settings', label:'Topics',         run:'loadTopicsSettings'},
-                                        {v:'connect',          label:'Connect',        run:'loadConnect'},
-                                        {v:'settings',         label:'Keys',           run:'loadSettings'} ] },
+  more:     { label:'More',     views:[ {v:'more',             label:'Website & studio', run:null} ] },
 };
 // reverse map: view id → section id (every reachable view resolves to a primary tab).
 // drafts/postedit/editor have no own tab — they highlight a sensible parent.
@@ -5321,6 +5484,7 @@ VIEW_SECTION['drafts']   = 'posts';   // standalone saved-drafts list → groupe
 VIEW_SECTION['postedit'] = 'posts';   // legacy quick post editor → Posts
 VIEW_SECTION['photos']   = 'posts';   // Gallery-block picker (editor sub-view) → Posts (no Media tab)
 VIEW_SECTION['setup']    = 'home';    // "Getting started" onboarding → highlights Home (no own tab)
+for(const view of ['review','queue','compose','site-settings','topics-settings','connect','settings']) VIEW_SECTION[view] = 'more';
 // The block editor has no tab of its own; which primary tab it highlights depends
 // on HOW it was opened: a brand-new post belongs to Write, editing an existing
 // post belongs to Posts. `editorSection` is set by the two entry points
@@ -5415,6 +5579,8 @@ $('subnav').addEventListener('click',e=>{
 function go(v){
   // editor is outside #app so handle specially
   const isEditor = v==='editor';
+  if(v!=='create-flipbook' && $('figSheet')?.classList.contains('maker-inline')) closeFigLib();
+  if(v!=='create-interactive' && $('tplLibSheet')?.classList.contains('maker-inline')) closeTplLib();
   $('app').style.display = isEditor ? 'none' : 'block';
   $('v-editor').classList.toggle('on', isEditor);
   if(typeof chatOnViewChange === 'function') chatOnViewChange(isEditor);
@@ -6448,7 +6614,7 @@ async function loadPosts(){
   const list=$('postsList');
   list.innerHTML='<p class="sub">Loading…</p>';
   try{ _posts=await api('/posts'); renderPosts(); renderPostCalendar(); }
-  catch(e){ list.innerHTML=`<p class="sub" style="color:#f472b6">${esc(e.message)}</p>`; }
+  catch(e){ list.innerHTML=`<p class="sub helm-status"><span aria-hidden="true">!</span>${esc(e.message)}</p>`; }
 }
 function renderPosts(){
   const list=$('postsList'), cnt=$('postsCount');
@@ -7535,7 +7701,7 @@ async function ensureSiteCfg(){
    so leaving it un-renamed keeps that behaviour; renaming it pins a fixed label. */
 const NAV_CATALOGUE = [
   { href: '/',             label: 'Home' },
-  { href: '/observatory/', label: 'Observatory' },
+  { href: '/explore/', label: 'Observatory' },
   { href: '/writing/',     label: 'Posts' },
   { href: '/about/',       label: 'About' },
   { href: '/contact/',     label: 'Contact' },
@@ -7690,7 +7856,7 @@ function navFromRows() {
     if (!row.on) continue;
     const label = (row.label || '').trim() || row.href;
     const item = { href: row.href, label, primary: !!row.primary };
-    if (row.href === '/observatory/' && label === 'Observatory') item.themeLabel = true;
+    if ((row.href === '/explore/' || row.href === '/observatory/') && label === 'Observatory') item.themeLabel = true;
     out.push(item);
   }
   return out;
@@ -9112,6 +9278,7 @@ function chatFieldFor(block){
     case 'quote':   return { field:'html', label:'quote', md:true };
     case 'image':   return { field:'caption', label:'image caption', md:false };
     case 'embed':   return { field:'caption', label:'video caption', md:false };
+    case 'video':   return { field:'caption', label:'video caption', md:false };
     case 'figure':  return { field:'caption', label:'figure caption', md:false };
     case 'playground':
       return (block.template && block.template.familyId) ? { field:'title', label:'interactive title', md:false } : null;
@@ -9124,6 +9291,22 @@ function chatIsPlainParagraph(text){
   const t = String(text == null ? '' : text).trim();
   if(!t || /\n/.test(t)) return false;
   return !/^(#{1,6} |> |[-*] |\d+\. |```)/.test(t);
+}
+function chatMoveTargetIndex(blocks, id, delta){
+  if(!Array.isArray(blocks) || !id) return -1;
+  const from = blocks.findIndex(block => block && block.id === id);
+  const step = Number(delta) < 0 ? -1 : Number(delta) > 0 ? 1 : 0;
+  const to = from + step;
+  return from >= 0 && step && to >= 0 && to < blocks.length ? to : -1;
+}
+function moveChatBlock(blocks, id, delta){
+  const source = Array.isArray(blocks) ? blocks : [];
+  const from = source.findIndex(block => block && block.id === id);
+  const to = chatMoveTargetIndex(source, id, delta);
+  if(to < 0) return { blocks:source, moved:false, index:from };
+  const next = source.slice();
+  [next[from], next[to]] = [next[to], next[from]];
+  return { blocks:next, moved:true, index:to };
 }
 function chatHtmlToText(html){
   let s = String(html == null ? '' : html);
@@ -9293,22 +9476,23 @@ function chatDecorate(){
   card.classList.add('chat-bound');
   const row = document.createElement('div');
   row.className = 'chat-acts';
-  const mk = (icon, title, fn) => {
+  const mk = (icon, title, fn, disabled) => {
     const b = document.createElement('button');
     b.type = 'button'; b.innerHTML = tico(icon); b.title = title; b.setAttribute('aria-label', title);
+    b.disabled = !!disabled;
     b.addEventListener('click', e => { e.stopPropagation(); fn(); });
     row.appendChild(b);
   };
-  mk('arrow-up', 'Move up', () => chatMoveBound(-1));
-  mk('arrow-down', 'Move down', () => chatMoveBound(1));
+  mk('arrow-up', 'Move up', () => chatMoveBound(-1), chatMoveTargetIndex(doc.blocks, _chatBound, -1) < 0);
+  mk('arrow-down', 'Move down', () => chatMoveBound(1), chatMoveTargetIndex(doc.blocks, _chatBound, 1) < 0);
   mk('trash', 'Delete block', chatDeleteBound);
   card.appendChild(row);
 }
 function chatMoveBound(d){
-  const i = doc.blocks.findIndex(x => x.id === _chatBound);
-  const j = i + d;
-  if(i < 0 || j < 0 || j >= doc.blocks.length) return;
-  [doc.blocks[i], doc.blocks[j]] = [doc.blocks[j], doc.blocks[i]];
+  const moved = moveChatBlock(doc.blocks, _chatBound, d);
+  if(!moved.moved) return;
+  pushHistory();
+  doc.blocks = moved.blocks;
   markDirty(); chatPaint();
 }
 async function chatDeleteBound(){
@@ -12045,6 +12229,8 @@ $('pickerGrid').addEventListener('click', e => {
   closePicker();
   if(tile.dataset.type === '__tpllib'){ openTplLib(at); return; }
   if(tile.dataset.type === '__figure'){ openFigLib(at); return; }
+  if(tile.dataset.type === '__sticker'){ openStickerLibrary(at); return; }
+  if(tile.dataset.type === '__illus'){ openIllusPicker({ insertAt: at }); return; }
   addBlock(tile.dataset.type, at);
 });
 
@@ -12173,12 +12359,14 @@ const INSERT_ACTIONS = [
   { ic:'separator',     label:'Divider',     key:'divider rule hr separator',    insert:(at)=>addBlock('divider', at) },
   { ic:'photo',         label:'Image',       key:'image photo picture',          insert:(at)=>addBlock('image', at) },
   { ic:'library-photo', label:'Gallery',     key:'gallery images grid',          insert:(at)=>addBlock('gallery', at) },
+  { ic:'library-photo', label:'Illustration library', key:'illustrations cloud gallery artwork r2 image library', insert:(at)=>openIllusPicker({ insertAt: at }) },
   { ic:'video',         label:'Video',       key:'video embed youtube vimeo',    insert:(at)=>addBlock('embed', at) },
   { ic:'table',         label:'Table',       key:'table grid columns rows',      insert:(at)=>addBlock('table', at) },
   { ic:'code',          label:'Code / Raw',  key:'code raw html block',          insert:(at)=>addBlock('raw', at) },
   { ic:'terminal-2',    label:'Playground',  key:'playground interactive code',  insert:(at)=>addBlock('playground', at) },
   { ic:'wand',          label:'Interactive (template)', key:'interactive template playground library', insert:(at)=>openTplLib(at) },
   { ic:'chart-dots',    label:'Figure',      key:'figure diagram svg drawing',   insert:(at)=>openFigLib(at) },
+  { ic:'sticker',       label:'Sticker',     key:'sticker retro decorative badge library', insert:(at)=>openStickerLibrary(at) },
 ];
 
 /* ─── Slash "/" insert menu ──────────────────────────────────────────────────
@@ -12554,6 +12742,7 @@ let _tplLibInvented = false;    // build view is showing a bespoke AI-invented i
 function closeTplLib(){
   $('tplLibScrim').classList.remove('open');
   $('tplLibSheet').classList.remove('open');
+  unmountMakerInline('tplLibSheet','v-create-interactive');
   clearTimeout(_tplLibDebounce);
 }
 
@@ -13218,6 +13407,11 @@ function renderSchemaNode(schema, parent, key){
     input.value = (cur == null ? '' : cur);
     input.addEventListener('input', () => { setVal(parent, key, input.value); _activeForm.preview(); });
   }
+  if(input && /^(INPUT|TEXTAREA|SELECT)$/.test(input.tagName)){
+    const id = 'tlf-' + (++_tlfUid);
+    input.id = id;
+    lab.setAttribute('for', id);
+  }
   field.appendChild(input);
   if(schema['x-help']){ const h = document.createElement('div'); h.className = 'tlf-help'; h.textContent = schema['x-help']; field.appendChild(h); }
   return field;
@@ -13373,7 +13567,15 @@ function setVal(parent, key, v){
 /* ── live preview (debounced POST /playgrounds/build → sandboxed iframe) ──── */
 function schedulePreview(){
   clearTimeout(_tplLibDebounce);
+  setTplLibPreviewStatus('Updating…', 'busy');
   _tplLibDebounce = setTimeout(runTplLibPreview, 300);
+}
+
+function setTplLibPreviewStatus(text, state){
+  const el = $('tplLibPreviewStatus');
+  if(!el) return;
+  el.textContent = text || '';
+  el.dataset.state = state || '';
 }
 
 async function runTplLibPreview(){
@@ -13395,6 +13597,7 @@ async function runTplLibPreview(){
     if(seq !== _tplLibSeq) return;
     _tplLibBuilt = null;
     $('tplLibInsertBtn').disabled = true;
+    setTplLibPreviewStatus('Needs attention', 'error');
     errEl.textContent = 'Build error: ' + (e.message || e);
     errEl.classList.add('show');
   }
@@ -13426,11 +13629,16 @@ function tplLibSrcdoc(block){
 }
 function renderTplLibPreviewFrame(block){
   const host = $('tplLibPreview');
-  host.innerHTML = '';
+  const oldFrames = Array.from(host.querySelectorAll('.tpllib-frame'));
   const frame = document.createElement('iframe');
-  frame.className = 'tpllib-frame';
+  frame.className = 'tpllib-frame tpllib-frame-incoming';
   frame.setAttribute('sandbox', 'allow-scripts');   // scripts run; no same-origin / network
   frame.title = 'Interactive preview';
+  frame.addEventListener('load', () => {
+    frame.classList.add('is-ready');
+    setTplLibPreviewStatus('Up to date', 'ready');
+    window.setTimeout(() => oldFrames.forEach(old => old.remove()), 180);
+  }, { once:true });
   frame.srcdoc = tplLibSrcdoc(block);
   host.appendChild(frame);
 }
@@ -13494,6 +13702,17 @@ $('tplLibBackBtn').addEventListener('click', () => {
 });
 $('tplLibCancelBtn').addEventListener('click', closeTplLib);
 $('tplLibInsertBtn').addEventListener('click', insertTplLibBlock);
+$('tplLibEditTab')?.addEventListener('click', () => setTplLibMobilePanel('edit'));
+$('tplLibPreviewTab')?.addEventListener('click', () => setTplLibMobilePanel('preview'));
+function setTplLibMobilePanel(panel){
+  const workspace = $('tplLibWorkspace');
+  if(!workspace) return;
+  const next = panel === 'preview' ? 'preview' : 'edit';
+  workspace.dataset.panel = next;
+  $('tplLibEditTab')?.setAttribute('aria-selected', String(next === 'edit'));
+  $('tplLibPreviewTab')?.setAttribute('aria-selected', String(next === 'preview'));
+  if(next === 'preview') $('tplLibPreviewPane')?.scrollIntoView({ block:'start', behavior:'smooth' });
+}
 window.closeTplLib = closeTplLib;
 
 /* ── Standalone makers ───────────────────────────────────────────────────────
@@ -13508,6 +13727,38 @@ function openInteractiveMaker(){
   const inp = $('tplLibSuggestInput'); if(inp) setTimeout(() => { try{ inp.focus(); }catch(_){ } }, 60);
 }
 window.openInteractiveMaker = openInteractiveMaker;
+
+/* Create-tab makers use the production sheets in normal page flow. The same
+   sheets still return to document.body when used to insert blocks in a post. */
+function mountMakerInline(sheetId, hostId, viewId){
+  const sheet=$(sheetId), host=$(hostId), view=$(viewId);
+  if(!sheet || !host || !view) return;
+  host.replaceChildren(sheet);
+  sheet.classList.add('maker-inline','open');
+  view.classList.add('builder-open');
+  const scrim=$(sheetId==='figSheet'?'figScrim':'tplLibScrim'); if(scrim) scrim.classList.remove('open');
+}
+function unmountMakerInline(sheetId, viewId){
+  const sheet=$(sheetId); if(!sheet || !sheet.classList.contains('maker-inline')) return;
+  sheet.classList.remove('maker-inline','open');
+  document.body.appendChild(sheet);
+  $(viewId)?.classList.remove('builder-open');
+}
+function openInteractiveWorkspace(){
+  const sh=$('tplLibSheet'), host=$('interactiveInlineHost');
+  if(sh && host && sh.parentElement===host && sh.classList.contains('maker-inline')) return;
+  openInteractiveMaker();
+  mountMakerInline('tplLibSheet','interactiveInlineHost','v-create-interactive');
+}
+window.openInteractiveWorkspace=openInteractiveWorkspace;
+
+function openFlipbookWorkspace(){
+  const sh=$('figSheet'), host=$('flipbookInlineHost');
+  if(sh && host && sh.parentElement===host && sh.classList.contains('maker-inline')) return;
+  openFlipbookMaker();
+  mountMakerInline('figSheet','flipbookInlineHost','v-create-flipbook');
+}
+window.openFlipbookWorkspace=openFlipbookWorkspace;
 
 /* Duplicate-and-modify: open the maker on the BUILD step showing a saved interactive's
    code, ready to re-describe. Save-to-Library then mints a NEW entry, so the original is
@@ -13645,6 +13896,7 @@ function closeFigLib(){
   const s = $('figScrim'), sh = $('figSheet');
   if(s) s.classList.remove('open');
   if(sh) sh.classList.remove('open');
+  unmountMakerInline('figSheet','v-create-flipbook');
   clearTimeout(_figDebounce);
   if(typeof stopFigDictation === 'function') stopFigDictation();
   if(typeof resetFigRefine === 'function') resetFigRefine();
@@ -14175,6 +14427,8 @@ async function runFigInvent(description){
    Describe/Photo paths land on), so insert/placement/alt/caption work unchanged.
    ═══════════════════════════════════════════════════════════════════════════ */
 let _figStickers = null;        // cached catalogue from /figures/stickers
+let _figStickerGenre = 'travel';
+let _libStickerGenre = 'travel';
 
 const FIG_STICKER_GENRE_LABELS = {
   travel: 'Travel', monuments: 'Monuments', science: 'Science',
@@ -14187,8 +14441,18 @@ const FIG_STICKER_GENRE_LABELS = {
 /* Open + populate the sticker palette (fetch once, then render). */
 async function openFigStickers(){
   await ensureFigStickers();
+  renderStickerGenreTabs('figStickerGenres', _figStickerGenre);
   renderFigStickers($('figStickerSearch') ? $('figStickerSearch').value : '');
 }
+
+/* Direct entry used by Add block, slash search, and Library → Stickers. */
+async function openStickerLibrary(atIndex, stickerId){
+  await openFigLib(atIndex);
+  const t = $('figSheetTitle'); if(t) t.textContent = '★ Insert sticker';
+  openFigCompose('sticker');
+  if(stickerId) placeFigSticker(stickerId);
+}
+window.openStickerLibrary = openStickerLibrary;
 
 /* Fetch + cache the sticker catalogue once. */
 async function ensureFigStickers(){
@@ -14208,30 +14472,45 @@ async function ensureFigStickers(){
 function renderFigStickers(query){
   const body = $('figStickerBody'); if(!body) return;
   const q = String(query || '').trim().toLowerCase();
-  const list = (_figStickers || []).filter(s => !q
+  const list = (_figStickers || []).filter(s => s.genre === _figStickerGenre && (!q
     || (s.name || '').toLowerCase().includes(q)
     || (s.id || '').toLowerCase().includes(q)
     || (s.genre || '').toLowerCase().includes(q)
-    || (FIG_STICKER_GENRE_LABELS[s.genre] || '').toLowerCase().includes(q));
+    || (FIG_STICKER_GENRE_LABELS[s.genre] || '').toLowerCase().includes(q)));
   if(!list.length){
     body.innerHTML = '<p class="fig-sticker-empty">' + (q ? 'No stickers match “' + esc(q) + '”.' : 'No stickers available.') + '</p>';
     return;
   }
-  // group by genre, preserving catalogue order of first appearance
-  const order = [], byGenre = new Map();
-  for(const s of list){
-    if(!byGenre.has(s.genre)){ byGenre.set(s.genre, []); order.push(s.genre); }
-    byGenre.get(s.genre).push(s);
-  }
-  body.innerHTML = order.map(g => {
-    const cells = byGenre.get(g).map(s =>
+  body.innerHTML = '<div class="fig-sticker-grid">' + list.map(s =>
       '<button type="button" class="fig-sticker-cell" data-sticker="' + esc(s.id) + '" title="' + esc(s.name) + '">'
       + (s.svg || '')
       + '<span class="lbl">' + esc(s.name) + '</span></button>'
-    ).join('');
-    return '<div class="fig-sticker-group-lbl">' + esc(FIG_STICKER_GENRE_LABELS[g] || g) + '</div>'
-      + '<div class="fig-sticker-grid">' + cells + '</div>';
-  }).join('');
+    ).join('') + '</div>';
+}
+
+function stickerGenres(){
+  return [...new Set((_figStickers || []).map(s => s.genre).filter(Boolean))];
+}
+
+function renderStickerGenreTabs(hostId, active){
+  const host = $(hostId); if(!host) return;
+  host.innerHTML = stickerGenres().map(g => '<button type="button" role="tab" data-sticker-genre="' + esc(g)
+    + '" aria-selected="' + (g === active ? 'true' : 'false') + '" class="' + (g === active ? 'on' : '') + '">'
+    + esc(FIG_STICKER_GENRE_LABELS[g] || g) + '</button>').join('');
+}
+
+async function renderLibStickers(){
+  await ensureFigStickers();
+  const genres = stickerGenres();
+  if(!genres.includes(_libStickerGenre)) _libStickerGenre = genres[0] || '';
+  renderStickerGenreTabs('libStickerGenres', _libStickerGenre);
+  const q = String($('libStickerSearch')?.value || '').trim().toLowerCase();
+  const list = (_figStickers || []).filter(s => s.genre === _libStickerGenre && (!q
+    || (s.name || '').toLowerCase().includes(q) || (s.id || '').toLowerCase().includes(q)));
+  const grid = $('libStickerGrid'); if(!grid) return;
+  grid.innerHTML = list.length ? list.map(s => '<button type="button" class="fig-sticker-cell" data-library-sticker="'
+    + esc(s.id) + '" title="' + esc(s.name) + '">' + (s.svg || '') + '<span class="lbl">'
+    + esc(s.name) + '</span></button>').join('') : '<p class="fig-sticker-empty">No stickers match this search.</p>';
 }
 
 /* Tap a sticker → place it as a figure block (lands on the build/preview step).
@@ -14273,6 +14552,31 @@ async function runFigSticker(description){
   }finally{
     figBtnBusy(goBtn, false, '✦ Generate a sticker');
   }
+}
+
+/* Sticker library wiring: the legacy Atelier markup exposed the tile but did not
+   attach its click/search/selection handlers, so the catalogue was unreachable. */
+{
+  $('figStickerTile')?.addEventListener('click', () => openFigCompose('sticker'));
+  const stSearch = $('figStickerSearch');
+  stSearch?.addEventListener('click', e => e.stopPropagation());
+  stSearch?.addEventListener('input', () => renderFigStickers(stSearch.value));
+  $('figStickerBody')?.addEventListener('click', e => {
+    const cell = e.target.closest('[data-sticker]'); if(!cell) return;
+    placeFigSticker(cell.dataset.sticker);
+  });
+  $('figStickerGenres')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-sticker-genre]'); if(!b) return;
+    _figStickerGenre = b.dataset.stickerGenre;
+    renderStickerGenreTabs('figStickerGenres', _figStickerGenre);
+    renderFigStickers(stSearch?.value || '');
+  });
+  const aiText = $('figStickerAiText');
+  aiText?.addEventListener('click', e => e.stopPropagation());
+  aiText?.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); runFigSticker(aiText.value); }
+  });
+  $('figStickerAiGo')?.addEventListener('click', () => runFigSticker(aiText?.value || ''));
 }
 
 /* ── Photo / camera (vectorise) ───────────────────────────────────────────── */
@@ -14750,7 +15054,7 @@ async function openIllusPicker(ctx){
   // single-sheet guard (mirror openMediaPicker)
   [closePicker, closeCropEditor, closeTplLib, closeFigLib, closeMediaPicker].forEach(fn => { try{ fn && fn(); }catch{} });
   _illusCtx = ctx || {};
-  $('illusTitle').textContent = _illusCtx.mode === 'cover' ? 'Illustrations — set cover' : 'Illustrations';
+  $('illusTitle').textContent = _illusCtx.mode === 'cover' ? 'Illustration library — set cover' : 'Illustration library';
   $('illusScrim').classList.add('open');
   $('illusSheet').classList.add('open');
   const sc = $('illusSheet').querySelector('.illus-body');
@@ -14871,7 +15175,11 @@ const _figDraw = {
   tool: 'pen',               // 'pen' | 'text' | 'erase'
   textDrag: null,            // in-progress label drag: { frame, idx, dx, dy } | null
   eraseAction: null,         // in-progress erase gesture (one undoable action)
-  exportAspect: '1:1',       // GIF/video export shape: '1:1' | '4:5' | '9:16'
+  exportAspect: '16:9',      // canvas + GIF/video shape: landscape | square | portrait
+  zoom: 1,                   // editor-only magnification; never changes saved/export dimensions
+  displayBase: { w: 0, h: 0 },
+  panMode: false,
+  panDrag: null,
 };
 // `strokes` aliases the active frame's stroke list — existing handlers read/write
 // it (incl. `_figDraw.strokes = []` in figDrawClear) and stay on the current frame.
@@ -14937,6 +15245,8 @@ function openFigDraw(){
   box.hidden = false;
   _figDraw.open = true;
   _figDraw.frames = [{ strokes: [], included: true }]; _figDraw.frame = 0; _figDraw.cur = null;
+  _figDraw.size = { w: 0, h: 0 }; _figDraw.displayBase = { w: 0, h: 0 };
+  _figDraw.exportAspect = '16:9'; _figDraw.zoom = 1; _figDraw.panMode = false; _figDraw.panDrag = null;
   migrateFigFrames();
   _figDraw.blend = 'dissolve'; _figDraw.loop = 'loop';   // continuity defaults
   _figDraw.bg = null; _figDraw.bgImg = null; _figDraw.bgMode = 'trace';   // no reference image
@@ -14952,6 +15262,7 @@ function openFigDraw(){
     ? 'Restored your last drawing — carry on, or ✕ All to start fresh.'
     : 'Sketch with your finger, an Apple Pencil or a mouse. Strokes are smoothed when you lift off.';
   syncFigFrameUi();
+  setFigPanMode(false);
   syncFigImgUi();
   syncFigAidsUi();
   // size after layout settles so clientWidth is correct
@@ -14973,17 +15284,91 @@ function closeFigDraw(){
   const fams = $('figFamilies'); if(fams) fams.style.display = '';
 }
 
-/* Size the canvas to the surface width at a fixed 4:3 ratio, high-DPI via
-   devicePixelRatio. Re-scales the backing store and the 2D context. */
-function sizeFigCanvas(){
+function figAspectRatio(aspect){
+  return aspect === '9:16' ? 9 / 16 : aspect === '1:1' ? 1 : 16 / 9;
+}
+function figScaleModel(oldSize, nextSize){
+  if(!oldSize || !oldSize.w || !oldSize.h || !nextSize.w || !nextSize.h) return;
+  if(oldSize.w === nextSize.w && oldSize.h === nextSize.h) return;
+  const scale = Math.min(nextSize.w / oldSize.w, nextSize.h / oldSize.h);
+  const offsetX = (nextSize.w - oldSize.w * scale) / 2;
+  const offsetY = (nextSize.h - oldSize.h * scale) / 2;
+  for(const fr of _figDraw.frames){
+    for(const st of (fr.strokes || [])){
+      for(const p of (st.points || [])){ p.x = p.x * scale + offsetX; p.y = p.y * scale + offsetY; }
+      if(st.width) st.width *= scale;
+    }
+    for(const t of (fr.texts || [])){
+      t.x = t.x * scale + offsetX; t.y = t.y * scale + offsetY;
+      if(t.size) t.size *= scale;
+    }
+  }
+}
+const FIG_ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+function applyFigCanvasZoom(keepCentre = false){
+  const cv = $('figCanvas'), surface = $('figDrawSurface'), stage = $('figCanvasStage'), viewport = $('figCanvasViewport');
+  if(!cv || !surface || !stage) return;
+  const base = _figDraw.displayBase;
+  if(!base || !base.w || !base.h) return;
+  let cx = .5, cy = .5;
+  if(keepCentre && viewport){
+    cx = (viewport.scrollLeft + viewport.clientWidth / 2) / Math.max(1, viewport.scrollWidth);
+    cy = (viewport.scrollTop + viewport.clientHeight / 2) / Math.max(1, viewport.scrollHeight);
+  }
+  const w = Math.round(base.w * _figDraw.zoom), h = Math.round(base.h * _figDraw.zoom);
+  stage.style.width = w + 'px'; stage.style.height = h + 'px';
+  surface.style.width = base.w + 'px'; surface.style.marginInline = '0';
+  surface.style.transform = `scale(${_figDraw.zoom})`;
+  cv.style.width = base.w + 'px'; cv.style.height = base.h + 'px';
+  const out = $('figZoomOutVal'); if(out) out.textContent = Math.round(_figDraw.zoom * 100) + '%';
+  const minus = $('figZoomOut'), plus = $('figZoomIn');
+  if(minus) minus.disabled = _figDraw.zoom <= FIG_ZOOM_LEVELS[0];
+  if(plus) plus.disabled = _figDraw.zoom >= FIG_ZOOM_LEVELS[FIG_ZOOM_LEVELS.length - 1];
+  if(keepCentre && viewport) requestAnimationFrame(() => {
+    viewport.scrollTo({
+      left:Math.max(0, cx * viewport.scrollWidth - viewport.clientWidth / 2),
+      top:Math.max(0, cy * viewport.scrollHeight - viewport.clientHeight / 2),
+      behavior:'smooth',
+    });
+  });
+}
+function setFigCanvasZoom(next){
+  _figDraw.zoom = Math.max(FIG_ZOOM_LEVELS[0], Math.min(FIG_ZOOM_LEVELS[FIG_ZOOM_LEVELS.length - 1], next));
+  applyFigCanvasZoom(true);
+}
+function stepFigCanvasZoom(dir){
+  const current = _figDraw.zoom;
+  const idx = dir > 0
+    ? FIG_ZOOM_LEVELS.findIndex(v => v > current + .001)
+    : (() => { for(let i = FIG_ZOOM_LEVELS.length - 1; i >= 0; i--) if(FIG_ZOOM_LEVELS[i] < current - .001) return i; return -1; })();
+  if(idx < 0) return;
+  setFigCanvasZoom(FIG_ZOOM_LEVELS[idx]);
+}
+function setFigPanMode(on){
+  _figDraw.panMode = !!on;
+  _figDraw.panDrag = null;
+  const viewport = $('figCanvasViewport'), btn = $('figPanMode');
+  if(viewport){ viewport.classList.toggle('is-panning', _figDraw.panMode); viewport.classList.remove('is-dragging'); }
+  if(btn){ btn.classList.toggle('pan-on', _figDraw.panMode); btn.setAttribute('aria-pressed', _figDraw.panMode ? 'true' : 'false'); }
+}
+/* Keep the visible board comfortably inside the viewport. Its aspect is also
+   the export aspect, so the editor is a truthful preview of the GIF/video. */
+function sizeFigCanvas(rescaleModel = true){
   const cv = $('figCanvas'); if(!cv) return;
   const surface = $('figDrawSurface');
-  const cssW = Math.max(160, Math.round((surface || cv).clientWidth || 320));
-  const cssH = Math.round(cssW * 3 / 4);   // 4:3
+  const box = $('figDrawBox');
+  const availableW = Math.max(160, Math.round((box || surface || cv).clientWidth || 320));
+  const ratio = figAspectRatio(_figDraw.exportAspect);
+  const maxH = Math.max(280, Math.min(520, Math.round((window.innerHeight || 800) * 0.55)));
+  const cssW = Math.max(160, Math.min(availableW, Math.round(maxH * ratio)));
+  const cssH = Math.round(cssW / ratio);
+  const oldSize = _figDraw.size;
+  const nextSize = { w: cssW, h: cssH };
+  if(rescaleModel) figScaleModel(oldSize, nextSize);
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-  _figDraw.size = { w: cssW, h: cssH };
+  _figDraw.size = nextSize;
+  _figDraw.displayBase = nextSize;
   _figDraw.dpr = dpr;
-  cv.style.height = cssH + 'px';
   cv.width = Math.round(cssW * dpr);
   cv.height = Math.round(cssH * dpr);
   const ctx = cv.getContext('2d');
@@ -14991,6 +15376,7 @@ function sizeFigCanvas(){
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   _figDraw.ctx = ctx;
+  applyFigCanvasZoom(false);
 }
 
 /* the visible ink colour for the raster preview (matches --ink in the SVG) */
@@ -15436,6 +15822,14 @@ function figCanvasPoint(e){
 function figPointerDown(e){
   if(!_figDraw.open) return;
   if(e.button != null && e.button > 0) return;   // ignore non-primary mouse buttons
+  if(_figDraw.panMode){
+    e.preventDefault();
+    const viewport = $('figCanvasViewport'), cv = $('figCanvas'); if(!viewport || !cv) return;
+    _figDraw.panDrag = { pointerId:e.pointerId, x:e.clientX, y:e.clientY, left:viewport.scrollLeft, top:viewport.scrollTop };
+    viewport.classList.add('is-dragging');
+    try{ cv.setPointerCapture(e.pointerId); }catch(_){}
+    return;
+  }
   if(_figDraw.playTimer) stopFigPlay();           // drawing interrupts playback
   e.preventDefault();
   const cv = $('figCanvas');
@@ -15567,6 +15961,13 @@ function figTextEditor(idx, x, y){
 
 function figPointerMove(e){
   if(!_figDraw.open) return;
+  if(_figDraw.panDrag && _figDraw.panDrag.pointerId === e.pointerId){
+    e.preventDefault();
+    const viewport = $('figCanvasViewport'), d = _figDraw.panDrag; if(!viewport) return;
+    viewport.scrollLeft = d.left - (e.clientX - d.x);
+    viewport.scrollTop = d.top - (e.clientY - d.y);
+    return;
+  }
   // erase drag: keep erasing along the pointer path
   if(_figDraw.eraseAction){
     e.preventDefault();
@@ -15604,6 +16005,12 @@ function figPointerMove(e){
 
 function figPointerUp(e){
   if(!_figDraw.open) return;
+  if(_figDraw.panDrag && _figDraw.panDrag.pointerId === e.pointerId){
+    _figDraw.panDrag = null;
+    $('figCanvasViewport')?.classList.remove('is-dragging');
+    try{ $('figCanvas').releasePointerCapture(e.pointerId); }catch(_){}
+    return;
+  }
   // finish an erase gesture: log it as ONE undoable action (if anything was erased)
   if(_figDraw.eraseAction){
     const act = _figDraw.eraseAction;
@@ -15671,6 +16078,10 @@ function mirrorStroke(stroke){
 
 function figPointerCancel(e){
   if(!_figDraw.open) return;
+  if(_figDraw.panDrag && _figDraw.panDrag.pointerId === e.pointerId){
+    _figDraw.panDrag = null;
+    $('figCanvasViewport')?.classList.remove('is-dragging');
+  }
   // discard the in-progress stroke
   _figDraw.cur = null;
   redrawFigCanvas();
@@ -16000,6 +16411,12 @@ function syncFigFrameUi(){
   if(eraseBtn){ const on = _figDraw.tool === 'erase'; eraseBtn.classList.toggle('on', on); eraseBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   const sws = $('figDrawSwatches');
   if(sws) sws.querySelectorAll('.fig-sw').forEach(s => s.classList.toggle('on', s.dataset.c === _figDraw.colour));
+  const customColour = $('figCustomColour');
+  if(customColour){
+    customColour.value = _figDraw.colour;
+    const presetSelected = !!sws && Array.from(sws.querySelectorAll('.fig-sw')).some(s => s.dataset.c === _figDraw.colour);
+    customColour.closest('.fig-custom-colour')?.classList.toggle('on', !presetSelected);
+  }
   const onion = $('figOnion'); if(onion) onion.checked = _figDraw.onion;
   // continuity toggles — only meaningful with a flipbook (≥2 included frames)
   const opts = $('figFlipOpts'); if(opts) opts.style.display = inclN < 2 ? 'none' : '';
@@ -16009,6 +16426,12 @@ function syncFigFrameUi(){
   const loopGrp = $('figFlipLoop');
   if(loopGrp) loopGrp.querySelectorAll('button').forEach(b =>
     b.setAttribute('aria-pressed', b.dataset.loop === _figDraw.loop ? 'true' : 'false'));
+  const aspectGrp = $('figFlipAspect');
+  if(aspectGrp) aspectGrp.querySelectorAll('button').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.a === _figDraw.exportAspect ? 'true' : 'false'));
+  const aspectHint = $('figAspectHint');
+  if(aspectHint) aspectHint.textContent = _figDraw.exportAspect === '9:16' ? '9:16 vertical video'
+    : _figDraw.exportAspect === '1:1' ? '1:1 square video' : '16:9 widescreen video';
   const play = $('figFramePlay');
   if(play){
     const on = !!_figDraw.playTimer;
@@ -16052,7 +16475,7 @@ function figAutosave(){
       if(!hasContent){ localStorage.removeItem(FIG_AUTOSAVE_KEY); return; }
       localStorage.setItem(FIG_AUTOSAVE_KEY, JSON.stringify({
         v: 1, at: Date.now(), size: _figDraw.size,
-        blend: _figDraw.blend, loop: _figDraw.loop,
+        blend: _figDraw.blend, loop: _figDraw.loop, exportAspect: _figDraw.exportAspect,
         frames: _figDraw.frames.map(fr => ({
           strokes: fr.strokes, texts: fr.texts || [], included: fr.included !== false, dur: fr.dur || 1,
         })),
@@ -16076,6 +16499,8 @@ function figRestoreAutosave(){
     _figDraw.frame = 0;
     if(s.blend === 'cut' || s.blend === 'dissolve') _figDraw.blend = s.blend;
     if(s.loop === 'loop' || s.loop === 'pingpong') _figDraw.loop = s.loop;
+    if(['16:9','1:1','9:16'].includes(s.exportAspect)) _figDraw.exportAspect = s.exportAspect;
+    else if(s.exportAspect === '4:5') _figDraw.exportAspect = '9:16';
     migrateFigFrames();
     return _figDraw.frames.some(fr => (fr.strokes && fr.strokes.length) || (fr.texts && fr.texts.length));
   }catch(_){ return false; }
@@ -16099,7 +16524,8 @@ async function figSaveFlipbook(){
   if(inc.length < 2){ figDrawNote('Include at least two frames first.'); return; }
   const svg = buildFlipbookSvg();
   const model = {
-    v: 1, size: { ..._figDraw.size }, blend: _figDraw.blend, loop: _figDraw.loop, fps: figCurrentFps(),
+    v: 1, size: { ..._figDraw.size }, blend: _figDraw.blend, loop: _figDraw.loop,
+    exportAspect: _figDraw.exportAspect, fps: figCurrentFps(),
     frames: _figDraw.frames.map(fr => ({
       strokes: fr.strokes, texts: fr.texts || [], included: fr.included !== false, dur: fr.dur || 1,
     })),
@@ -16123,7 +16549,11 @@ function figLoadFlipbookModel(model){
   _figDraw.frame = 0;
   if(model.blend === 'cut' || model.blend === 'dissolve') _figDraw.blend = model.blend;
   if(model.loop === 'loop' || model.loop === 'pingpong') _figDraw.loop = model.loop;
+  if(['16:9','1:1','9:16'].includes(model.exportAspect)) _figDraw.exportAspect = model.exportAspect;
+  else if(model.exportAspect === '4:5') _figDraw.exportAspect = '9:16';
+  if(model.size && model.size.w && model.size.h) _figDraw.size = model.size;
   migrateFigFrames();
+  sizeFigCanvas(true);
   figAutosave();
   syncFigFrameUi();
   redrawFigCanvas();
@@ -16654,7 +17084,7 @@ async function figExportFlipbook(kind){
   const order = seq.slice();
   if(_figDraw.loop === 'pingpong') for(let i = seq.length - 2; i >= 1; i--) order.push(seq[i]);
   const W = kind === 'gif' ? 720 : 1080;
-  const H = _figDraw.exportAspect === '4:5' ? Math.round(W * 1.25)
+  const H = _figDraw.exportAspect === '16:9' ? Math.round(W * 9 / 16)
     : _figDraw.exportAspect === '9:16' ? Math.round(W * 16 / 9) : W;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
@@ -16834,6 +17264,11 @@ function figDrawNote(msg){ const n = $('figDrawNote'); if(n) n.textContent = msg
     _figDraw.colour = b.dataset.c || FIG_DRAW_INK;
     syncFigFrameUi();
   });
+  const customColour = $('figCustomColour');
+  if(customColour) customColour.addEventListener('input', () => {
+    _figDraw.colour = customColour.value || FIG_DRAW_INK;
+    syncFigFrameUi();
+  });
   const fillB = $('figFillMode'); if(fillB) fillB.addEventListener('click', () => { _figDraw.fillMode = !_figDraw.fillMode; syncFigFrameUi(); });
   const textB = $('figTextMode'); if(textB) textB.addEventListener('click', () => { _figDraw.tool = _figDraw.tool === 'text' ? 'pen' : 'text'; syncFigFrameUi(); });
   const eraseB = $('figEraseMode'); if(eraseB) eraseB.addEventListener('click', () => { _figDraw.tool = _figDraw.tool === 'erase' ? 'pen' : 'erase'; syncFigFrameUi(); });
@@ -16863,9 +17298,24 @@ function figDrawNote(msg){ const n = $('figDrawNote'); if(n) n.textContent = msg
   const aspectGrp = $('figFlipAspect');
   if(aspectGrp) aspectGrp.addEventListener('click', e => {
     const b = e.target.closest('button'); if(!b) return;
-    _figDraw.exportAspect = ['1:1','4:5','9:16'].includes(b.dataset.a) ? b.dataset.a : '1:1';
-    aspectGrp.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+    const next = ['16:9','1:1','9:16'].includes(b.dataset.a) ? b.dataset.a : '16:9';
+    if(next === _figDraw.exportAspect) return;
+    _figDraw.exportAspect = next;
+    sizeFigCanvas(true);
+    syncFigFrameUi();
+    redrawFigCanvas();
+    figDrawNote(`Canvas changed to ${next === '16:9' ? 'Landscape (16:9)' : next === '9:16' ? 'Portrait (9:16)' : 'Square (1:1)'}. GIF and video exports will use this format.`);
   });
+  const zoomOut = $('figZoomOut'); if(zoomOut) zoomOut.addEventListener('click', () => stepFigCanvasZoom(-1));
+  const zoomIn = $('figZoomIn'); if(zoomIn) zoomIn.addEventListener('click', () => stepFigCanvasZoom(1));
+  const zoomReset = $('figZoomReset'); if(zoomReset) zoomReset.addEventListener('click', () => setFigCanvasZoom(1));
+  const panMode = $('figPanMode'); if(panMode) panMode.addEventListener('click', () => setFigPanMode(!_figDraw.panMode));
+  const canvasViewport = $('figCanvasViewport');
+  if(canvasViewport) canvasViewport.addEventListener('wheel', e => {
+    if(!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    setFigCanvasZoom(_figDraw.zoom * Math.exp(-e.deltaY * 0.0025));
+  }, { passive:false });
   const fps = $('figFrameFps');
   if(fps) fps.addEventListener('input', () => {
     const out = $('figFrameFpsOut'); if(out) out.textContent = String(figCurrentFps());
@@ -16875,7 +17325,7 @@ function figDrawNote(msg){ const n = $('figDrawNote'); if(n) n.textContent = msg
   // keep the canvas crisp when the panel width changes (rotation / resize)
   window.addEventListener('resize', () => {
     if(!_figDraw.open) return;
-    sizeFigCanvas(); redrawFigCanvas();
+    sizeFigCanvas(true); redrawFigCanvas();
   });
 })();
 
@@ -18215,8 +18665,8 @@ $('glyphMode')?.addEventListener('click', e => {
 });
 
 async function doPreview(){
-  const btn = $('previewBtn');
-  if(btn){ btn.disabled = true; }
+  const btns = [$('previewBtn'), $('chatReviewBtn')].filter(Boolean);
+  for(const btn of btns) btn.disabled = true;
   toast('Building preview…');
   try{
     const r = await api('/posts/'+(currentSlug||'draft')+'/preview', { method:'POST', body: JSON.stringify({ doc, citations: meta.citations || [] }) });
@@ -18226,7 +18676,7 @@ async function doPreview(){
   }catch(e){
     toast('Preview error: ' + (e.message || e));
   }finally{
-    if(btn){ btn.disabled = false; }
+    for(const btn of btns) btn.disabled = false;
   }
 }
 window.doPreview = doPreview;
@@ -18235,6 +18685,7 @@ $('previewScrim').addEventListener('click', closePreviewSheet);
 $('previewCloseBtn').addEventListener('click', closePreviewSheet);
 const _previewBtn = $('previewBtn');
 if(_previewBtn) _previewBtn.addEventListener('click', doPreview);
+$('chatReviewBtn')?.addEventListener('click', doPreview);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SHARE & SEO PREVIEW — search/social card mocks, featured image, readability
@@ -19214,14 +19665,26 @@ $('libSeg')?.addEventListener('click',e=>{
   $('libSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
   const mode=b.dataset.lib;
   $('libInteractives').style.display = mode==='interactives'?'block':'none';
+  $('libStickers').style.display = mode==='stickers'?'block':'none';
   $('libMakers').style.display = mode==='makers'?'block':'none';
   $('libSaved').style.display = mode==='saved'?'block':'none';
   $('libIcons').style.display = mode==='icons'?'block':'none';
   $('libMedia').style.display = mode==='media'?'block':'none';
   if(mode==='saved' && !_libSavedInit){ _libSavedInit=true; }
+  if(mode==='stickers') renderLibStickers();
   if(mode==='saved') renderLibSaved();   // always refresh — new saves may have arrived
   if(mode==='icons' && !_libIconsInit){ _libIconsInit=true; loadLibIcons(); }
   if(mode==='media' && !_libMediaInit){ _libMediaInit=true; loadLibMedia(); }
+});
+
+$('libStickerSearch')?.addEventListener('input', renderLibStickers);
+$('libStickerGenres')?.addEventListener('click', e=>{
+  const b=e.target.closest('[data-sticker-genre]'); if(!b) return;
+  _libStickerGenre=b.dataset.stickerGenre; renderLibStickers();
+});
+$('libStickerGrid')?.addEventListener('click', e=>{
+  const b=e.target.closest('[data-library-sticker]'); if(!b) return;
+  openStickerLibrary(null, b.dataset.librarySticker);
 });
 
 let _libMediaInit=false;

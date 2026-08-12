@@ -4,7 +4,7 @@ var __export = (target, all3) => {
     __defProp(target, name, { get: all3[name], enumerable: true });
 };
 
-// studio-app/seams/config.js
+// src/seams/config.js
 var KEY = "helm.studio.config.v1";
 var trimSlash = (u) => (u || "").trim().replace(/\/+$/, "");
 function makeConfig(ls) {
@@ -148,7 +148,7 @@ var noopLS = { getItem: () => null, setItem() {
 } };
 var config = makeConfig(typeof window !== "undefined" && window.localStorage ? window.localStorage : noopLS);
 
-// studio-app/seams/github.js
+// src/seams/github.js
 var API = "https://api.github.com";
 var enc = (p) => String(p).split("/").map(encodeURIComponent).join("/");
 var toB64 = (s) => {
@@ -338,7 +338,7 @@ function makeGithub(gh, fetchImpl = fetch) {
   };
 }
 
-// studio-app/seams/deviceAuth.js
+// src/seams/deviceAuth.js
 var GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 function makeDeviceAuth({ clientId, relayBase, scope = "public_repo" }, fetchImpl = fetch) {
   const post = async (step, params) => {
@@ -404,7 +404,7 @@ function makeDeviceAuth({ clientId, relayBase, scope = "public_repo" }, fetchImp
   };
 }
 
-// server/ai/anthropic.js
+// engine/ai/anthropic.js
 var anthropic_exports = {};
 __export(anthropic_exports, {
   DEFAULT_MODEL: () => DEFAULT_MODEL,
@@ -422,7 +422,7 @@ __export(anthropic_exports, {
   resolveLatestModel: () => resolveLatestModel
 });
 
-// server/ai/_json.js
+// engine/ai/_json.js
 function looseJson(text2) {
   let s = String(text2 == null ? "" : text2).trim();
   try {
@@ -457,7 +457,7 @@ function looseJson(text2) {
   throw new Error("no parseable JSON in model output");
 }
 
-// server/ai/pickLatest.js
+// engine/ai/pickLatest.js
 var LATEST_ALIAS = {
   google: "gemini-flash-latest"
 };
@@ -593,7 +593,7 @@ function latestModelOffline(provider) {
   return Object.prototype.hasOwnProperty.call(SAFE_DEFAULT, id) ? SAFE_DEFAULT[id] : "";
 }
 
-// server/ai/anthropic.js
+// engine/ai/anthropic.js
 var capabilities = { text: true, vision: true, document: true, image: false };
 var DEFAULT_MODEL = "claude-opus-4-8";
 var ENDPOINT = "https://api.anthropic.com/v1/messages";
@@ -739,7 +739,7 @@ async function resolveLatestModel(opts = {}, fetchImpl = fetch) {
   return latestModelOffline("anthropic");
 }
 
-// server/ai/openai.js
+// engine/ai/openai.js
 var openai_exports = {};
 __export(openai_exports, {
   DEFAULT_MODEL: () => DEFAULT_MODEL2,
@@ -895,7 +895,7 @@ async function resolveLatestModel2(opts = {}, fetchImpl = fetch) {
   return latestModelOffline("openai");
 }
 
-// server/ai/google.js
+// engine/ai/google.js
 var google_exports = {};
 __export(google_exports, {
   DEFAULT_MODEL: () => DEFAULT_MODEL3,
@@ -1060,7 +1060,7 @@ async function resolveLatestModel3(opts = {}, fetchImpl = fetch) {
   return latestModelOffline("google");
 }
 
-// server/ai/groq.js
+// engine/ai/groq.js
 var groq_exports = {};
 __export(groq_exports, {
   DEFAULT_MODEL: () => DEFAULT_MODEL4,
@@ -1173,7 +1173,7 @@ async function resolveLatestModel4(opts = {}, fetchImpl = fetch) {
   return latestModelOffline("groq");
 }
 
-// studio-app/seams/ai.js
+// src/seams/ai.js
 var ADAPTERS = { anthropic: anthropic_exports, openai: openai_exports, google: google_exports, groq: groq_exports };
 function makeAi(cfg, fetchImpl = fetch) {
   const browserFetch = (url, opts = {}) => {
@@ -1203,7 +1203,7 @@ function makeAi(cfg, fetchImpl = fetch) {
   };
 }
 
-// studio-app/seams/remote.js
+// src/seams/remote.js
 var join = (base, path3) => `${base}/studio/api${path3.startsWith("/") ? "" : "/"}${path3}`;
 function makeRemote(getRemoteHelm, fetchImpl) {
   const f = fetchImpl || (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null);
@@ -1534,7 +1534,7 @@ function guessServiceRegion(url, headers5) {
   return [HOST_SERVICES[service] || service, region || ""];
 }
 
-// studio-app/core/r2.js
+// src/core/r2.js
 var trimSlash2 = (u) => String(u == null ? "" : u).trim().replace(/\/+$/, "");
 function validateR2Config(raw) {
   const c = raw || {};
@@ -1767,7 +1767,7 @@ function mapVideoLibrary(payload, publicBase) {
   return parseVideoList(payload).map((e) => videoEntryFromKey(e, publicBase));
 }
 
-// studio-app/seams/r2.js
+// src/seams/r2.js
 function makeR2(config2) {
   const workerReady = () => !!(config2.isR2WorkerConfigured && config2.isR2WorkerConfigured());
   return {
@@ -1829,7 +1829,7 @@ function makeR2(config2) {
   };
 }
 
-// studio-app/seams/storage.js
+// src/seams/storage.js
 var STORES = ["drafts", "blockdrafts", "partner", "shapes", "versions", "ideas"];
 function memoryBackend() {
   const db = Object.fromEntries(STORES.map((s) => [s, /* @__PURE__ */ new Map()]));
@@ -1879,7 +1879,7 @@ function makeStorage(backend) {
 }
 var storage = makeStorage(typeof indexedDB !== "undefined" ? idbBackend() : memoryBackend());
 
-// server/frontmatter.js
+// engine/frontmatter.js
 var GALLERY_START = "<!-- gallery:start -->";
 var GALLERY_END = "<!-- gallery:end -->";
 function parse(md) {
@@ -1946,7 +1946,7 @@ function readGallery(body) {
   return [...block.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1]);
 }
 
-// server/blocks.js
+// engine/blocks.js
 var blocks_exports = {};
 __export(blocks_exports, {
   blocksFromMarkdown: () => blocksFromMarkdown,
@@ -1961,7 +1961,7 @@ __export(blocks_exports, {
   validateDoc: () => validateDoc
 });
 
-// server/figures/svg.js
+// engine/figures/svg.js
 var PALETTE = {
   ink: "var(--ink)",
   inkDim: "var(--ink-dim)",
@@ -2222,7 +2222,7 @@ function sanitise(svg2) {
   return s;
 }
 
-// server/blocks.js
+// engine/blocks.js
 var KNOWN = /* @__PURE__ */ new Set(["heading", "text", "image", "quote", "divider", "raw", "gallery", "embed", "playground", "table", "figure", "video"]);
 function decodeEntities(s) {
   return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
@@ -2740,7 +2740,7 @@ function blocksFromMarkdown(body) {
   return { version: 1, blocks };
 }
 
-// studio-app/core/posts.js
+// src/core/posts.js
 var BLOG_DIR = "src/content/blog";
 var postPath = (slug) => `${BLOG_DIR}/${slug}.md`;
 var imgDir = (slug) => `${BLOG_DIR}/_images/${slug}`;
@@ -2950,7 +2950,7 @@ function makePosts(gh) {
   };
 }
 
-// studio-app/core/partner.js
+// src/core/partner.js
 var partner_exports = {};
 __export(partner_exports, {
   appendVersion: () => appendVersion,
@@ -2963,7 +2963,7 @@ __export(partner_exports, {
   runTurn: () => runTurn
 });
 
-// server/studio.js
+// engine/studio.js
 var studio_exports = {};
 __export(studio_exports, {
   DEFAULT_PROFILE: () => DEFAULT_PROFILE,
@@ -2998,7 +2998,7 @@ __export(studio_exports, {
   vectoriseSketch: () => vectoriseSketch
 });
 
-// server/playgrounds/index.js
+// engine/playgrounds/index.js
 var playgrounds_exports = {};
 __export(playgrounds_exports, {
   buildInstance: () => buildInstance,
@@ -3008,7 +3008,7 @@ __export(playgrounds_exports, {
   listFamilies: () => listFamilies
 });
 
-// server/playgrounds/toggle-ab.js
+// engine/playgrounds/toggle-ab.js
 var stateSchema = {
   type: "object",
   additionalProperties: false,
@@ -3120,7 +3120,7 @@ pick(true);
   }
 };
 
-// server/playgrounds/function-explorer.js
+// engine/playgrounds/function-explorer.js
 var sliderSchema = {
   type: "object",
   additionalProperties: false,
@@ -3244,7 +3244,7 @@ redraw();
   }
 };
 
-// server/playgrounds/stepper-timeline.js
+// engine/playgrounds/stepper-timeline.js
 var stageSchema = {
   type: "object",
   additionalProperties: false,
@@ -3359,7 +3359,7 @@ go(0);
   }
 };
 
-// server/playgrounds/scatter-sim.js
+// engine/playgrounds/scatter-sim.js
 var scatter_sim_default = {
   id: "scatter-sim",
   name: "Scatter simulator",
@@ -3485,7 +3485,7 @@ if(reset)reset.addEventListener('click',function(){
   }
 };
 
-// server/playgrounds/tappable-meter.js
+// engine/playgrounds/tappable-meter.js
 var itemSchema = {
   type: "object",
   additionalProperties: false,
@@ -3654,7 +3654,7 @@ setAll(false);
   }
 };
 
-// server/playgrounds/mixer.js
+// engine/playgrounds/mixer.js
 var inputSchema = {
   type: "object",
   additionalProperties: false,
@@ -3799,7 +3799,7 @@ render();
   }
 };
 
-// server/playgrounds/stopwatch.js
+// engine/playgrounds/stopwatch.js
 var stageSchema2 = {
   type: "object",
   additionalProperties: false,
@@ -3999,7 +3999,7 @@ reset();
   }
 };
 
-// server/playgrounds/lever-geometry.js
+// engine/playgrounds/lever-geometry.js
 var rangeSchema = {
   type: "array",
   title: "Angle range [min, max] in degrees",
@@ -4147,7 +4147,7 @@ redraw();
   }
 };
 
-// server/playgrounds/sortable-priority.js
+// engine/playgrounds/sortable-priority.js
 var itemSchema2 = {
   type: "object",
   additionalProperties: false,
@@ -4292,7 +4292,7 @@ renumber();
   }
 };
 
-// server/playgrounds/quiz-reveal.js
+// engine/playgrounds/quiz-reveal.js
 var cardSchema = {
   type: "object",
   additionalProperties: false,
@@ -4428,7 +4428,7 @@ go(0);
   }
 };
 
-// server/playgrounds/chart-data.js
+// engine/playgrounds/chart-data.js
 var pointSchema = {
   type: "object",
   additionalProperties: false,
@@ -4605,7 +4605,7 @@ if(kind==='bar'){
   }
 };
 
-// server/playgrounds/before-after.js
+// engine/playgrounds/before-after.js
 var before_after_default = {
   id: "before-after",
   name: "Before / after wipe",
@@ -4707,7 +4707,7 @@ set(50);
   }
 };
 
-// server/playgrounds/hotspots.js
+// engine/playgrounds/hotspots.js
 var spotSchema = {
   type: "object",
   additionalProperties: false,
@@ -4824,7 +4824,7 @@ tally();
   }
 };
 
-// server/playgrounds/risk-grid.js
+// engine/playgrounds/risk-grid.js
 var risk_grid_default = {
   id: "risk-grid",
   name: "Risk grid",
@@ -4915,7 +4915,7 @@ paint(${affected});
   }
 };
 
-// server/playgrounds/gauge-dial.js
+// engine/playgrounds/gauge-dial.js
 var gauge_dial_default = {
   id: "gauge-dial",
   name: "Gauge dial",
@@ -5018,7 +5018,7 @@ set(${value});
   }
 };
 
-// server/playgrounds/flip-cards.js
+// engine/playgrounds/flip-cards.js
 var flip_cards_default = {
   id: "flip-cards",
   name: "Flip cards",
@@ -5112,7 +5112,7 @@ $$('[data-role=card]').forEach(function(card){
   }
 };
 
-// server/playgrounds/layer-peel.js
+// engine/playgrounds/layer-peel.js
 var layer_peel_default = {
   id: "layer-peel",
   name: "Layer peel",
@@ -5234,7 +5234,7 @@ refresh();
   }
 };
 
-// server/playgrounds/dice-roller.js
+// engine/playgrounds/dice-roller.js
 var dice_roller_default = {
   id: "dice-roller",
   name: "Dice roller",
@@ -5330,7 +5330,7 @@ render();
   }
 };
 
-// server/playgrounds/reaction-timer.js
+// engine/playgrounds/reaction-timer.js
 var reaction_timer_default = {
   id: "reaction-timer",
   name: "Reaction timer",
@@ -5416,7 +5416,7 @@ pad.addEventListener('keydown',function(e){
   }
 };
 
-// server/playgrounds/tip-split.js
+// engine/playgrounds/tip-split.js
 var tip_split_default = {
   id: "tip-split",
   name: "Tip & split",
@@ -5491,7 +5491,7 @@ recompute();
   }
 };
 
-// server/playgrounds/compound-growth.js
+// engine/playgrounds/compound-growth.js
 var compound_growth_default = {
   id: "compound-growth",
   name: "Compound growth",
@@ -5603,7 +5603,7 @@ recompute();
   }
 };
 
-// server/playgrounds/countdown.js
+// engine/playgrounds/countdown.js
 var countdown_default = {
   id: "countdown",
   name: "Countdown",
@@ -5670,7 +5670,7 @@ root._cdTimer=setInterval(tick,1000);
   }
 };
 
-// server/playgrounds/bpm-tap.js
+// engine/playgrounds/bpm-tap.js
 var bpm_tap_default = {
   id: "bpm-tap",
   name: "Tap tempo",
@@ -5755,7 +5755,7 @@ clear();
   }
 };
 
-// server/playgrounds/word-stats.js
+// engine/playgrounds/word-stats.js
 var word_stats_default = {
   id: "word-stats",
   name: "Word counter",
@@ -5830,7 +5830,7 @@ recompute();
   }
 };
 
-// server/playgrounds/wheel-spinner.js
+// engine/playgrounds/wheel-spinner.js
 var wheel_spinner_default = {
   id: "wheel-spinner",
   name: "Decision wheel",
@@ -5946,7 +5946,7 @@ spinBtn.addEventListener('click',spin);
   }
 };
 
-// server/playgrounds/memory-match.js
+// engine/playgrounds/memory-match.js
 var memory_match_default = {
   id: "memory-match",
   name: "Memory match",
@@ -6094,7 +6094,7 @@ deal();
   }
 };
 
-// server/playgrounds/star-rating.js
+// engine/playgrounds/star-rating.js
 var star_rating_default = {
   id: "star-rating",
   name: "Star rating",
@@ -6171,7 +6171,7 @@ paint(0);show(0);
   }
 };
 
-// server/playgrounds/emoji-slider.js
+// engine/playgrounds/emoji-slider.js
 var emoji_slider_default = {
   id: "emoji-slider",
   name: "Emoji scale",
@@ -6277,7 +6277,7 @@ last=nearest(parseFloat(slider.value));  // sync without popping on first paint
   }
 };
 
-// server/playgrounds/odometer.js
+// engine/playgrounds/odometer.js
 var odometer_default = {
   id: "odometer",
   name: "Counter reveal",
@@ -6344,7 +6344,7 @@ run();
   }
 };
 
-// server/playgrounds/word-scramble.js
+// engine/playgrounds/word-scramble.js
 var word_scramble_default = {
   id: "word-scramble",
   name: "Word scramble",
@@ -6498,7 +6498,7 @@ render();
   }
 };
 
-// server/playgrounds/colour-palette.js
+// engine/playgrounds/colour-palette.js
 var HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 var colour_palette_default = {
   id: "colour-palette",
@@ -6582,7 +6582,7 @@ select(first);
   }
 };
 
-// server/playgrounds/world-clocks.js
+// engine/playgrounds/world-clocks.js
 var world_clocks_default = {
   id: "world-clocks",
   name: "World clocks",
@@ -6677,7 +6677,7 @@ root._wcTimer=setInterval(tick,1000);
   }
 };
 
-// server/playgrounds/book-shelf.js
+// engine/playgrounds/book-shelf.js
 var PALETTE2 = ["#2dd4bf", "#22d3ee", "#818cf8", "#f472b6", "#fbbf24", "#34d399"];
 var book_shelf_default = {
   id: "book-shelf",
@@ -6798,7 +6798,7 @@ spines.forEach(function(s){
   }
 };
 
-// server/playgrounds/map-route.js
+// engine/playgrounds/map-route.js
 var map_route_default = {
   id: "map-route",
   name: "Journey",
@@ -7010,7 +7010,7 @@ arrive(0);
   }
 };
 
-// server/playgrounds/recipe-scaler.js
+// engine/playgrounds/recipe-scaler.js
 var recipe_scaler_default = {
   id: "recipe-scaler",
   name: "Recipe scaler",
@@ -7114,7 +7114,7 @@ recompute();
   }
 };
 
-// server/playgrounds/spectrum-scale.js
+// engine/playgrounds/spectrum-scale.js
 var spectrum_scale_default = {
   id: "spectrum-scale",
   name: "Spectrum scale",
@@ -7264,7 +7264,7 @@ update();
   }
 };
 
-// server/playgrounds/guess-slider.js
+// engine/playgrounds/guess-slider.js
 var guess_slider_default = {
   id: "guess-slider",
   name: "Guess the number",
@@ -7408,7 +7408,7 @@ againBtn.addEventListener('click',function(){
   }
 };
 
-// server/playgrounds/bracket.js
+// engine/playgrounds/bracket.js
 var bracket_default = {
   id: "bracket",
   name: "Knockout bracket",
@@ -7587,7 +7587,7 @@ render();
   }
 };
 
-// server/playgrounds/chord-diagram.js
+// engine/playgrounds/chord-diagram.js
 var chord_diagram_default = {
   id: "chord-diagram",
   name: "Chord shapes",
@@ -7726,7 +7726,7 @@ draw(data[0]);
   }
 };
 
-// server/playgrounds/budget-donut.js
+// engine/playgrounds/budget-donut.js
 var PALETTE3 = ["#2dd4bf", "#22d3ee", "#818cf8", "#f472b6", "#fbbf24", "#34d399"];
 var budget_donut_default = {
   id: "budget-donut",
@@ -7866,7 +7866,7 @@ render();
   }
 };
 
-// server/playgrounds/moon-phase.js
+// engine/playgrounds/moon-phase.js
 var moon_phase_default = {
   id: "moon-phase",
   name: "Moon phases",
@@ -7959,7 +7959,7 @@ set(parseFloat(slider.value));
   }
 };
 
-// server/playgrounds/morse-code.js
+// engine/playgrounds/morse-code.js
 var morse_code_default = {
   id: "morse-code",
   name: "Morse code",
@@ -8076,7 +8076,7 @@ if(go&&lamp&&!reduced){
   }
 };
 
-// server/playgrounds/timeline-scrubber.js
+// engine/playgrounds/timeline-scrubber.js
 var timeline_scrubber_default = {
   id: "timeline-scrubber",
   name: "Timeline",
@@ -8191,7 +8191,7 @@ render(MIN);
   }
 };
 
-// server/playgrounds/higher-lower.js
+// engine/playgrounds/higher-lower.js
 var higher_lower_default = {
   id: "higher-lower",
   name: "Higher or lower",
@@ -8423,7 +8423,7 @@ start();
   }
 };
 
-// server/playgrounds/forecast-strip.js
+// engine/playgrounds/forecast-strip.js
 var GLYPHS = {
   sun: "\u2600\uFE0F",
   partly: "\u26C5",
@@ -8572,7 +8572,7 @@ cards.forEach(function(c){
   }
 };
 
-// server/playgrounds/quadrant-plot.js
+// engine/playgrounds/quadrant-plot.js
 var quadrant_plot_default = {
   id: "quadrant-plot",
   name: "Quadrant",
@@ -8716,7 +8716,7 @@ out.textContent=labels.br||'\u2014';
   }
 };
 
-// server/playgrounds/checklist.js
+// engine/playgrounds/checklist.js
 var checklist_default = {
   id: "checklist",
   name: "Checklist",
@@ -8810,7 +8810,7 @@ refresh();
   }
 };
 
-// server/playgrounds/toggle-switches.js
+// engine/playgrounds/toggle-switches.js
 var toggle_switches_default = {
   id: "toggle-switches",
   name: "Toggles",
@@ -8918,7 +8918,7 @@ refresh();
   }
 };
 
-// server/playgrounds/tabs-panel.js
+// engine/playgrounds/tabs-panel.js
 var tabs_panel_default = {
   id: "tabs-panel",
   name: "Tabs",
@@ -9004,7 +9004,7 @@ select(0);
   }
 };
 
-// server/playgrounds/gradient-maker.js
+// engine/playgrounds/gradient-maker.js
 var gradient_maker_default = {
   id: "gradient-maker",
   name: "Gradient maker",
@@ -9086,7 +9086,7 @@ render();
   }
 };
 
-// server/playgrounds/colour-harmony.js
+// engine/playgrounds/colour-harmony.js
 var colour_harmony_default = {
   id: "colour-harmony",
   name: "Colour harmony",
@@ -9226,7 +9226,7 @@ render();
   }
 };
 
-// server/playgrounds/beat-sequencer.js
+// engine/playgrounds/beat-sequencer.js
 var beat_sequencer_default = {
   id: "beat-sequencer",
   name: "Beat sequencer",
@@ -9337,7 +9337,7 @@ btn.addEventListener('click',function(){
   }
 };
 
-// server/playgrounds/keyboard-notes.js
+// engine/playgrounds/keyboard-notes.js
 var keyboard_notes_default = {
   id: "keyboard-notes",
   name: "Piano keys",
@@ -9423,7 +9423,7 @@ refresh();
   }
 };
 
-// server/playgrounds/caesar-cipher.js
+// engine/playgrounds/caesar-cipher.js
 var caesar_cipher_default = {
   id: "caesar-cipher",
   name: "Caesar cipher",
@@ -9497,7 +9497,7 @@ render();
   }
 };
 
-// server/playgrounds/nato-phonetic.js
+// engine/playgrounds/nato-phonetic.js
 var nato_phonetic_default = {
   id: "nato-phonetic",
   name: "NATO alphabet",
@@ -9582,7 +9582,7 @@ render();
   }
 };
 
-// server/playgrounds/chronology-game.js
+// engine/playgrounds/chronology-game.js
 var chronology_game_default = {
   id: "chronology-game",
   name: "Put it in order",
@@ -9792,7 +9792,7 @@ reset();
   }
 };
 
-// server/playgrounds/time-since.js
+// engine/playgrounds/time-since.js
 var time_since_default = {
   id: "time-since",
   name: "Time since",
@@ -9864,7 +9864,7 @@ root._tsTimer=setInterval(tick,1000);
   }
 };
 
-// server/playgrounds/temp-converter.js
+// engine/playgrounds/temp-converter.js
 var temp_converter_default = {
   id: "temp-converter",
   name: "Temperature converter",
@@ -9969,7 +9969,7 @@ recompute();
   }
 };
 
-// server/playgrounds/weather-scene.js
+// engine/playgrounds/weather-scene.js
 var CONDITIONS = ["sunny", "cloudy", "rainy", "stormy", "snowy"];
 var LABELS = { sunny: "Sunny", cloudy: "Cloudy", rainy: "Rainy", stormy: "Stormy", snowy: "Snowy" };
 var weather_scene_default = {
@@ -10126,7 +10126,7 @@ show(btns[0].getAttribute('data-cond'));
   }
 };
 
-// server/playgrounds/pros-cons.js
+// engine/playgrounds/pros-cons.js
 var pros_cons_default = {
   id: "pros-cons",
   name: "Pros & cons",
@@ -10252,7 +10252,7 @@ refresh();
   }
 };
 
-// server/playgrounds/accordion.js
+// engine/playgrounds/accordion.js
 var accordion_default = {
   id: "accordion",
   name: "Accordion",
@@ -10334,7 +10334,7 @@ rows.forEach(function(row){
   }
 };
 
-// server/playgrounds/decision-tree.js
+// engine/playgrounds/decision-tree.js
 var decision_tree_default = {
   id: "decision-tree",
   name: "Decision flow",
@@ -10500,7 +10500,7 @@ render();
   }
 };
 
-// server/playgrounds/poll.js
+// engine/playgrounds/poll.js
 var optionSchema = {
   type: "object",
   additionalProperties: false,
@@ -10646,7 +10646,7 @@ paint();
   }
 };
 
-// server/playgrounds/scratch-reveal.js
+// engine/playgrounds/scratch-reveal.js
 function stripUnsafe(html) {
   return String(html).replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, "").replace(/<\s*script\b[^>]*\/?\s*>/gi, "").replace(/<\s*(iframe|object|embed|foreignObject)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, "").replace(/<\s*(iframe|object|embed)\b[^>]*\/?\s*>/gi, "").replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "").replace(/(href|src)\s*=\s*("\s*(?:javascript|data|vbscript):[^"]*"|'\s*(?:javascript|data|vbscript):[^']*'|\s*(?:javascript|data|vbscript):[^\s>]*)/gi, "");
 }
@@ -10776,7 +10776,7 @@ window.addEventListener('resize',function(){if(cleared)return;clearTimeout(rt);r
   }
 };
 
-// server/playgrounds/swipe-carousel.js
+// engine/playgrounds/swipe-carousel.js
 var slideSchema = {
   type: "object",
   additionalProperties: false,
@@ -10944,7 +10944,7 @@ render(false);
   }
 };
 
-// server/playgrounds/keyboard-layout.js
+// engine/playgrounds/keyboard-layout.js
 var keyboard_layout_default = {
   id: "keyboard-layout",
   name: "Keyboard layout reach",
@@ -11004,7 +11004,7 @@ upd();
   }
 };
 
-// server/playgrounds/doneness.js
+// engine/playgrounds/doneness.js
 var doneness_default = {
   id: "doneness",
   name: "Temperature zones",
@@ -11116,7 +11116,7 @@ upd();
   }
 };
 
-// server/playgrounds/key-change.js
+// engine/playgrounds/key-change.js
 var key_change_default = {
   id: "key-change",
   name: "Key change (modulation)",
@@ -11233,7 +11233,7 @@ if(stopBtn)stopBtn.addEventListener('click',function(){stopAll(false);});
   }
 };
 
-// server/playgrounds/easing-curves.js
+// engine/playgrounds/easing-curves.js
 var easing_curves_default = {
   id: "easing-curves",
   name: "Easing curves",
@@ -11337,7 +11337,7 @@ drawCurve();
   }
 };
 
-// server/playgrounds/image-annotator.js
+// engine/playgrounds/image-annotator.js
 var image_annotator_default = {
   id: "image-annotator",
   name: "Image annotator",
@@ -11452,7 +11452,7 @@ tallyText();
   }
 };
 
-// server/playgrounds/step-explainer.js
+// engine/playgrounds/step-explainer.js
 var step_explainer_default = {
   id: "step-explainer",
   name: "Step-through explainer",
@@ -11568,7 +11568,7 @@ show(0,true);
   }
 };
 
-// server/playgrounds/scored-quiz.js
+// engine/playgrounds/scored-quiz.js
 var scored_quiz_default = {
   id: "scored-quiz",
   name: "Scored quiz",
@@ -11712,7 +11712,7 @@ showQ();
   }
 };
 
-// server/playgrounds/sortable-table.js
+// engine/playgrounds/sortable-table.js
 var sortable_table_default = {
   id: "sortable-table",
   name: "Sortable table",
@@ -11838,7 +11838,7 @@ paint();
   }
 };
 
-// server/playgrounds/self-assessment.js
+// engine/playgrounds/self-assessment.js
 var self_assessment_default = {
   id: "self-assessment",
   name: "Self-assessment",
@@ -11984,7 +11984,7 @@ show();
   }
 };
 
-// server/playgrounds/formula-calculator.js
+// engine/playgrounds/formula-calculator.js
 var inputSchema2 = {
   type: "object",
   additionalProperties: false,
@@ -12106,7 +12106,7 @@ draw();
   }
 };
 
-// server/playgrounds/branching-scenario.js
+// engine/playgrounds/branching-scenario.js
 var branching_scenario_default = {
   id: "branching-scenario",
   name: "Branching scenario",
@@ -12234,7 +12234,7 @@ render();
   }
 };
 
-// server/playgrounds/dataset-explorer.js
+// engine/playgrounds/dataset-explorer.js
 var dataset_explorer_default = {
   id: "dataset-explorer",
   name: "Dataset explorer",
@@ -12343,7 +12343,7 @@ paint();
   }
 };
 
-// server/playgrounds/drag-to-label.js
+// engine/playgrounds/drag-to-label.js
 var drag_to_label_default = {
   id: "drag-to-label",
   name: "Drag to label",
@@ -12450,7 +12450,7 @@ refresh();
   }
 };
 
-// server/playgrounds/algorithm-builder.js
+// engine/playgrounds/algorithm-builder.js
 var SHAPES = ["start", "process", "decision", "input", "end"];
 var algorithm_builder_default = {
   id: "algorithm-builder",
@@ -12560,7 +12560,7 @@ renumber();
   }
 };
 
-// server/playgrounds/relationship-network.js
+// engine/playgrounds/relationship-network.js
 var relationship_network_default = {
   id: "relationship-network",
   name: "Relationship network",
@@ -12680,7 +12680,7 @@ buttons.forEach(function(btn){btn.addEventListener('click',function(){var id=btn
   }
 };
 
-// server/playgrounds/registry.js
+// engine/playgrounds/registry.js
 var all = [
   toggle_ab_default,
   function_explorer_default,
@@ -12768,7 +12768,7 @@ var families = all.reduce((m, f) => {
   return m;
 }, {});
 
-// server/playgrounds/accent.js
+// engine/playgrounds/accent.js
 var SRC = {
   cyan: { hex: "#22d3ee", rgb: [34, 211, 238] },
   teal: { hex: "#2dd4bf", rgb: [45, 212, 191] },
@@ -12829,7 +12829,7 @@ function applyAccent(css, accent, customHex, domId) {
   return vars + "\n" + out;
 }
 
-// server/playgrounds/frame.js
+// engine/playgrounds/frame.js
 var esc2 = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 var STD_PROPS = {
   title: { type: "string", title: "Title (heading above the widget)", "x-inline": true, "x-group": "Heading" },
@@ -12893,7 +12893,7 @@ function frameWrap({ html, domId, title, subtitle, caption, maxHeight }) {
   return { html: wrapped, css: css.join("\n"), js };
 }
 
-// server/playgrounds/index.js
+// engine/playgrounds/index.js
 function listFamilies() {
   return Object.values(families).map((f) => ({
     id: f.id,
@@ -12947,14 +12947,14 @@ function idHash(s) {
 }
 var esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// server/figures/registry.js
+// engine/figures/registry.js
 var registry_exports = {};
 __export(registry_exports, {
   build: () => build24,
   listFamilies: () => listFamilies2
 });
 
-// server/figures/labelled-diagram.js
+// engine/figures/labelled-diagram.js
 var labelled_diagram_exports = {};
 __export(labelled_diagram_exports, {
   build: () => build,
@@ -13056,7 +13056,7 @@ function build(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/step-flow.js
+// engine/figures/step-flow.js
 var step_flow_exports = {};
 __export(step_flow_exports, {
   build: () => build2,
@@ -13164,7 +13164,7 @@ function build2(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/cross-section.js
+// engine/figures/cross-section.js
 var cross_section_exports = {};
 __export(cross_section_exports, {
   build: () => build3,
@@ -13307,7 +13307,7 @@ function build3(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/annotation-arrows.js
+// engine/figures/annotation-arrows.js
 var annotation_arrows_exports = {};
 __export(annotation_arrows_exports, {
   build: () => build4,
@@ -13435,7 +13435,7 @@ function build4(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/timeline.js
+// engine/figures/timeline.js
 var timeline_exports = {};
 __export(timeline_exports, {
   build: () => build5,
@@ -13542,7 +13542,7 @@ function build5(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/cycle.js
+// engine/figures/cycle.js
 var cycle_exports = {};
 __export(cycle_exports, {
   build: () => build6,
@@ -13666,7 +13666,7 @@ function build6(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/flow-decision.js
+// engine/figures/flow-decision.js
 var flow_decision_exports = {};
 __export(flow_decision_exports, {
   build: () => build7,
@@ -13884,7 +13884,7 @@ function build7(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/before-after.js
+// engine/figures/before-after.js
 var before_after_exports = {};
 __export(before_after_exports, {
   build: () => build8,
@@ -13985,7 +13985,7 @@ function build8(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/comparison-matrix.js
+// engine/figures/comparison-matrix.js
 var comparison_matrix_exports = {};
 __export(comparison_matrix_exports, {
   build: () => build9,
@@ -14129,7 +14129,7 @@ function build9(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/venn-overlap.js
+// engine/figures/venn-overlap.js
 var venn_overlap_exports = {};
 __export(venn_overlap_exports, {
   build: () => build10,
@@ -14252,7 +14252,7 @@ function build10(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/hierarchy.js
+// engine/figures/hierarchy.js
 var hierarchy_exports = {};
 __export(hierarchy_exports, {
   build: () => build11,
@@ -14377,7 +14377,7 @@ function build11(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/bar-compare.js
+// engine/figures/bar-compare.js
 var bar_compare_exports = {};
 __export(bar_compare_exports, {
   build: () => build12,
@@ -14533,7 +14533,7 @@ function build12(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/part-to-whole.js
+// engine/figures/part-to-whole.js
 var part_to_whole_exports = {};
 __export(part_to_whole_exports, {
   build: () => build13,
@@ -14752,7 +14752,7 @@ function build13(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/range-scale.js
+// engine/figures/range-scale.js
 var range_scale_exports = {};
 __export(range_scale_exports, {
   build: () => build14,
@@ -14883,7 +14883,7 @@ function build14(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/small-multiples.js
+// engine/figures/small-multiples.js
 var small_multiples_exports = {};
 __export(small_multiples_exports, {
   build: () => build15,
@@ -14976,7 +14976,7 @@ function build15(params = {}, opts = { animate: "draw" }) {
   return { svg: svg2, supportsDraw: true, motion: null };
 }
 
-// server/figures/pulse.js
+// engine/figures/pulse.js
 var pulse_exports = {};
 __export(pulse_exports, {
   build: () => build16,
@@ -15020,7 +15020,7 @@ function build16(params = {}, opts = { animate: "motion" }) {
   return { svg: svg2, supportsDraw: false, motion: "pulse" };
 }
 
-// server/figures/rotate.js
+// engine/figures/rotate.js
 var rotate_exports = {};
 __export(rotate_exports, {
   build: () => build17,
@@ -15108,7 +15108,7 @@ function build17(params = {}, opts = { animate: "motion" }) {
   return { svg: svg2, supportsDraw: false, motion: "rotate" };
 }
 
-// server/figures/oscillate.js
+// engine/figures/oscillate.js
 var oscillate_exports = {};
 __export(oscillate_exports, {
   build: () => build18,
@@ -15162,7 +15162,7 @@ function build18(params = {}, opts = { animate: "motion" }) {
   return { svg: svg2, supportsDraw: false, motion: "oscillate" };
 }
 
-// server/figures/flow.js
+// engine/figures/flow.js
 var flow_exports = {};
 __export(flow_exports, {
   build: () => build19,
@@ -15207,7 +15207,7 @@ function build19(params = {}, opts = { animate: "motion" }) {
   return { svg: svg2, supportsDraw: false, motion: "flow" };
 }
 
-// server/figures/wave.js
+// engine/figures/wave.js
 var wave_exports = {};
 __export(wave_exports, {
   build: () => build20,
@@ -15271,7 +15271,7 @@ function build20(params = {}, opts = { animate: "motion" }) {
   return { svg: svg2, supportsDraw: false, motion: "wave" };
 }
 
-// server/figures/fill.js
+// engine/figures/fill.js
 var fill_exports = {};
 __export(fill_exports, {
   build: () => build21,
@@ -15362,7 +15362,7 @@ function build21(params = {}, opts = { animate: "motion" }) {
   return { svg: svg2, supportsDraw: false, motion: "fill" };
 }
 
-// server/figures/morph.js
+// engine/figures/morph.js
 var morph_exports = {};
 __export(morph_exports, {
   build: () => build22,
@@ -15468,7 +15468,7 @@ function build22(params = {}, opts = { animate: "motion" }) {
   return { svg: svg2, supportsDraw: false, motion: "morph" };
 }
 
-// server/figures/stages.js
+// engine/figures/stages.js
 var stages_exports = {};
 __export(stages_exports, {
   build: () => build23,
@@ -15584,7 +15584,7 @@ ${rules.join("\n")}`;
   return { svg: svg2, supportsDraw: false, motion: "stages" };
 }
 
-// server/figures/registry.js
+// engine/figures/registry.js
 var FAMILIES = [
   labelled_diagram_exports,
   step_flow_exports,
@@ -15620,7 +15620,7 @@ function build24(id, params, opts) {
   return mod.build(params, opts);
 }
 
-// server/profile.js
+// engine/profile.js
 var UNIVERSAL_VOICE = [
   "- Measured, intelligent, precise. Confident without bravado.",
   "- Occasionally witty or wry; never goofy, never cringe.",
@@ -15721,7 +15721,7 @@ function profileFromAnswers(answers = {}) {
   });
 }
 
-// server/studio.js
+// engine/studio.js
 var styleFor = (profile) => buildStyle(profile);
 var guardFor = (profile) => factGuardLine(profile);
 var blogDomainFor = (profile) => {
@@ -16479,7 +16479,7 @@ ${String(svg2).slice(0, 2e3)}` : ""}`;
 }
 var STUDIO_STYLE = buildStyle(DEFAULT_PROFILE);
 
-// server/prepublish.js
+// engine/prepublish.js
 var prepublish_exports = {};
 __export(prepublish_exports, {
   __probeUrl: () => __probeUrl,
@@ -16920,7 +16920,7 @@ async function lintDoc({ doc, meta: meta24 = {}, slug = "post", knownSlugs = nul
 }
 var __probeUrl = probeUrl;
 
-// studio-app/core/partner.js
+// src/core/partner.js
 var rid = () => "p-" + (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Math.random().toString(36).slice(2));
 function createSession() {
   return { sessionId: rid(), history: [], doc: { version: 0, blocks: [] }, meta: {}, versions: [], updatedAt: null };
@@ -17054,7 +17054,7 @@ async function publishSession(session, posts) {
   return { ok: true, slug, url: r.url, commit: r.commit, warnings: check.warnings };
 }
 
-// studio-app/core/siteConfig.js
+// src/core/siteConfig.js
 var PATH = "src/data/site.json";
 async function getSiteConfig(gh) {
   const f = await gh.getFile(PATH);
@@ -17068,7 +17068,7 @@ async function putSiteConfig(gh, data, sha) {
   return gh.putFile(PATH, JSON.stringify(data, null, 2) + "\n", "studio: update site settings", sha || void 0);
 }
 
-// studio-app/core/themesConfig.js
+// src/core/themesConfig.js
 var PATH2 = "src/data/themes.json";
 function normaliseThemes(raw) {
   if (!raw) return [];
@@ -17102,7 +17102,7 @@ async function getThemesConfig(gh) {
   return { themes: normaliseThemes(raw), categories: categoryNames(raw) };
 }
 
-// studio-app/core/topicsConfig.js
+// src/core/topicsConfig.js
 var PATH3 = "src/data/topics.json";
 async function getTopicsConfig(gh) {
   const f = await gh.getFile(PATH3);
@@ -17113,7 +17113,7 @@ async function putTopicsConfig(gh, data, sha) {
   return gh.putFile(PATH3, JSON.stringify(data, null, 2) + "\n", "studio: update topics", sha || void 0);
 }
 
-// studio-app/router.js
+// src/router.js
 function makeRouter(deps) {
   const { posts, partner, ai, storage: storage2, studio, playgrounds, figures, stencils, stickers, blocks, prepublish, templates: templates2, config: config2, gh } = deps;
   let _ctx = null;
@@ -17380,7 +17380,7 @@ function makeRouter(deps) {
   return { api };
 }
 
-// server/figures/stencils.js
+// engine/figures/stencils.js
 var stencils_exports = {};
 __export(stencils_exports, {
   listStencils: () => listStencils
@@ -17591,7 +17591,7 @@ function listStencils() {
   return [...genericStencils(), ...clinicalStencils()];
 }
 
-// server/figures/stickers.js
+// engine/figures/stickers.js
 var stickers_exports = {};
 __export(stickers_exports, {
   STICKER_GENRES: () => STICKER_GENRES,
@@ -17601,7 +17601,7 @@ __export(stickers_exports, {
   listStickers: () => listStickers
 });
 
-// server/figures/stickers/_style.js
+// engine/figures/stickers/_style.js
 var RETRO = {
   ink: "#1c1a17",
   // near-black outline / linework
@@ -17718,7 +17718,7 @@ function assertClean(id, out) {
   }
 }
 
-// server/figures/stickers/travel.js
+// engine/figures/stickers/travel.js
 var travel_default = {
   genre: "travel",
   label: "Travel",
@@ -17828,7 +17828,7 @@ var travel_default = {
   ]
 };
 
-// server/figures/stickers/monuments.js
+// engine/figures/stickers/monuments.js
 var monuments_default = {
   genre: "monuments",
   label: "Monuments",
@@ -17932,7 +17932,7 @@ var monuments_default = {
   ]
 };
 
-// server/figures/stickers/science.js
+// engine/figures/stickers/science.js
 var science_default = {
   genre: "science",
   label: "Science",
@@ -18030,7 +18030,7 @@ var science_default = {
   ]
 };
 
-// server/figures/stickers/paintings.js
+// engine/figures/stickers/paintings.js
 var paintings_default = {
   genre: "paintings",
   label: "Art",
@@ -18123,7 +18123,7 @@ var paintings_default = {
   ]
 };
 
-// server/figures/stickers/flora-fauna.js
+// engine/figures/stickers/flora-fauna.js
 var flora_fauna_default = {
   genre: "flora-fauna",
   label: "Flora & fauna",
@@ -18239,7 +18239,7 @@ var flora_fauna_default = {
   ]
 };
 
-// server/figures/stickers/general.js
+// engine/figures/stickers/general.js
 var general_default = {
   genre: "general",
   label: "General",
@@ -18328,7 +18328,7 @@ var general_default = {
   ]
 };
 
-// server/figures/stickers/food-drink.js
+// engine/figures/stickers/food-drink.js
 var food_drink_default = {
   genre: "food-drink",
   label: "Food & drink",
@@ -18457,7 +18457,7 @@ var food_drink_default = {
   ]
 };
 
-// server/figures/stickers/sport-games.js
+// engine/figures/stickers/sport-games.js
 var sport_games_default = {
   genre: "sport-games",
   label: "Sport & games",
@@ -18606,7 +18606,7 @@ var sport_games_default = {
   ]
 };
 
-// server/figures/stickers/music.js
+// engine/figures/stickers/music.js
 var music_default = {
   genre: "music",
   label: "Music",
@@ -18719,7 +18719,7 @@ var music_default = {
   ]
 };
 
-// server/figures/stickers/medical-anatomy.js
+// engine/figures/stickers/medical-anatomy.js
 var medical_anatomy_default = {
   genre: "medical-anatomy",
   label: "Medical & anatomy",
@@ -18832,7 +18832,7 @@ var medical_anatomy_default = {
   ]
 };
 
-// server/figures/stickers/space.js
+// engine/figures/stickers/space.js
 var space_default = {
   genre: "space",
   label: "Space",
@@ -18938,7 +18938,7 @@ var space_default = {
   ]
 };
 
-// server/figures/stickers/weather-nature.js
+// engine/figures/stickers/weather-nature.js
 var weather_nature_default = {
   genre: "weather-nature",
   label: "Weather & nature",
@@ -19039,7 +19039,7 @@ var weather_nature_default = {
   ]
 };
 
-// server/figures/stickers/tech.js
+// engine/figures/stickers/tech.js
 var tech_default = {
   genre: "tech",
   label: "Tech",
@@ -19200,7 +19200,7 @@ var tech_default = {
   ]
 };
 
-// server/figures/stickers/emotions-reactions.js
+// engine/figures/stickers/emotions-reactions.js
 var emotions_reactions_default = {
   genre: "emotions-reactions",
   label: "Emotions & reactions",
@@ -19304,7 +19304,7 @@ var emotions_reactions_default = {
   ]
 };
 
-// server/figures/stickers/transport.js
+// engine/figures/stickers/transport.js
 var wheel = (cx, cy, r = 12) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${RETRO.ink}" stroke="${RETRO.ink}" stroke-width="${LINE}"/><circle cx="${cx}" cy="${cy}" r="${r - 6}" fill="${RETRO.paper}" stroke="${RETRO.ink}" stroke-width="2"/>`;
 var transport_default = {
   genre: "transport",
@@ -19441,7 +19441,7 @@ var transport_default = {
   ]
 };
 
-// server/figures/stickers/history.js
+// engine/figures/stickers/history.js
 var history_default = {
   genre: "history",
   label: "History",
@@ -19561,7 +19561,7 @@ var history_default = {
   ]
 };
 
-// server/figures/stickers.js
+// engine/figures/stickers.js
 var MODULES = [
   travel_default,
   monuments_default,
@@ -19610,7 +19610,7 @@ function viewBoxOf(svg2) {
   return m ? [Number(m[1]), Number(m[2])] : [120, 120];
 }
 
-// server/templates/blank.json
+// engine/templates/blank.json
 var blank_default = {
   id: "blank",
   name: "Blank",
@@ -19623,7 +19623,7 @@ var blank_default = {
   }
 };
 
-// server/templates/announcement.json
+// engine/templates/announcement.json
 var announcement_default = {
   id: "announcement",
   name: "Announcement",
@@ -19638,7 +19638,7 @@ var announcement_default = {
   }
 };
 
-// server/templates/essay.json
+// engine/templates/essay.json
 var essay_default = {
   id: "essay",
   name: "Essay / Long read",
@@ -19658,7 +19658,7 @@ var essay_default = {
   }
 };
 
-// server/templates/how-to.json
+// engine/templates/how-to.json
 var how_to_default = {
   id: "how-to",
   name: "How-to / Tutorial",
@@ -19679,7 +19679,7 @@ var how_to_default = {
   }
 };
 
-// server/templates/interactive.json
+// engine/templates/interactive.json
 var interactive_default = {
   id: "interactive",
   name: "Interactive",
@@ -19695,7 +19695,7 @@ var interactive_default = {
   }
 };
 
-// server/templates/list-roundup.json
+// engine/templates/list-roundup.json
 var list_roundup_default = {
   id: "list-roundup",
   name: "List / Roundup",
@@ -19716,7 +19716,7 @@ var list_roundup_default = {
   }
 };
 
-// server/templates/photo-story.json
+// engine/templates/photo-story.json
 var photo_story_default = {
   id: "photo-story",
   name: "Photo story",
@@ -19733,7 +19733,7 @@ var photo_story_default = {
   }
 };
 
-// server/templates/review.json
+// engine/templates/review.json
 var review_default = {
   id: "review",
   name: "Review",
@@ -19753,7 +19753,7 @@ var review_default = {
   }
 };
 
-// server/templates/travel-note.json
+// engine/templates/travel-note.json
 var travel_note_default = {
   id: "travel-note",
   name: "Travel note",
@@ -19769,7 +19769,7 @@ var travel_note_default = {
   }
 };
 
-// studio-app/core/templates.js
+// src/core/templates.js
 var all2 = [blank_default, announcement_default, essay_default, how_to_default, interactive_default, list_roundup_default, photo_story_default, review_default, travel_note_default];
 all2.sort((a, b) => {
   if (a.id === "blank") return -1;
@@ -19778,7 +19778,7 @@ all2.sort((a, b) => {
 });
 var templates = { list: () => all2 };
 
-// studio-app/core/domain.js
+// src/core/domain.js
 var domain_exports = {};
 __export(domain_exports, {
   GH_PAGES_A: () => GH_PAGES_A,
@@ -19859,7 +19859,7 @@ function pagesDomainStatus(pages, expectedInput) {
   return { configured, matches, cname, built, httpsEnforced, certState, certReady, ok, message };
 }
 
-// studio-app/core/tour.js
+// src/core/tour.js
 var tour_exports = {};
 __export(tour_exports, {
   TOUR_DONE_KEY: () => TOUR_DONE_KEY,
@@ -19982,7 +19982,7 @@ function shouldAutoOpen(store) {
   return isPending(store) && !isDone(store);
 }
 
-// studio-app/core/quotes.js
+// src/core/quotes.js
 var quotes_exports = {};
 __export(quotes_exports, {
   QUOTES: () => QUOTES,
@@ -19995,7 +19995,7 @@ __export(quotes_exports, {
   toneFacets: () => toneFacets
 });
 
-// studio-app/data/quotes.json
+// src/data/quotes.json
 var quotes_default = {
   version: 1,
   note: "Curated public-domain / widely-attributed quotations for the Studio Quote Library. Every author is long-deceased (text in the public domain) or the line is a widely-attributed aphorism. No modern copyrighted lyrics or book passages. themes: Life, Love, Work & ambition, Creativity & art, Science & knowledge, Failure & resilience, Time, Nature, Wisdom, Humour, Freedom, Courage. tone: inspiring, wry, reflective, defiant, tender.",
@@ -20390,7 +20390,7 @@ var quotes_default = {
   ]
 };
 
-// studio-app/core/quotes.js
+// src/core/quotes.js
 var QUOTES = Object.freeze(
   (Array.isArray(quotes_default?.quotes) ? quotes_default.quotes : []).map((q2, i) => Object.freeze({
     id: "q" + i,
@@ -20451,7 +20451,7 @@ function quoteForInsert(q2) {
   return { text: (q2?.text || "").trim(), cite: formatAttribution(q2) };
 }
 
-// studio-app/core/postCalendar.js
+// src/core/postCalendar.js
 var postCalendar_exports = {};
 __export(postCalendar_exports, {
   MAX_YEAR: () => MAX_YEAR,
@@ -20609,7 +20609,7 @@ function agendaForMonth(byDay, year, month) {
   return out.sort((a, b) => a.iso.localeCompare(b.iso));
 }
 
-// studio-app/core/shareIntents.js
+// src/core/shareIntents.js
 var shareIntents_exports = {};
 __export(shareIntents_exports, {
   PLATFORM_CAP: () => PLATFORM_CAP,
@@ -20724,7 +20724,7 @@ function shareSheetText(lines, url) {
   return t || u;
 }
 
-// studio-app/core/postList.js
+// src/core/postList.js
 var postList_exports = {};
 __export(postList_exports, {
   isAlreadyDeleted: () => isAlreadyDeleted,
@@ -20741,7 +20741,7 @@ function isAlreadyDeleted(err) {
   return /\bnot found\b|already (?:deleted|gone)/.test(text2);
 }
 
-// studio-app/app.js
+// src/app.js
 var GH_CLIENT_ID = typeof window !== "undefined" && window.__STUDIO_GH_CLIENT_ID || "";
 var RELAY_BASE = typeof window !== "undefined" && window.__STUDIO_RELAY_BASE || "/.netlify/functions/gh-device";
 function buildApi() {
