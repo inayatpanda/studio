@@ -182,7 +182,7 @@ function makeGithub(gh, fetchImpl = fetch) {
       m = j.message || m;
     } catch {
     }
-    return Object.assign(new Error(m), { status: res.status });
+    return Object.assign(new Error(m), { status: res.status, code: "GITHUB_HTTP" });
   }
   async function gj(url, opts) {
     const res = await fetchImpl(url, { cache: "no-store", ...opts, headers: headers5() });
@@ -191,7 +191,7 @@ function makeGithub(gh, fetchImpl = fetch) {
   }
   return {
     async getFile(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { cache: "no-store", headers: headers5() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${encodeURIComponent(gh.branch || "HEAD")}`, { cache: "no-store", headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       const j = await res.json();
@@ -225,14 +225,14 @@ function makeGithub(gh, fetchImpl = fetch) {
       return true;
     },
     async listDir(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { cache: "no-store", headers: headers5() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${encodeURIComponent(gh.branch || "HEAD")}`, { cache: "no-store", headers: headers5() });
       if (res.status === 404) return [];
       if (!res.ok) throw await err(res);
       const j = await res.json();
       return Array.isArray(j) ? j.map((e) => ({ name: e.name, path: e.path, sha: e.sha, type: e.type })) : [];
     },
     async getBinary(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { cache: "no-store", headers: headers5() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${encodeURIComponent(gh.branch || "HEAD")}`, { cache: "no-store", headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       const j = await res.json();
@@ -282,17 +282,45 @@ function makeGithub(gh, fetchImpl = fetch) {
         return attempt();
       }
     },
-    // The signed-in user's OWN repos, newest first — for the device-flow repo picker.
-    // Uses only the token (owner/repo not needed). Browser-direct (api.github.com sends CORS).
+    // Include writable collaboration/organisation repos, and follow every page. Never
+    // turn an API failure into an apparently empty account.
     async listRepos() {
-      const j = await gj(`${API}/user/repos?per_page=100&affiliation=owner&sort=updated`);
-      return (Array.isArray(j) ? j : []).map((r) => ({
-        fullName: r.full_name,
-        name: r.name,
-        owner: r.owner && r.owner.login,
-        branch: r.default_branch || "main",
-        private: !!r.private
-      }));
+      const repos = [];
+      for (let page = 1; ; page++) {
+        const batch = await gj(`${API}/user/repos?per_page=100&affiliation=owner,collaborator,organization_member&sort=updated&page=${page}`);
+        if (!Array.isArray(batch)) throw new Error("GitHub returned an unreadable repository list. Please retry.");
+        repos.push(...batch.filter((r) => !r.archived && !r.disabled && r.permissions?.push !== false).map((r) => ({
+          fullName: r.full_name,
+          name: r.name,
+          owner: r.owner?.login,
+          branch: r.default_branch || "main",
+          private: !!r.private
+        })));
+        if (batch.length < 100) break;
+      }
+      return repos;
+    },
+    async checkRepository() {
+      const repo = await gj(repoBase);
+      if (repo.archived || repo.disabled) throw new Error("This repository is archived or disabled. Choose an active website repository.");
+      if (repo.permissions?.push === false) throw new Error("Your GitHub account has read-only access to this repository. Ask its owner for write access.");
+      const branch = gh.branch || repo.default_branch || "main";
+      try {
+        await gj(`${repoBase}/branches/${encodeURIComponent(branch)}`);
+      } catch (e) {
+        if (e.status === 404) throw new Error(`The branch \u201C${branch}\u201D was not found. Check the branch name under Advanced.`);
+        throw e;
+      }
+      const file = await this.getFile("src/data/site.json");
+      if (!file) throw new Error("This is not a compatible website repository: src/data/site.json is missing. Choose your blog repository, or create a new site below.");
+      let site;
+      try {
+        site = JSON.parse(file.content);
+      } catch {
+        throw new Error("The website settings file is not valid JSON. Repair src/data/site.json before connecting.");
+      }
+      if (!site || typeof site !== "object" || Array.isArray(site)) throw new Error("The website settings file must contain a settings object.");
+      return { branch, name: site.name || repo.name };
     },
     // Who the current token belongs to — for "Signed in as @login".
     async whoami() {
@@ -349,7 +377,7 @@ function makeGithub(gh, fetchImpl = fetch) {
     // parsed JSON (incl. { cname, status, https_enforced, https_certificate }) or null when
     // Pages isn't enabled yet (404). The pure interpreter is core/domain.js pagesDomainStatus.
     async getPages({ owner, repo }) {
-      const res = await fetchImpl(`${API}/repos/${enc(owner)}/${enc(repo)}/pages`, { headers: headers5() });
+      const res = await fetchImpl(`${API}/repos/${enc(owner)}/${enc(repo)}/pages`, { cache: "no-store", headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       return res.json();
@@ -360,23 +388,53 @@ function makeGithub(gh, fetchImpl = fetch) {
 // src/seams/deviceAuth.js
 var GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 function makeDeviceAuth({ clientId, relayBase, scope = "public_repo" }, fetchImpl = fetch) {
-  const post = async (step, params) => {
-    const res = await fetchImpl(relayBase, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step, params })
-    });
-    return res.json();
+  const post = async (step, params, signal) => {
+    let res;
+    try {
+      res = await fetchImpl(relayBase, {
+        method: "POST",
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(3e4)]) : AbortSignal.timeout(3e4),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step, params })
+      });
+    } catch (cause) {
+      if (signal?.aborted) {
+        const e3 = new Error("Sign-in cancelled.");
+        e3.kind = "aborted";
+        throw e3;
+      }
+      const e2 = new Error("Could not reach the sign-in service \u2014 check your connection, then try again.");
+      e2.kind = "network";
+      throw e2;
+    }
+    let data2 = null;
+    try {
+      data2 = await res.json();
+    } catch {
+    }
+    if (!res.ok && res.status >= 500) {
+      const e2 = new Error("The sign-in service is temporarily unavailable. Please retry in a moment.");
+      e2.kind = "relay";
+      e2.status = res.status;
+      throw e2;
+    }
+    if (data2 && typeof data2 === "object" && (res.ok || data2.error || data2.access_token || data2.device_code || data2.user_code)) {
+      return data2;
+    }
+    const e = new Error(`The sign-in service is unavailable right now (HTTP ${res.status || "?"}). Please try again in a moment.`);
+    e.kind = "relay";
+    e.status = res.status;
+    throw e;
   };
   return {
     // Step 1 — ask GitHub for a device + user code.
-    async requestCode() {
+    async requestCode(signal) {
       if (!clientId) {
         const e = new Error("Device sign-in is not configured.");
         e.kind = "config";
         throw e;
       }
-      const j = await post("code", { client_id: clientId, scope });
+      const j = await post("code", { client_id: clientId, scope }, signal);
       if (j.error || !j.device_code) {
         const e = new Error(j.error_description || j.error || "Could not start sign-in.");
         e.kind = "start";
@@ -385,8 +443,8 @@ function makeDeviceAuth({ clientId, relayBase, scope = "public_repo" }, fetchImp
       return j;
     },
     // Step 3 — a single poll.
-    async pollOnce(deviceCode) {
-      const j = await post("token", { client_id: clientId, device_code: deviceCode, grant_type: GRANT });
+    async pollOnce(deviceCode, signal) {
+      const j = await post("token", { client_id: clientId, device_code: deviceCode, grant_type: GRANT }, signal);
       if (j.access_token) return { status: "ok", token: j.access_token, scope: j.scope || scope };
       if (j.error === "authorization_pending") return { status: "pending" };
       if (j.error === "slow_down") return { status: "slow_down", interval: j.interval };
@@ -398,13 +456,28 @@ function makeDeviceAuth({ clientId, relayBase, scope = "public_repo" }, fetchImp
     },
     // Steps 1 + 3 orchestrated. onCode receives { userCode, verificationUri, expiresIn }
     // so the UI can show the code immediately. sleep + signal are injectable/optional.
-    async authorize({ onCode, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), signal } = {}) {
-      const code = await this.requestCode();
+    async authorize({ onCode, onRetry, sleep = (ms) => new Promise((resolve, reject) => {
+      const timer = setTimeout(done, ms);
+      function done() {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      }
+      function abort() {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        reject(Object.assign(new Error("Sign-in cancelled."), { kind: "aborted" }));
+      }
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+    }), signal } = {}) {
+      const code = await this.requestCode(signal);
+      if (signal?.aborted) throw Object.assign(new Error("Sign-in cancelled."), { kind: "aborted" });
       if (onCode) onCode({ userCode: code.user_code, verificationUri: code.verification_uri, expiresIn: code.expires_in });
       let interval = code.interval || 5;
       const deadline = code.expires_in || 900;
-      let waited = 0;
-      while (waited < deadline) {
+      let waited = 0, failures = 0;
+      const started = Date.now();
+      while (Math.max(waited, (Date.now() - started) / 1e3) < deadline) {
         if (signal && signal.aborted) {
           const e2 = new Error("Sign-in cancelled.");
           e2.kind = "aborted";
@@ -412,15 +485,362 @@ function makeDeviceAuth({ clientId, relayBase, scope = "public_repo" }, fetchImp
         }
         await sleep(interval * 1e3);
         waited += interval;
-        const r = await this.pollOnce(code.device_code);
+        if (signal?.aborted) throw Object.assign(new Error("Sign-in cancelled."), { kind: "aborted" });
+        let r;
+        try {
+          r = await this.pollOnce(code.device_code, signal);
+          failures = 0;
+        } catch (e2) {
+          if ((e2.kind === "network" || e2.status >= 500) && ++failures <= 3) {
+            onRetry?.();
+            continue;
+          }
+          throw e2;
+        }
         if (r.status === "ok") return { token: r.token, scope: r.scope };
-        if (r.status === "slow_down") interval = r.interval || interval + 5;
+        if (r.status === "slow_down") interval = Math.max(interval + 5, Number(r.interval) || 0);
       }
       const e = new Error("The code expired \u2014 start sign-in again.");
       e.kind = "expired_token";
       throw e;
     }
   };
+}
+
+// src/core/connection.js
+var connection_exports = {};
+__export(connection_exports, {
+  blogUrl: () => blogUrl,
+  githubErrorMessage: () => githubErrorMessage,
+  isDeadToken: () => isDeadToken,
+  isNetworkError: () => isNetworkError
+});
+function blogUrl({ owner, repo } = {}) {
+  const o = String(owner || "").trim().toLowerCase();
+  const r = String(repo || "").trim();
+  if (!o || !r) return "";
+  return r.toLowerCase() === `${o}.github.io` ? `https://${o}.github.io/` : `https://${o}.github.io/${encodeURIComponent(r)}/`;
+}
+function isNetworkError(err) {
+  if (!err) return false;
+  if (Number(err.status)) return false;
+  const name = String(err.name || "");
+  const msg = String(err.message || "").toLowerCase();
+  return name === "TypeError" || /failed to fetch|networkerror|load failed|network request failed/.test(msg);
+}
+function isDeadToken(err) {
+  if (!err) return false;
+  if (isNetworkError(err)) return false;
+  const status = Number(err.status) || 0;
+  const msg = String(err.message || "").toLowerCase();
+  if (/rate limit|abuse detection|secondary rate/.test(msg)) return false;
+  if (status === 401) return true;
+  if (/bad credentials|requires authentication|token expired|token has expired|token.*revoked/.test(msg)) return true;
+  return false;
+}
+function githubErrorMessage(err) {
+  if (isDeadToken(err)) return "GitHub sign-in has expired or was revoked. Sign in again, or replace the token under Advanced. Your saved work is still here.";
+  if (isNetworkError(err) || err?.kind === "network" || err?.name === "TimeoutError") return "Could not reach GitHub. Check your connection, then retry. Your current connection has not been changed.";
+  if (/rate limit|secondary rate|abuse detection/i.test(err?.message || "") || err?.status === 429) return "GitHub is temporarily limiting requests. Wait a few minutes, then retry. You do not need to sign in again.";
+  if (err?.status === 403) return "GitHub refused access. Check repository permissions and any organisation SSO approval. A manual token needs Contents: read and write for this repository.";
+  if (err?.status === 404) return "GitHub could not find this repository, or your token cannot access it. Check its owner and name, and include it in the token\u2019s repository access.";
+  if (err?.status >= 500) return "GitHub is temporarily unavailable. Please retry in a moment; your current connection has not been changed.";
+  return err?.message || "Could not connect to GitHub. Please retry.";
+}
+
+// src/core/githubSetup.js
+function installGithubSetup({ overlay, config: config2, refresh: refresh2, clientId, relayBase }) {
+  const $ = (id) => overlay.querySelector("#" + id);
+  $("byok-msg").setAttribute("role", "status");
+  $("byok-msg").setAttribute("aria-live", "polite");
+  $("gh-signin")?.prepend($("byok-msg"));
+  if (!$("byok-close")) {
+    const close = document.createElement("button");
+    close.type = "button";
+    close.id = "byok-close";
+    close.className = "ghost";
+    close.textContent = "Close setup";
+    overlay.querySelector(".bc").prepend(close);
+    close.onclick = () => {
+      if (config2.isReady()) overlay.remove();
+      else {
+        $("byok-msg").textContent = "Choose a website or connect Helm to finish setup.";
+      }
+    };
+  }
+  const value = (id) => $(id)?.value.trim() || "";
+  let token = config2.getGithub().token, login = config2.getGithubUser().login;
+  let method = config2.getGithubUser().method, generation = 0, controller;
+  let repos = [];
+  const alive = (id) => overlay.isConnected && id === generation;
+  const message = (text3, error = false) => {
+    if (!$("byok-msg")) return;
+    $("byok-msg").textContent = text3;
+    $("byok-msg").style.color = error ? "#f472b6" : "var(--mut,#aebbd2)";
+    if (error) $("byok-msg").scrollIntoView({ block: "nearest" });
+  };
+  const aiSettings = () => ({ aiProvider: value("byok-prov"), aiKey: value("byok-key") });
+  const activate = ({ owner, repo, branch, token: nextToken = token, login: nextLogin = login, method: nextMethod = method }) => {
+    config2.save({
+      mode: "byok",
+      ghOwner: owner,
+      ghRepo: repo,
+      ghBranch: branch || "main",
+      ghToken: nextToken,
+      ghLogin: nextLogin,
+      ghAuthMethod: nextMethod,
+      ...aiSettings()
+    });
+    refresh2();
+  };
+  const finish = () => {
+    message("Connected. Opening your website\u2026");
+    setTimeout(() => location.reload(), 250);
+  };
+  const cancel = () => {
+    generation++;
+    controller?.abort();
+    controller = null;
+    if ($("gh-start")) $("gh-start").disabled = false;
+  };
+  const observer = new MutationObserver(() => {
+    if (!overlay.isConnected) {
+      cancel();
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.body, { childList: true });
+  $("byok-save").addEventListener("click", async () => {
+    if (!value("byok-owner") || !value("byok-repo") || !value("byok-token")) {
+      message("Choose an existing website above, create a new one, or enter owner, repository and token under Advanced.", true);
+      return;
+    }
+    cancel();
+    const id = generation;
+    const button = $("byok-save");
+    button.disabled = true;
+    const next = { owner: value("byok-owner"), repo: value("byok-repo"), branch: value("byok-branch"), token: value("byok-token") };
+    message("Checking the account, repository and website settings\u2026");
+    try {
+      const gh = makeGithub(next), me = await gh.whoami();
+      const checked = await gh.checkRepository();
+      if (!alive(id)) return;
+      activate({ ...next, branch: checked.branch, login: me.login, method: "token" });
+      finish();
+    } catch (e) {
+      if (alive(id)) message(githubErrorMessage(e), true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  if (!clientId || !$("gh-start")) return { getAuth: () => ({ token, login, method }), activate };
+  $("byok-save").textContent = "Connect with this token";
+  $("byok-token").after($("byok-save"));
+  const picker = $("gh-picker");
+  picker.style.display = "block";
+  picker.querySelector(".hint").textContent = "Choose the repository containing your website. Public repositories you can edit are listed. For a private site, use a token under Advanced.";
+  const label2 = picker.querySelector("label");
+  label2.htmlFor = "gh-repo-select";
+  const search = document.createElement("input");
+  search.id = "gh-repo-search";
+  search.type = "search";
+  search.placeholder = "Find a repository\u2026";
+  search.setAttribute("aria-label", "Find a repository");
+  picker.insertBefore(search, $("gh-repo-select"));
+  const status = document.createElement("div");
+  status.id = "gh-repo-status";
+  status.className = "hint";
+  status.setAttribute("role", "status");
+  picker.append(status);
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.id = "gh-repo-retry";
+  retry.className = "ghost";
+  retry.textContent = "Refresh repositories";
+  picker.append(retry);
+  const codeBox = $("gh-codebox");
+  codeBox.querySelector(".hint").textContent = "Enter this code on GitHub, then return here:";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "ghost";
+  copy.id = "gh-copy-code";
+  copy.textContent = "Copy code";
+  codeBox.append(copy);
+  copy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($("gh-code").textContent);
+      copy.textContent = "Code copied";
+    } catch {
+      message("Select and copy the code above, then paste it on GitHub.");
+    }
+  };
+  const stop = document.createElement("button");
+  stop.type = "button";
+  stop.className = "ghost";
+  stop.id = "gh-cancel";
+  stop.textContent = "Cancel sign-in";
+  codeBox.append(stop);
+  stop.onclick = () => {
+    cancel();
+    codeBox.style.display = "none";
+    $("gh-start").disabled = false;
+    message("Sign-in cancelled. Your current connection is unchanged.");
+  };
+  let chip = $("gh-signedin");
+  if (!chip) {
+    chip = document.createElement("div");
+    chip.id = "gh-signedin";
+    chip.className = "hint";
+    $("gh-start").before(chip);
+  }
+  const signedIn = () => {
+    chip.textContent = `Signed in as @${login}`;
+    chip.style.display = "block";
+    $("gh-start").textContent = "Switch GitHub account";
+    overlay.querySelector(".no-gh")?.setAttribute("hidden", "");
+    const help = $("gh-start").nextElementSibling;
+    if (help?.classList.contains("hint")) help.hidden = true;
+    $("gh-create").style.display = "block";
+    codeBox.style.display = "none";
+  };
+  const renderRepos = () => {
+    const select = $("gh-repo-select"), previous = select.value || `${config2.getGithub().owner}/${config2.getGithub().repo}`;
+    const matching = repos.filter((r) => r.fullName.toLowerCase().includes(search.value.toLowerCase()));
+    select.replaceChildren();
+    for (const repo of matching) {
+      const opt = document.createElement("option");
+      opt.value = repo.fullName;
+      opt.textContent = repo.fullName;
+      opt.dataset.branch = repo.branch;
+      select.append(opt);
+    }
+    if (matching.some((r) => r.fullName === previous)) select.value = previous;
+    if (!repos.length && !config2.isConfigured()) $("gh-create").querySelector("details").open = true;
+    select.disabled = !matching.length;
+    $("gh-repo-use").disabled = !matching.length;
+    status.textContent = matching.length ? `${matching.length} repositories. We\u2019ll check compatibility before connecting.` : repos.length ? "No repositories match your search." : "No editable public repositories found. You can create a website below or use a private-repository token under Advanced.";
+  };
+  search.addEventListener("input", renderRepos);
+  const loadRepos = async (id = generation) => {
+    picker.style.display = "block";
+    retry.disabled = true;
+    $("gh-repo-use").disabled = true;
+    status.textContent = "Loading your repositories\u2026";
+    try {
+      const list2 = await makeGithub({ token }).listRepos();
+      if (!alive(id)) return;
+      repos = list2.filter((r) => !r.private);
+      renderRepos();
+    } catch (e) {
+      if (alive(id)) {
+        status.textContent = githubErrorMessage(e);
+        $("gh-repo-use").disabled = true;
+      }
+    } finally {
+      retry.disabled = false;
+    }
+  };
+  const resume = async () => {
+    const id = ++generation;
+    if (!token) {
+      picker.style.display = "none";
+      return;
+    }
+    $("gh-start").disabled = true;
+    message("Checking your saved GitHub connection\u2026");
+    try {
+      const me = await makeGithub({ token }).whoami();
+      if (!alive(id)) return;
+      login = me.login;
+      signedIn();
+      message("Choose a website to connect, or create a new one.");
+      await loadRepos(id);
+    } catch (e) {
+      if (alive(id)) {
+        message(githubErrorMessage(e), true);
+        status.textContent = "Could not load repositories. Retry when you are ready.";
+      }
+    } finally {
+      $("gh-start").disabled = false;
+    }
+  };
+  retry.onclick = () => resume();
+  $("gh-have-account")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!$("gh-start").disabled) $("gh-start").click();
+  });
+  $("gh-start").addEventListener("click", async () => {
+    cancel();
+    const id = generation;
+    controller = new AbortController();
+    $("gh-start").disabled = true;
+    codeBox.style.display = "block";
+    $("gh-code").textContent = "";
+    $("gh-open").removeAttribute("href");
+    $("gh-poll").textContent = "Requesting a sign-in code\u2026";
+    message("");
+    try {
+      const result = await makeDeviceAuth({ clientId, relayBase }).authorize({
+        signal: controller.signal,
+        onCode: ({ userCode, verificationUri }) => {
+          if (!alive(id)) return;
+          $("gh-code").textContent = userCode;
+          $("gh-open").href = verificationUri;
+          $("gh-poll").textContent = "Waiting for GitHub approval. Leave this page open.";
+        },
+        onRetry: () => {
+          if (alive(id)) $("gh-poll").textContent = "Connection interrupted. Retrying with the same code\u2026";
+        }
+      });
+      const me = await makeGithub({ token: result.token }).whoami();
+      if (!alive(id)) return;
+      token = result.token;
+      login = me.login;
+      method = "device";
+      if (!config2.isConfigured()) config2.saveDeviceAuth({ token, login });
+      signedIn();
+      message("GitHub approved. Choose your website below.");
+      await loadRepos(id);
+    } catch (e) {
+      if (alive(id)) {
+        codeBox.style.display = "none";
+        message(githubErrorMessage(e), true);
+      }
+    } finally {
+      if (alive(id)) $("gh-start").disabled = false;
+    }
+  });
+  $("gh-repo-use").textContent = "Connect this website";
+  $("gh-repo-use").addEventListener("click", async () => {
+    const option = $("gh-repo-select").selectedOptions[0];
+    if (!option) return;
+    const [owner, repo] = option.value.split("/"), branch = option.dataset.branch;
+    const id = generation;
+    $("gh-repo-use").disabled = true;
+    message("Checking repository access and website settings\u2026");
+    try {
+      await makeGithub({ token, owner, repo, branch }).checkRepository();
+      if (!alive(id)) return;
+      activate({ owner, repo, branch });
+      finish();
+    } catch (e) {
+      if (alive(id)) message(githubErrorMessage(e), true);
+    } finally {
+      $("gh-repo-use").disabled = false;
+    }
+  });
+  picker.after($("gh-create"));
+  $("gh-create").querySelector(".cb-or")?.remove();
+  const create2 = $("gh-create"), heading = create2.querySelector(".cb-head");
+  const details = document.createElement("details"), summary = document.createElement("summary");
+  summary.textContent = "Create a new website";
+  summary.style.cursor = "pointer";
+  details.append(summary);
+  while (create2.firstChild) details.append(create2.firstChild);
+  heading?.remove();
+  create2.append(details);
+  resume();
+  return { getAuth: () => ({ token, login, method }), activate };
 }
 
 // engine/ai/anthropic.js
@@ -28725,37 +29145,6 @@ function isAlreadyDeleted(err) {
   return /\bnot found\b|already (?:deleted|gone)/.test(text3);
 }
 
-// src/core/connection.js
-var connection_exports = {};
-__export(connection_exports, {
-  blogUrl: () => blogUrl,
-  isDeadToken: () => isDeadToken,
-  isNetworkError: () => isNetworkError
-});
-function blogUrl({ owner, repo } = {}) {
-  const o = String(owner || "").trim().toLowerCase();
-  const r = String(repo || "").trim();
-  if (!o || !r) return "";
-  return `https://${o}.github.io/${encodeURIComponent(r)}/`;
-}
-function isNetworkError(err) {
-  if (!err) return false;
-  if (Number(err.status)) return false;
-  const name = String(err.name || "");
-  const msg = String(err.message || "").toLowerCase();
-  return name === "TypeError" || /failed to fetch|networkerror|load failed|network request failed/.test(msg);
-}
-function isDeadToken(err) {
-  if (!err) return false;
-  if (isNetworkError(err)) return false;
-  const status = Number(err.status) || 0;
-  const msg = String(err.message || "").toLowerCase();
-  if (/rate limit|abuse detection|secondary rate/.test(msg)) return false;
-  if (status === 401) return true;
-  if (/bad credentials|requires authentication|token expired|token has expired|token.*revoked/.test(msg)) return true;
-  return false;
-}
-
 // src/core/themeCatalogue.js
 var themeCatalogue_exports = {};
 __export(themeCatalogue_exports, {
@@ -29710,29 +30099,7 @@ function renderOnboarding() {
           <div class="row" style="margin-top:.2rem">
             <div>
               <label for="cb-theme">Theme</label>
-              <select id="cb-theme">
-                <optgroup label="Worlds">
-                  <option value="observatory" selected>Observatory</option>
-                  <option value="vista">Vista</option>
-                  <option value="blueprint">Blueprint</option>
-                  <option value="atlas">Atlas</option>
-                  <option value="daybreak">Daybreak</option>
-                  <option value="dune">Dune</option>
-                  <option value="rivendell">Rivendell</option>
-                </optgroup>
-                <optgroup label="Simple blog">
-                  <option value="paper">Paper</option>
-                  <option value="linen">Linen</option>
-                  <option value="mist">Mist</option>
-                  <option value="ink">Ink</option>
-                </optgroup>
-                <optgroup label="Creative">
-                  <option value="arcade">Arcade</option>
-                  <option value="botanic">Botanic</option>
-                  <option value="broadsheet">Broadsheet</option>
-                  <option value="aurora">Aurora</option>
-                </optgroup>
-              </select>
+              <select id="cb-theme">${BAKED_CATALOGUE.themes.map((t) => `<option value="${escHtml2(t.id)}">${escHtml2(t.name)}</option>`).join("")}</select>
             </div>
             <div>
               <label for="cb-core">Hero figure</label>
@@ -29779,7 +30146,7 @@ function renderOnboarding() {
       color:#042018;background:linear-gradient(95deg,#2dd4bf,#22d3ee);cursor:pointer}
     #byok-overlay button.ghost{margin-top:.6rem;background:transparent;border:1px solid rgba(140,160,200,.3);color:#aebbd2}
     #byok-overlay .hint{font-size:.74rem;color:#6f7e98;margin-top:.6rem}
-    #byok-overlay .msg{font-size:.8rem;margin-top:.6rem;min-height:1em}
+    #byok-overlay .msg{display:block;font-size:.8rem;margin-top:.6rem;min-height:1em}
     #byok-overlay .modes{display:flex;gap:.5rem;margin:.2rem 0 1rem}
     #byok-overlay .modes button{flex:1;margin:0;padding:.65em .4em;font:700 .82rem 'Space Grotesk',system-ui;border-radius:12px;cursor:pointer;
       background:#080c16;border:1px solid rgba(140,160,200,.22);color:#aebbd2}
@@ -29838,85 +30205,8 @@ function renderOnboarding() {
   };
   $("mode-byok").addEventListener("click", () => setMode("byok"));
   $("mode-remote").addEventListener("click", () => setMode("remote"));
-  $("byok-save").addEventListener("click", () => {
-    const msg = $("byok-msg");
-    if (!v("byok-owner") || !v("byok-repo") || !v("byok-token")) {
-      msg.textContent = "Fill in owner, repo and GitHub token.";
-      msg.style.color = "#f472b6";
-      return;
-    }
-    config.save({ mode: "byok", ghOwner: v("byok-owner"), ghRepo: v("byok-repo"), ghBranch: v("byok-branch") || "main", ghToken: v("byok-token"), aiProvider: v("byok-prov"), aiKey: v("byok-key") });
-    refresh();
-    msg.textContent = "Saved. Loading\u2026";
-    msg.style.color = "#2dd4bf";
-    setTimeout(() => location.reload(), 400);
-  });
+  const githubSetup = installGithubSetup({ overlay: ov, config, refresh, clientId: GH_CLIENT_ID, relayBase: RELAY_BASE });
   if (GH_CLIENT_ID && $("gh-start")) {
-    const haveAcct = $("gh-have-account");
-    if (haveAcct) haveAcct.addEventListener("click", (e) => {
-      e.preventDefault();
-      const b = $("gh-start");
-      if (b) {
-        try {
-          b.scrollIntoView({ block: "center", behavior: "smooth" });
-        } catch {
-        }
-        b.focus();
-      }
-    });
-    let sessionToken = "";
-    $("gh-start").addEventListener("click", async () => {
-      const btn = $("gh-start");
-      const poll = $("gh-poll");
-      const msg = $("byok-msg");
-      btn.disabled = true;
-      msg.textContent = "";
-      $("gh-codebox").style.display = "block";
-      const da = makeDeviceAuth({ clientId: GH_CLIENT_ID, relayBase: RELAY_BASE });
-      try {
-        const { token } = await da.authorize({
-          onCode: ({ userCode, verificationUri }) => {
-            $("gh-code").textContent = userCode;
-            $("gh-open").href = verificationUri;
-            try {
-              navigator.clipboard.writeText(userCode);
-            } catch {
-            }
-          }
-        });
-        poll.textContent = "Authorised \u2713 Loading your account\u2026";
-        sessionToken = token;
-        const gh = makeGithub({ token });
-        const me = await gh.whoami().catch(() => ({ login: "" }));
-        config.saveDeviceAuth({ token, login: me.login });
-        const repos = (await gh.listRepos().catch(() => [])).filter((r2) => !r2.private);
-        const sel = $("gh-repo-select");
-        $("gh-codebox").style.display = "none";
-        $("gh-create").style.display = "block";
-        if (repos.length) {
-          sel.innerHTML = repos.map((r2) => `<option value="${escHtml2(r2.fullName)}" data-branch="${escHtml2(r2.branch)}">${escHtml2(r2.fullName)}</option>`).join("");
-          $("gh-picker").style.display = "block";
-        } else {
-          $("gh-picker").style.display = "none";
-        }
-      } catch (e) {
-        $("gh-codebox").style.display = "none";
-        msg.style.color = "#f472b6";
-        msg.textContent = e.message || "Sign-in failed.";
-        btn.disabled = false;
-      }
-    });
-    $("gh-repo-use").addEventListener("click", () => {
-      const opt = $("gh-repo-select").selectedOptions[0];
-      if (!opt) return;
-      const [owner, repo] = opt.value.split("/");
-      config.saveRepo({ owner, repo, branch: opt.dataset.branch || "main" });
-      refresh();
-      const msg = $("byok-msg");
-      msg.style.color = "#2dd4bf";
-      msg.textContent = "Saved. Loading\u2026";
-      setTimeout(() => location.reload(), 400);
-    });
     $("cb-go").addEventListener("click", async () => {
       const st = $("cb-status");
       const set = (t, ok) => {
@@ -29924,7 +30214,7 @@ function renderOnboarding() {
         st.style.color = ok ? "#2dd4bf" : ok === false ? "#f472b6" : "#aebbd2";
       };
       const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
-      const token = sessionToken || config.getGithub().token;
+      const { token, login, method } = githubSetup.getAuth();
       if (!token) {
         set("Sign in with GitHub first.", false);
         return;
@@ -29946,16 +30236,21 @@ function renderOnboarding() {
           go.disabled = false;
           return;
         }
+        const _tpl = typeof window !== "undefined" && window.__CHAPBOOK_TEMPLATE || {};
+        const templateOwner = _tpl.owner || "RQAI-projects";
+        const templateRepo = _tpl.repo || "chapbook-template";
         set("Creating your blog\u2026");
-        let repo = null;
-        for (let i2 = 0; i2 < 5; i2++) {
+        const pending = config.all().pendingBlog;
+        let repo = pending?.owner === owner && pending?.name === name ? pending.repo : null;
+        if (repo) slug = repo.name;
+        for (let i2 = 0; !repo && i2 < 5; i2++) {
           const tryName = i2 ? `${slug}-${i2 + 1}` : slug;
           try {
-            repo = await gh.generateFromTemplate({ templateOwner: "inayatpanda", templateRepo: "blog-template", owner, name: tryName, description: name });
+            repo = await gh.generateFromTemplate({ templateOwner, templateRepo, owner, name: tryName, description: name });
             slug = tryName;
             break;
           } catch (e) {
-            if (!/name already exists|already exists|422/i.test(e.message || "")) throw e;
+            if (!/name already exists|already exists/i.test(e.message || "")) throw e;
           }
         }
         if (!repo) {
@@ -29963,11 +30258,12 @@ function renderOnboarding() {
           go.disabled = false;
           return;
         }
+        config.save({ pendingBlog: { owner, name, repo } });
         const branch = repo.branch || "main";
         set("Setting it up\u2026");
         const ghRepo = makeGithub({ token, owner, repo: slug, branch });
-        let site = null, sha = null;
-        for (let i2 = 0; i2 < 6; i2++) {
+        let site = null, sha = null, lookApplied = false;
+        for (let i2 = 0; i2 < 12; i2++) {
           try {
             const f = await ghRepo.getFile("src/data/site.json");
             if (f && f.content) {
@@ -29985,23 +30281,51 @@ function renderOnboarding() {
             masthead: name,
             defaultTheme: $("cb-theme").value,
             core: $("cb-core").value,
-            url: `https://${owner}.github.io/${slug}/`
+            url: blogUrl({ owner, repo: slug })
           });
           await ghRepo.putFile("src/data/site.json", JSON.stringify(site, null, 2), "Set up blog", sha);
+          lookApplied = true;
         }
+        const liveUrl = blogUrl({ owner, repo: slug });
+        let pagesEnabled = false;
         try {
           await gh.enablePages({ owner, repo: slug });
+          pagesEnabled = true;
         } catch (e) {
           console.warn("enablePages (non-fatal):", e && e.message);
         }
-        config.saveRepo({ owner, repo: slug, branch });
+        githubSetup.activate({ owner, repo: slug, branch, token, login, method });
+        config.save({ pendingBlog: null });
         refresh();
         try {
           markPending();
         } catch {
         }
-        set("Your blog is live-building. Loading\u2026", true);
-        setTimeout(() => location.reload(), 800);
+        const gc = $("gh-create");
+        const picker = $("gh-picker");
+        if (picker) picker.style.display = "none";
+        const repoPagesSettings = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}/settings/pages`;
+        const pagesBlock = pagesEnabled ? `<div class="hint">GitHub Pages is enabled. Your site will appear after a successful build \u2014 it'll be live in about 1\u20132 minutes. Bookmark the link above.</div>` : `<div class="hint" style="color:#f4c06f;line-height:1.6">One quick step to switch your blog on:<br>
+               1. Open <a href="${repoPagesSettings}" target="_blank" rel="noopener" style="color:#22d3ee;text-decoration:underline">your repo \u2192 Settings \u2192 Pages</a><br>
+               2. Under <b>Source</b>, choose <b>GitHub Actions</b>.<br>
+               It'll be live at the link above about 1\u20132 minutes later.</div>`;
+        const notApplied = lookApplied ? "" : `<div class="hint" style="color:#f4c06f">GitHub was still setting up, so your name/theme weren't applied yet \u2014 set them any time in Settings \u2192 Site settings once you're in.</div>`;
+        gc.innerHTML = `<div class="cb-head">\u2713 Your website repository \u201C${escHtml2(name)}\u201D is connected</div>
+           <div class="hint" style="margin-top:.5rem">Your blog's address:</div>
+           <div style="margin-top:.2rem"><a href="${escHtml2(liveUrl)}" target="_blank" rel="noopener" style="color:#22d3ee;text-decoration:underline;word-break:break-all;font-weight:700">${escHtml2(liveUrl)}</a></div>
+           ${pagesBlock}
+           ${notApplied}
+           <button type="button" id="cb-continue">Continue to Atelier \u2192</button>
+           <button type="button" id="cb-copy" class="ghost">Copy my blog link</button>`;
+        $("cb-continue").addEventListener("click", () => location.reload());
+        $("cb-copy").addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(liveUrl);
+            $("cb-copy").textContent = "Copied \u2713";
+          } catch {
+          }
+        });
+        return;
       } catch (e) {
         set(e && e.message ? `Could not create the blog: ${e.message}` : "Could not create the blog \u2014 try again.", false);
         go.disabled = false;

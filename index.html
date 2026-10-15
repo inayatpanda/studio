@@ -5248,6 +5248,12 @@ function classifyError({ status, payload, raw } = {}){
   e.detail = String(rawMsg || (status ? 'HTTP '+status : '') || '').slice(0,400);
   // keep the source's typed code (e.g. AI_NO_KEY) so callers can branch on it
   const srcCode=String((payload&&payload.code)||(raw&&raw.code)||''); if(srcCode) e.code=srcCode;
+  if (srcCode === 'GITHUB_HTTP' && window.__studioConnection?.githubErrorMessage) {
+    e.kind = e.status === 401 ? 'auth' : 'github';
+    e.message = window.__studioConnection.githubErrorMessage({status:e.status,message:rawMsg});
+    e.retry = e.status >= 500 || e.status === 429 || /rate limit/.test(low);
+    return e;
+  }
   // AI adapter errors (server/ai) carry an AI_* code. AI_PARSE (output truncated before the
   // JSON closed) and AI_REFUSAL come through with NO HTTP status, so without this they fall
   // into the status-0 branch below and masquerade as "Could not reach your Helm". Surface the
@@ -5357,6 +5363,10 @@ function showError(err, { onRetry, title } = {}){
   $('errTitle').textContent = title || ({network:'Connection problem',auth:'Sign-in / key problem',github:'GitHub problem',ai:'AI problem',server:'Something went wrong'}[e.kind] || 'Something went wrong');
   $('errIco').textContent = _errIco[e.kind] || '⚠️';
   $('errMsg').textContent = e.message;
+  let reconnect=$('errReconnect');
+  if(!reconnect){ reconnect=document.createElement('button'); reconnect.id='errReconnect'; reconnect.type='button'; reconnect.className='ghost'; reconnect.textContent='Reconnect GitHub'; $('errRetry').before(reconnect); }
+  reconnect.hidden=!(e.code==='GITHUB_HTTP' && e.status===401);
+  reconnect.onclick=()=>{ closeError(); window.__studioOnboard?.(); };
   const det=$('errDetail');
   if(e.detail && e.detail !== e.message){ det.textContent = e.detail; det.hidden=false; }
   else det.hidden=true;
@@ -6241,19 +6251,26 @@ function showPublishBar(url, source){
   // The publish routes return a site-relative /blog/<slug>/ — absolutise it
   // against the configured live-site origin so "View live" is a genuine link.
   const u=String(url||'');
+  const o=_siteOrigin();
   const live = /^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u
-    : (u.startsWith('/') ? _siteOrigin()+u : SHARE.shareableUrl(u));
+    : (u.startsWith('/') ? (o ? o+u : '') : SHARE.shareableUrl(u));
+  // Only show "View live" when we could build an absolute link (needs the site URL).
+  const viewLive = /^https?:\/\//i.test(live)
+    ? '<a class="pb-btn" href="'+esc(live)+'" target="_blank" rel="noopener">Open website '+tico('external-link')+'</a>'
+    : '';
+  const repo = window.__studioGh?.repo?.();
+  const buildLink = repo?.owner && repo?.repo ? '<a class="pb-btn" href="https://github.com/'+encodeURIComponent(repo.owner)+'/'+encodeURIComponent(repo.repo)+'/actions" target="_blank" rel="noopener">Check website build '+tico('external-link')+'</a>' : '';
   const bar=document.createElement('div');
   bar.id='pubBar'; bar.setAttribute('role','status');
   bar.innerHTML =
-    '<span class="pb-msg">'+tico('circle-check')+'Published</span>'
-    +'<a class="pb-btn" href="'+esc(live)+'" target="_blank" rel="noopener">View live '+tico('external-link')+'</a>'
+    '<span class="pb-msg">'+tico('circle-check')+'Saved · website updating</span>'
+    +buildLink+viewLive
     +'<button type="button" class="pb-btn" id="pubBarSocial">Draft social posts</button>'
     +'<button type="button" class="pb-x" aria-label="Dismiss">'+tico('x')+'</button>';
   bar.querySelector('#pubBarSocial').addEventListener('click',()=>{ dismissPublishBar(); announceFlow(url, source||''); });
   bar.querySelector('.pb-x').addEventListener('click',dismissPublishBar);
   document.body.appendChild(bar);
-  _pubBarTimer=setTimeout(dismissPublishBar,15000);
+  // Keep build guidance available until dismissed or another publish replaces it.
 }
 window.dismissPublishBar=dismissPublishBar;
 // Offer to announce right after a publish. url/source optional; no url → a gentle toast.
@@ -6262,7 +6279,7 @@ async function offerAnnounce(url, source){
   if(url){
     try{ await ensureSiteCfg(); }catch{}   // warm the live-site origin for the View-live link
     showPublishBar(url, source||'');
-  } else { toast('Published ✓'); }
+  } else { toast('Saved to GitHub. Your website will update after its build finishes.'); }
 }
 window.offerAnnounce=offerAnnounce;
 $('sharePostPick')?.addEventListener('focus',loadSharePicks,{once:true});
@@ -11703,7 +11720,7 @@ $('editorTitle').addEventListener('input', ()=>{
   }
 });
 
-async function reserveSlug(){
+async function reserveSlug({surface=false}={}){
   const epoch=_editorEpoch;
   if(currentSlug) return; // already reserved
   const title = $('editorTitle').value.trim();
@@ -11711,7 +11728,7 @@ async function reserveSlug(){
   try{
     const r = await api('/slug?title='+encodeURIComponent(title));
     if(epoch===_editorEpoch && !currentSlug) currentSlug = typeof r==='string' ? r.trim() : r?.slug; // only set if still null
-  }catch{}
+  }catch(e){ if(surface) throw e; }
 }
 
 /* ── back button ───────────────────────────────────────────────────────────
@@ -12022,13 +12039,15 @@ function publishMeta(){
     series: (meta.series||'').trim() || undefined,
     seriesPart: ((meta.series||'').trim() && meta.seriesPart!=null && Number.isFinite(Number(meta.seriesPart))) ? Number(meta.seriesPart) : undefined,
     draft: meta.draft,
+    publishAt: (meta.publishAt || '').trim() || undefined,
   };
 }
 async function doPublish(){
   clearTimeout(_saveDebounce);
   await _saveLane.catch(()=>{});
-  if(!currentSlug){ await reserveSlug(); }
-  if(!currentSlug){ toast('Could not reserve a slug — add a title first'); return; }
+  try{ if(!currentSlug) await reserveSlug({surface:true}); }
+  catch(e){ setSaveState('error','Publish failed'); showError(e,{title:'Couldn’t publish',onRetry:doPublish}); if(_dirty) _saveDebounce=setTimeout(autosaveDraft,1200); return; }
+  if(!currentSlug){ toast('Add a title before publishing.'); if(_dirty) _saveDebounce=setTimeout(autosaveDraft,1200); return; }
   const btn = $('editorPublishBtn');
   setBusy(btn, true);
   setSaveState('saving','Publishing…');
@@ -12037,16 +12056,17 @@ async function doPublish(){
       method: 'POST',
       body: JSON.stringify({ doc, meta: publishMeta() }),
     });
-    const label=meta.draft?'Saved as draft':'Published live';
+    const label=meta.publishAt?'Scheduled':meta.draft?'Saved as draft':'Sent to website';
     setSaveState('saved',label); _dirty=false; _lastLocalSaveTs = Date.now();
     syncActionBtns();
     // snapshot the just-published state (label "Published") — never lose work.
     snapshotCurrent(label, { silent:true });
-    if(!meta.draft && r.url){ await offerAnnounce(r.url, ((meta.title?meta.title+'\n\n':'')+docToText(doc)).slice(0,1500)); }
+    if(!meta.draft && !meta.publishAt && r.url){ await offerAnnounce(r.url, ((meta.title?meta.title+'\n\n':'')+docToText(doc)).slice(0,1500)); }
     else toast(label+' → ' + (r.url || currentSlug));
   }catch(e){
     setSaveState('error','Publish failed');
     showError(e, { title:'Couldn’t publish', onRetry: doPublish });
+    if(_dirty) _saveDebounce=setTimeout(autosaveDraft,1200);
   }finally{
     setBusy(btn, false);
   }
