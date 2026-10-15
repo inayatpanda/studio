@@ -244,8 +244,8 @@ function makeGithub(gh, fetchImpl = fetch) {
     // List every committed file under a directory prefix in ONE recursive git-trees call.
     // Filters the tree to blobs under `prefix`. Returns [{ path, size }]. Empty if absent.
     async listTree(prefix) {
-      const ref = await gj(`${repoBase}/git/ref/heads/${gh.branch}`);
-      const treeSha = ref && ref.object && ref.object.sha;
+      const ref2 = await gj(`${repoBase}/git/ref/heads/${gh.branch}`);
+      const treeSha = ref2 && ref2.object && ref2.object.sha;
       if (!treeSha) return [];
       const tree = await gj(`${repoBase}/git/trees/${treeSha}?recursive=1`);
       if (!tree || !Array.isArray(tree.tree)) return [];
@@ -267,8 +267,8 @@ function makeGithub(gh, fetchImpl = fetch) {
         tree.push({ path: c.path, mode: "100644", type: "blob", sha: blob.sha });
       }
       const attempt = async () => {
-        const ref = await gj(`${repoBase}/git/ref/heads/${gh.branch}`);
-        const baseCommitSha = ref.object.sha;
+        const ref2 = await gj(`${repoBase}/git/ref/heads/${gh.branch}`);
+        const baseCommitSha = ref2.object.sha;
         const baseCommit = await gj(`${repoBase}/git/commits/${baseCommitSha}`);
         const newTree = await gj(`${repoBase}/git/trees`, { method: "POST", body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree }) });
         const newCommit = await gj(`${repoBase}/git/commits`, { method: "POST", body: JSON.stringify({ message, tree: newTree.sha, parents: [baseCommitSha] }) });
@@ -460,8 +460,8 @@ function looseJson(text3) {
   if (start >= 0) {
     const open = s[start], close = open === "{" ? "}" : "]";
     let depth = 0, inStr = false, esc4 = false;
-    for (let i = start; i < s.length; i++) {
-      const c = s[i];
+    for (let i2 = start; i2 < s.length; i2++) {
+      const c = s[i2];
       if (inStr) {
         if (esc4) esc4 = false;
         else if (c === "\\") esc4 = true;
@@ -470,7 +470,7 @@ function looseJson(text3) {
       }
       if (c === '"') inStr = true;
       else if (c === open) depth++;
-      else if (c === close && --depth === 0) return JSON.parse(s.slice(start, i + 1));
+      else if (c === close && --depth === 0) return JSON.parse(s.slice(start, i2 + 1));
     }
   }
   throw new Error("no parseable JSON in model output");
@@ -576,16 +576,16 @@ function cmpVersion(a, b) {
   const av = versionKey(a);
   const bv = versionKey(b);
   const n = Math.max(av.length, bv.length);
-  for (let i = 0; i < n; i++) {
-    const d = (av[i] || 0) - (bv[i] || 0);
+  for (let i2 = 0; i2 < n; i2++) {
+    const d = (av[i2] || 0) - (bv[i2] || 0);
     if (d) return d;
   }
   return 0;
 }
 function pickLatestFromList(provider, rawModels) {
-  const list = Array.isArray(rawModels) ? rawModels : [];
+  const list2 = Array.isArray(rawModels) ? rawModels : [];
   const candidates = [];
-  for (const m of list) {
+  for (const m of list2) {
     const id = idOf(m);
     if (!isTextModel(provider, id)) continue;
     candidates.push({ id, recency: recencyOf(m) });
@@ -1455,16 +1455,16 @@ var AwsClient = class {
     }
   }
   async fetch(input, init) {
-    for (let i = 0; i <= this.retries; i++) {
+    for (let i2 = 0; i2 <= this.retries; i2++) {
       const fetched = fetch(await this.sign(input, init));
-      if (i === this.retries) {
+      if (i2 === this.retries) {
         return fetched;
       }
       const res = await fetched;
       if (res.status < 500 && res.status !== 429) {
         return res;
       }
-      await new Promise((resolve) => setTimeout(resolve, Math.random() * this.initRetryMs * Math.pow(2, i)));
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * this.initRetryMs * Math.pow(2, i2)));
     }
     throw new Error("An unknown error occurred, ensure retries is not negative");
   }
@@ -2120,7 +2120,7 @@ var GALLERY_END = "<!-- gallery:end -->";
 function parse(md) {
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(md);
   if (!m) return { data: {}, body: md };
-  const data = {};
+  const data2 = {};
   for (const line3 of m[1].split("\n")) {
     const mm = /^(\w[\w-]*):\s*(.*)$/.exec(line3);
     if (!mm) continue;
@@ -2128,24 +2128,24 @@ function parse(md) {
     const val = mm[2].trim();
     if (key === "tags") {
       const inner = val.replace(/^\[/, "").replace(/\]$/, "");
-      data.tags = inner.trim() ? inner.split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean) : [];
+      data2.tags = inner.trim() ? inner.split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean) : [];
     } else if (key === "citations") {
       try {
         const arr = JSON.parse(val);
-        data.citations = Array.isArray(arr) ? arr : [];
+        data2.citations = Array.isArray(arr) ? arr : [];
       } catch {
-        data.citations = [];
+        data2.citations = [];
       }
     } else if (key === "seriesPart") {
       const n = Number(val);
-      if (Number.isFinite(n)) data.seriesPart = n;
+      if (Number.isFinite(n)) data2.seriesPart = n;
     } else if (val === "true" || val === "false") {
-      data[key] = val === "true";
+      data2[key] = val === "true";
     } else {
-      data[key] = val.replace(/^["']|["']$/g, "").replace(/\\([\\"])/g, "$1");
+      data2[key] = val.replace(/^["']|["']$/g, "").replace(/\\([\\"])/g, "$1");
     }
   }
-  return { data, body: m[2] };
+  return { data: data2, body: m[2] };
 }
 var oneLine = (s) => String(s).replace(/[\r\n]+/g, " ");
 var q = (s) => '"' + oneLine(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
@@ -2165,30 +2165,30 @@ var KNOWN_KEYS = /* @__PURE__ */ new Set([
   "draft",
   "publishAt"
 ]);
-function serialise({ data, body }) {
+function serialise({ data: data2, body }) {
   const lines = [];
-  if (data.title != null) lines.push(`title: ${q(data.title)}`);
-  if (data.description != null) lines.push(`description: ${q(data.description)}`);
-  if (data.image) lines.push(`image: ${q(data.image)}`);
-  if (data.date != null) lines.push(`date: ${oneLine(data.date)}`);
-  if (data.tags != null) lines.push(`tags: [${data.tags.map(q).join(", ")}]`);
-  if (Array.isArray(data.citations) && data.citations.length) {
-    const clean = data.citations.filter((c) => c && c.id).map((c) => ({ id: String(c.id), text: String(c.text == null ? "" : c.text) }));
+  if (data2.title != null) lines.push(`title: ${q(data2.title)}`);
+  if (data2.description != null) lines.push(`description: ${q(data2.description)}`);
+  if (data2.image) lines.push(`image: ${q(data2.image)}`);
+  if (data2.date != null) lines.push(`date: ${oneLine(data2.date)}`);
+  if (data2.tags != null) lines.push(`tags: [${data2.tags.map(q).join(", ")}]`);
+  if (Array.isArray(data2.citations) && data2.citations.length) {
+    const clean = data2.citations.filter((c) => c && c.id).map((c) => ({ id: String(c.id), text: String(c.text == null ? "" : c.text) }));
     if (clean.length) lines.push(`citations: ${JSON.stringify(clean)}`);
   }
-  if (data.series != null && String(data.series).trim()) lines.push(`series: ${q(String(data.series).trim())}`);
-  if (data.seriesPart != null && Number.isFinite(Number(data.seriesPart))) lines.push(`seriesPart: ${Number(data.seriesPart)}`);
-  if (data.accent != null) lines.push(`accent: ${q(data.accent)}`);
-  if (data.glyph != null) lines.push(`glyph: ${q(data.glyph)}`);
-  if (data.template != null && data.template !== "observatory") lines.push(`template: ${q(data.template)}`);
-  if (data.theme != null && data.theme !== "dark") lines.push(`theme: ${q(data.theme)}`);
-  for (const [k, v] of Object.entries(data)) {
+  if (data2.series != null && String(data2.series).trim()) lines.push(`series: ${q(String(data2.series).trim())}`);
+  if (data2.seriesPart != null && Number.isFinite(Number(data2.seriesPart))) lines.push(`seriesPart: ${Number(data2.seriesPart)}`);
+  if (data2.accent != null) lines.push(`accent: ${q(data2.accent)}`);
+  if (data2.glyph != null) lines.push(`glyph: ${q(data2.glyph)}`);
+  if (data2.template != null && data2.template !== "observatory") lines.push(`template: ${q(data2.template)}`);
+  if (data2.theme != null && data2.theme !== "dark") lines.push(`theme: ${q(data2.theme)}`);
+  for (const [k, v] of Object.entries(data2)) {
     if (KNOWN_KEYS.has(k) || v == null || !/^\w[\w-]*$/.test(k)) continue;
     if (typeof v === "boolean" || typeof v === "number") lines.push(`${k}: ${v}`);
     else if (typeof v === "string") lines.push(`${k}: ${q(v)}`);
   }
-  if (data.draft === true) lines.push("draft: true");
-  if (data.publishAt) lines.push(`publishAt: ${oneLine(data.publishAt)}`);
+  if (data2.draft === true) lines.push("draft: true");
+  if (data2.publishAt) lines.push(`publishAt: ${oneLine(data2.publishAt)}`);
   return `---
 ${lines.join("\n")}
 ---
@@ -2384,18 +2384,18 @@ function cleanDeclarations(body) {
 }
 function cleanStyle(css) {
   let out = "";
-  let i = 0;
+  let i2 = 0;
   const n = css.length;
-  while (i < n) {
-    while (i < n && /\s/.test(css[i])) i++;
-    if (i >= n) break;
-    if (css[i] === "@") {
-      const braceStart2 = css.indexOf("{", i);
+  while (i2 < n) {
+    while (i2 < n && /\s/.test(css[i2])) i2++;
+    if (i2 >= n) break;
+    if (css[i2] === "@") {
+      const braceStart2 = css.indexOf("{", i2);
       if (braceStart2 === -1) {
-        i = n;
+        i2 = n;
         break;
       }
-      const prelude = css.slice(i, braceStart2).trim();
+      const prelude = css.slice(i2, braceStart2).trim();
       const keyword = (prelude.match(/^@([a-z-]+)/i) || [, ""])[1].toLowerCase();
       let depth2 = 0, j2 = braceStart2;
       for (; j2 < n; j2++) {
@@ -2413,15 +2413,15 @@ function cleanStyle(css) {
         out += `${prelude} { ${cleanStyle(inner)} }
 `;
       }
-      i = j2;
+      i2 = j2;
       continue;
     }
-    const braceStart = css.indexOf("{", i);
+    const braceStart = css.indexOf("{", i2);
     if (braceStart === -1) {
-      i = n;
+      i2 = n;
       break;
     }
-    const selector = css.slice(i, braceStart).trim();
+    const selector = css.slice(i2, braceStart).trim();
     let depth = 0, j = braceStart;
     for (; j < n; j++) {
       if (css[j] === "{") depth++;
@@ -2439,7 +2439,7 @@ function cleanStyle(css) {
       out += `${selector} { ${cleaned} }
 `;
     }
-    i = j;
+    i2 = j;
   }
   return out.trim();
 }
@@ -2491,10 +2491,10 @@ function _arrayWithHoles(r) {
 function _iterableToArrayLimit(r, l) {
   var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"];
   if (null != t) {
-    var e, n, i, u, a = [], f = true, o = false;
+    var e, n, i2, u, a = [], f = true, o = false;
     try {
-      if (i = (t = t.call(r)).next, 0 === l) ;
-      else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = true) ;
+      if (i2 = (t = t.call(r)).next, 0 === l) ;
+      else for (; !(f = (e = i2.call(t)).done) && (a.push(e.value), a.length !== l); f = true) ;
     } catch (r2) {
       o = true, n = r2;
     } finally {
@@ -2816,7 +2816,7 @@ function createDOMPurify() {
   const originalDocument = document2;
   const currentScript = originalDocument.currentScript;
   window2.DocumentFragment;
-  const HTMLTemplateElement = window2.HTMLTemplateElement, Node = window2.Node, Element = window2.Element, NodeFilter = window2.NodeFilter, _window$NamedNodeMap = window2.NamedNodeMap;
+  const HTMLTemplateElement = window2.HTMLTemplateElement, Node3 = window2.Node, Element = window2.Element, NodeFilter = window2.NodeFilter, _window$NamedNodeMap = window2.NamedNodeMap;
   _window$NamedNodeMap === void 0 ? window2.NamedNodeMap || window2.MozNamedAttrMap : _window$NamedNodeMap;
   window2.HTMLFormElement;
   const DOMParser = window2.DOMParser, trustedTypes = window2.trustedTypes;
@@ -2828,9 +2828,9 @@ function createDOMPurify() {
   const getParentNode = lookupGetter(ElementPrototype, "parentNode");
   const getShadowRoot = lookupGetter(ElementPrototype, "shadowRoot");
   const getAttributes = lookupGetter(ElementPrototype, "attributes");
-  const getNodeType = Node && Node.prototype ? lookupGetter(Node.prototype, "nodeType") : null;
-  const getNodeName = Node && Node.prototype ? lookupGetter(Node.prototype, "nodeName") : null;
-  const getOwnerDocument = Node && Node.prototype ? lookupGetter(Node.prototype, "ownerDocument") : null;
+  const getNodeType = Node3 && Node3.prototype ? lookupGetter(Node3.prototype, "nodeType") : null;
+  const getNodeName = Node3 && Node3.prototype ? lookupGetter(Node3.prototype, "nodeName") : null;
+  const getOwnerDocument = Node3 && Node3.prototype ? lookupGetter(Node3.prototype, "ownerDocument") : null;
   if (typeof HTMLTemplateElement === "function") {
     const template = document2.createElement("template");
     if (template.content && template.content.ownerDocument) {
@@ -3264,8 +3264,8 @@ function createDOMPurify() {
     }
     const attributes = getAttributes(root);
     if (attributes) {
-      for (let i = attributes.length - 1; i >= 0; --i) {
-        const attribute = attributes[i];
+      for (let i2 = attributes.length - 1; i2 >= 0; --i2) {
+        const attribute = attributes[i2];
         const name = attribute && attribute.name;
         if (typeof name === "string") {
           try {
@@ -3308,8 +3308,8 @@ function createDOMPurify() {
     if (!attributes) {
       return;
     }
-    for (let i = attributes.length - 1; i >= 0; --i) {
-      const attribute = attributes[i];
+    for (let i2 = attributes.length - 1; i2 >= 0; --i2) {
+      const attribute = attributes[i2];
       const name = attribute && attribute.name;
       if (typeof name !== "string" || ALLOWED_ATTR[transformCaseFunc(name)]) {
         continue;
@@ -3330,8 +3330,8 @@ function createDOMPurify() {
       }
       const childNodes = getChildNodes(node);
       if (childNodes) {
-        for (let i = childNodes.length - 1; i >= 0; --i) {
-          stack.push(childNodes[i]);
+        for (let i2 = childNodes.length - 1; i2 >= 0; --i2) {
+          stack.push(childNodes[i2]);
         }
       }
     }
@@ -3366,8 +3366,8 @@ function createDOMPurify() {
       }
       const childNodes = getChildNodes(node);
       if (childNodes) {
-        for (let i = childNodes.length - 1; i >= 0; --i) {
-          stack.push(childNodes[i]);
+        for (let i2 = childNodes.length - 1; i2 >= 0; --i2) {
+          stack.push(childNodes[i2]);
         }
       }
     }
@@ -3501,12 +3501,12 @@ function createDOMPurify() {
       return false;
     }
   };
-  function _executeHooks(hooks2, currentNode, data) {
+  function _executeHooks(hooks2, currentNode, data2) {
     if (hooks2.length === 0) {
       return;
     }
     arrayForEach(hooks2, (hook) => {
-      hook.call(DOMPurify, currentNode, data, CONFIG);
+      hook.call(DOMPurify, currentNode, data2, CONFIG);
     });
   }
   const _isUnsafeNode = function _isUnsafeNode2(currentNode, tagName) {
@@ -3538,8 +3538,8 @@ function createDOMPurify() {
       const childNodes = getChildNodes(currentNode);
       if (childNodes && parentNode) {
         const childCount = childNodes.length;
-        for (let i = childCount - 1; i >= 0; --i) {
-          const hoisted = currentNode === root ? cloneNode(childNodes[i], true) : childNodes[i];
+        for (let i2 = childCount - 1; i2 >= 0; --i2) {
+          const hoisted = currentNode === root ? cloneNode(childNodes[i2], true) : childNodes[i2];
           parentNode.insertBefore(hoisted, getNextSibling(currentNode));
         }
       }
@@ -3782,9 +3782,9 @@ function createDOMPurify() {
       const isElement = nodeType === NODE_TYPE.element;
       const childNodes = getChildNodes(node);
       if (childNodes) {
-        for (let i = childNodes.length - 1; i >= 0; --i) {
+        for (let i2 = childNodes.length - 1; i2 >= 0; --i2) {
           stack.push({
-            node: childNodes[i],
+            node: childNodes[i2],
             shadow: null
           });
         }
@@ -4280,8 +4280,8 @@ function appendCitationDefs(body, citations) {
   for (const c of citations) {
     const id = safeCiteId(c && c.id);
     if (!id) continue;
-    const ref = new RegExp(`\\[\\^${id}\\](?!:)`);
-    if (!ref.test(body)) continue;
+    const ref2 = new RegExp(`\\[\\^${id}\\](?!:)`);
+    if (!ref2.test(body)) continue;
     defs.push(`[^${id}]: ${citationDefText(c.text)}`);
   }
   if (!defs.length) return body;
@@ -4467,8 +4467,8 @@ function blocksFromMarkdown(body) {
     if (joined) push({ type: "text", html: inlineMdToHtml(joined) });
     para = [];
   };
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
+  for (let i2 = 0; i2 < lines.length; i2++) {
+    const raw = lines[i2];
     const line3 = raw.replace(/\s+$/, "");
     const trimmed = line3.trim();
     if (trimmed === "") {
@@ -4480,10 +4480,10 @@ function blocksFromMarkdown(body) {
       flushPara();
       const marker = fence[2][0];
       const buf = [];
-      i++;
-      for (; i < lines.length; i++) {
-        if (new RegExp("^\\s*" + marker + "{3,}\\s*$").test(lines[i])) break;
-        buf.push(lines[i]);
+      i2++;
+      for (; i2 < lines.length; i2++) {
+        if (new RegExp("^\\s*" + marker + "{3,}\\s*$").test(lines[i2])) break;
+        buf.push(lines[i2]);
       }
       push({ type: "raw", content: `<pre><code>${escHtmlInline(buf.join("\n"))}</code></pre>` });
       continue;
@@ -4491,9 +4491,9 @@ function blocksFromMarkdown(body) {
     if (/^\s*</.test(line3)) {
       flushPara();
       const buf = [line3];
-      while (i + 1 < lines.length && lines[i + 1].trim() !== "" && !/^(#{1,6}\s|>\s|\s*([-*+]|\d+\.)\s|\s*(```|~~~))/.test(lines[i + 1])) {
-        i++;
-        buf.push(lines[i]);
+      while (i2 + 1 < lines.length && lines[i2 + 1].trim() !== "" && !/^(#{1,6}\s|>\s|\s*([-*+]|\d+\.)\s|\s*(```|~~~))/.test(lines[i2 + 1])) {
+        i2++;
+        buf.push(lines[i2]);
       }
       push({ type: "raw", content: stripUnsafeHtml(buf.join("\n")) });
       continue;
@@ -4513,11 +4513,11 @@ function blocksFromMarkdown(body) {
     if (/^\s*>\s?/.test(line3)) {
       flushPara();
       const qlines = [];
-      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
-        qlines.push(lines[i].replace(/^\s*>\s?/, ""));
-        i++;
+      while (i2 < lines.length && /^\s*>\s?/.test(lines[i2])) {
+        qlines.push(lines[i2].replace(/^\s*>\s?/, ""));
+        i2++;
       }
-      i--;
+      i2--;
       let cite = "";
       const last = qlines[qlines.length - 1] || "";
       const cm = /^\s*(?:—|--|-)\s*(.+)$/.exec(last);
@@ -4529,17 +4529,17 @@ function blocksFromMarkdown(body) {
       push({ type: "quote", html: inlineMdToHtml(innerMd), cite });
       continue;
     }
-    if (/^\s*\|.*\|\s*$/.test(line3) && i + 1 < lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1]) && /-/.test(lines[i + 1])) {
+    if (/^\s*\|.*\|\s*$/.test(line3) && i2 + 1 < lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i2 + 1]) && /-/.test(lines[i2 + 1])) {
       flushPara();
       const splitRow = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.replace(/\\\|/g, "|").trim());
       const header = splitRow(line3);
-      i += 2;
+      i2 += 2;
       const rows = [];
-      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
-        rows.push(splitRow(lines[i]));
-        i++;
+      while (i2 < lines.length && /^\s*\|.*\|\s*$/.test(lines[i2])) {
+        rows.push(splitRow(lines[i2]));
+        i2++;
       }
-      i--;
+      i2--;
       push({ type: "table", header, rows });
       continue;
     }
@@ -4548,20 +4548,20 @@ function blocksFromMarkdown(body) {
       flushPara();
       const ordered = /\d/.test(listItem[2]);
       const items = [];
-      while (i < lines.length) {
-        const li = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(lines[i]);
+      while (i2 < lines.length) {
+        const li = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(lines[i2]);
         if (!li) {
-          if (items.length && lines[i].trim() !== "" && /^\s+\S/.test(lines[i]) && !/^\s*</.test(lines[i])) {
-            items[items.length - 1] += " " + lines[i].trim();
-            i++;
+          if (items.length && lines[i2].trim() !== "" && /^\s+\S/.test(lines[i2]) && !/^\s*</.test(lines[i2])) {
+            items[items.length - 1] += " " + lines[i2].trim();
+            i2++;
             continue;
           }
           break;
         }
         items.push(li[3].trim());
-        i++;
+        i2++;
       }
-      i--;
+      i2--;
       const tag = ordered ? "ol" : "ul";
       const html2 = `<${tag}>` + items.map((it) => `<li>${inlineMdToHtml(it)}</li>`).join("") + `</${tag}>`;
       push({ type: "raw", content: stripUnsafeHtml(html2) });
@@ -4623,9 +4623,9 @@ function makePosts(gh) {
   async function getPost(slug) {
     const f = await gh.getFile(postPath(slug));
     if (!f) return null;
-    const { data, body } = parse(f.content);
+    const { data: data2, body } = parse(f.content);
     const photos = (await gh.listDir(imgDir(slug))).filter((e) => e.type === "file");
-    return { slug, data, body, sha: f.sha, photos };
+    return { slug, data: data2, body, sha: f.sha, photos };
   }
   async function setDraft(slug, draft) {
     const cur = await getPost(slug);
@@ -4637,17 +4637,17 @@ function makePosts(gh) {
   async function updatePost(slug, patch) {
     const cur = await getPost(slug);
     if (!cur) throw Object.assign(new Error("not found"), { status: 404 });
-    const data = { ...cur.data };
-    if (patch.title != null) data.title = patch.title;
-    if (patch.description != null) data.description = patch.description;
-    if (patch.tags != null) data.tags = patch.tags;
-    if (patch.accent != null) data.accent = patch.accent;
+    const data2 = { ...cur.data };
+    if (patch.title != null) data2.title = patch.title;
+    if (patch.description != null) data2.description = patch.description;
+    if (patch.tags != null) data2.tags = patch.tags;
+    if (patch.accent != null) data2.accent = patch.accent;
     if (patch.image !== void 0) {
-      if (patch.image) data.image = patch.image;
-      else delete data.image;
+      if (patch.image) data2.image = patch.image;
+      else delete data2.image;
     }
     const body = patch.body != null ? patch.body : cur.body;
-    const md = serialise({ data, body });
+    const md = serialise({ data: data2, body });
     const { commit } = await gh.putFile(postPath(slug), md, `studio: edit ${slug}`, cur.sha);
     return { slug, commit };
   }
@@ -4661,16 +4661,16 @@ function makePosts(gh) {
       const rowFor = async (e) => {
         const f = await gh.getFile(e.path);
         if (!f) return null;
-        const { data, body } = parse(f.content);
+        const { data: data2, body } = parse(f.content);
         return {
           slug: e.name.replace(/\.md$/, ""),
-          title: data.title || e.name,
-          date: data.date || "",
-          draft: data.draft === true,
-          publishAt: data.publishAt || "",
-          tags: Array.isArray(data.tags) ? data.tags : [],
-          series: data.series || "",
-          seriesPart: Number.isFinite(Number(data.seriesPart)) ? Number(data.seriesPart) : null,
+          title: data2.title || e.name,
+          date: data2.date || "",
+          draft: data2.draft === true,
+          publishAt: data2.publishAt || "",
+          tags: Array.isArray(data2.tags) ? data2.tags : [],
+          series: data2.series || "",
+          seriesPart: Number.isFinite(Number(data2.seriesPart)) ? Number(data2.seriesPart) : null,
           photoCount: readGallery(body).length
         };
       };
@@ -4678,8 +4678,8 @@ function makePosts(gh) {
       let next = 0;
       const worker = async () => {
         while (next < entries2.length) {
-          const i = next++;
-          out[i] = await rowFor(entries2[i]);
+          const i2 = next++;
+          out[i2] = await rowFor(entries2[i2]);
         }
       };
       await Promise.all(Array.from({ length: Math.min(8, entries2.length) }, worker));
@@ -4699,10 +4699,10 @@ function makePosts(gh) {
       const groups = /* @__PURE__ */ new Map();
       for (const e of entries2) {
         const rest = e.path.slice(PREFIX.length + 1);
-        const i = rest.indexOf("/");
-        if (i < 0) continue;
-        const slug = rest.slice(0, i);
-        const file = rest.slice(i + 1);
+        const i2 = rest.indexOf("/");
+        if (i2 < 0) continue;
+        const slug = rest.slice(0, i2);
+        const file = rest.slice(i2 + 1);
         if (!file || file.includes("/")) continue;
         const url = `/images/posts/${slug}/${file}`;
         if (!groups.has(slug)) groups.set(slug, []);
@@ -4748,9 +4748,9 @@ function makePosts(gh) {
       if (!cur) throw Object.assign(new Error("not found"), { status: 404 });
       const newSlug = await uniqueSlug(slugify2(`${cur.data.title || slug}-copy`));
       const rewrite = (s) => (s || "").split(`_images/${slug}/`).join(`_images/${newSlug}/`).split(`images/posts/${slug}/`).join(`images/posts/${newSlug}/`);
-      const data = { ...cur.data, title: `${cur.data.title || slug} (copy)`, date: todayISO(), draft: true };
-      delete data.publishAt;
-      const changes = [{ path: postPath(newSlug), content: serialise({ data, body: rewrite(cur.body) }) }];
+      const data2 = { ...cur.data, title: `${cur.data.title || slug} (copy)`, date: todayISO(), draft: true };
+      delete data2.publishAt;
+      const changes = [{ path: postPath(newSlug), content: serialise({ data: data2, body: rewrite(cur.body) }) }];
       const side = await gh.getFile(blocksPath(slug));
       if (side) changes.push({ path: blocksPath(newSlug), content: rewrite(side.content) });
       for (const [dir, dst] of [[imgDir(slug), imgDir(newSlug)], [publicImgDir(slug), publicImgDir(newSlug)]]) {
@@ -4768,17 +4768,17 @@ function makePosts(gh) {
       const galleryName = makeGalleryNamer(doc.blocks);
       const storedBlocks = doc.blocks.map((b, bi) => {
         if (b.type === "image" && b.url && !b.base64) {
-          const { base64, src, file, ...ref } = b;
-          return ref;
+          const { base64, src, file, ...ref2 } = b;
+          return ref2;
         }
         if (b.type === "image" && b.base64) {
           imageChanges.push({ path: `${publicImgDir(slug)}/${b.file}`, base64: b.base64 });
-          const { base64, src, url, ...ref } = b;
-          return ref;
+          const { base64, src, url, ...ref2 } = b;
+          return ref2;
         }
         if (b.type === "image") {
-          const { src, ...ref } = b;
-          return ref;
+          const { src, ...ref2 } = b;
+          return ref2;
         }
         if (b.type === "gallery" && Array.isArray(b.images)) {
           const images = b.images.map((im) => {
@@ -4888,6 +4888,5733 @@ __export(studio_exports, {
   tweakInteractive: () => tweakInteractive,
   vectoriseSketch: () => vectoriseSketch
 });
+
+// node_modules/acorn/dist/acorn.mjs
+var astralIdentifierCodes = [509, 0, 227, 0, 150, 4, 294, 9, 1368, 2, 2, 1, 6, 3, 41, 2, 5, 0, 166, 1, 574, 3, 9, 9, 7, 9, 32, 4, 318, 1, 31, 4, 33, 15, 71, 10, 50, 3, 123, 2, 54, 14, 32, 10, 3, 1, 11, 3, 46, 10, 8, 0, 46, 9, 7, 2, 37, 13, 2, 9, 6, 1, 45, 0, 13, 2, 49, 13, 9, 3, 2, 11, 83, 11, 7, 0, 3, 0, 158, 11, 6, 9, 7, 3, 56, 1, 2, 6, 3, 1, 3, 2, 10, 0, 11, 1, 3, 6, 4, 4, 68, 8, 2, 0, 3, 0, 2, 3, 2, 4, 2, 0, 15, 1, 83, 17, 10, 9, 5, 0, 82, 19, 13, 9, 214, 6, 3, 8, 28, 1, 83, 16, 16, 9, 82, 12, 9, 9, 7, 19, 58, 14, 5, 9, 243, 14, 166, 9, 71, 5, 2, 1, 3, 3, 2, 0, 2, 1, 13, 9, 120, 6, 3, 6, 4, 0, 29, 9, 41, 6, 2, 3, 9, 0, 10, 10, 47, 15, 199, 7, 137, 9, 54, 7, 2, 7, 17, 9, 57, 21, 2, 13, 123, 5, 4, 0, 2, 1, 2, 6, 2, 0, 9, 9, 49, 4, 2, 1, 2, 4, 9, 9, 55, 9, 7, 0, 259, 3, 10, 1, 2, 0, 49, 6, 4, 4, 14, 10, 5350, 0, 7, 14, 11465, 27, 2343, 9, 87, 9, 39, 4, 60, 6, 26, 9, 535, 9, 470, 0, 2, 54, 8, 3, 82, 0, 12, 1, 19628, 1, 4178, 9, 519, 45, 3, 22, 481, 1, 61, 4, 4, 5, 9, 7, 3, 6, 31, 3, 149, 2, 12, 2, 9, 1, 3, 0, 33, 1, 1357, 49, 513, 54, 5, 49, 9, 0, 15, 0, 23, 4, 2, 14, 1361, 6, 2, 16, 3, 6, 2, 1, 2, 4, 101, 0, 161, 6, 10, 9, 357, 0, 62, 13, 499, 13, 245, 1, 2, 9, 233, 0, 3, 0, 8, 1, 6, 0, 475, 6, 110, 6, 6, 9, 4759, 9, 787719, 239];
+var astralIdentifierStartCodes = [0, 11, 2, 25, 2, 18, 2, 1, 2, 14, 3, 13, 35, 122, 70, 52, 268, 28, 4, 48, 48, 31, 14, 29, 6, 37, 11, 29, 3, 35, 5, 7, 2, 4, 43, 157, 19, 35, 5, 35, 5, 39, 9, 51, 13, 10, 2, 14, 2, 6, 2, 1, 2, 10, 2, 14, 2, 6, 2, 1, 4, 51, 13, 310, 10, 21, 11, 7, 25, 5, 2, 41, 2, 13, 65, 5, 3, 0, 2, 43, 2, 1, 4, 0, 3, 22, 11, 22, 10, 30, 66, 18, 2, 1, 11, 21, 11, 25, 7, 25, 39, 55, 7, 1, 65, 0, 16, 3, 2, 2, 2, 28, 43, 28, 4, 28, 36, 7, 2, 27, 28, 53, 11, 21, 11, 18, 14, 17, 111, 72, 56, 50, 14, 50, 14, 35, 39, 27, 10, 22, 251, 41, 7, 1, 17, 5, 18, 21, 18, 28, 11, 0, 9, 21, 43, 17, 47, 20, 28, 22, 13, 52, 58, 1, 3, 0, 14, 44, 33, 24, 27, 35, 30, 0, 3, 0, 9, 34, 4, 0, 13, 47, 15, 3, 22, 0, 2, 0, 36, 17, 2, 24, 20, 1, 64, 6, 2, 0, 2, 3, 2, 14, 2, 9, 8, 46, 39, 7, 3, 1, 3, 21, 2, 6, 2, 1, 2, 4, 4, 0, 19, 0, 13, 4, 31, 9, 2, 0, 3, 0, 2, 37, 2, 0, 26, 0, 2, 0, 45, 52, 19, 3, 21, 2, 31, 47, 21, 1, 2, 0, 185, 46, 42, 3, 37, 47, 21, 0, 60, 42, 14, 0, 72, 26, 38, 6, 186, 43, 117, 63, 32, 7, 3, 0, 3, 7, 2, 1, 2, 23, 16, 0, 2, 0, 95, 7, 3, 38, 17, 0, 2, 0, 29, 0, 11, 39, 8, 0, 22, 0, 12, 45, 20, 0, 19, 72, 18, 0, 182, 32, 32, 8, 2, 36, 18, 0, 50, 29, 113, 6, 2, 1, 2, 37, 22, 0, 26, 5, 2, 1, 2, 31, 15, 0, 24, 43, 22, 0, 239, 18, 16, 0, 2, 12, 2, 33, 125, 0, 80, 921, 103, 111, 6, 206, 13, 310, 2314, 96, 16, 1071, 18, 5, 26, 3994, 6, 582, 6842, 29, 1763, 568, 8, 30, 18, 78, 18, 29, 19, 47, 17, 3, 32, 20, 6, 18, 433, 44, 212, 63, 33, 24, 3, 24, 45, 74, 6, 0, 67, 12, 65, 1, 2, 0, 15, 4, 10, 7386, 37, 33, 96, 114, 14, 913, 15, 50, 7710, 3, 2, 6, 2, 1, 2, 296, 10, 0, 30, 2, 3, 0, 15, 4, 8, 395, 2309, 106, 6, 12, 4, 8, 8, 9, 5991, 84, 2, 70, 2, 1, 3, 0, 3, 1, 3, 3, 2, 11, 2, 0, 2, 6, 2, 64, 2, 3, 3, 7, 2, 6, 2, 27, 2, 3, 2, 4, 2, 0, 4, 6, 2, 340, 2, 24, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 30, 2, 24, 2, 7, 1845, 129, 15, 6, 55, 50, 49, 61, 147, 44, 11, 6, 17, 0, 322, 29, 19, 43, 485, 27, 229, 29, 3, 0, 208, 30, 2, 2, 2, 1, 2, 6, 3, 4, 10, 1, 225, 6, 2, 3, 2, 1, 2, 14, 2, 196, 60, 67, 8, 0, 1205, 3, 2, 26, 2, 1, 2, 0, 3, 0, 2, 9, 2, 3, 2, 0, 2, 0, 7, 0, 5, 0, 2, 0, 2, 0, 2, 2, 2, 1, 2, 0, 3, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 1, 2, 0, 3, 3, 2, 6, 2, 3, 2, 3, 2, 0, 2, 9, 2, 16, 6, 2, 2, 4, 2, 16, 4421, 42719, 33, 4382, 2, 5773, 3, 7472, 16, 621, 2467, 541, 1507, 4938, 6, 8489, 39815, 11327];
+var nonASCIIidentifierChars = "\u200C\u200D\xB7\u0300-\u036F\u0387\u0483-\u0487\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7-\u05C9\u0610-\u061A\u064B-\u0669\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u06F0-\u06F9\u0711\u0730-\u074A\u07A6-\u07B0\u07C0-\u07C9\u07EB-\u07F3\u07FD\u0816-\u0819\u081B-\u0823\u0825-\u0827\u0829-\u082D\u0859-\u085B\u0897-\u089F\u08CA-\u08E1\u08E3-\u0903\u093A-\u093C\u093E-\u094F\u0951-\u0957\u0962\u0963\u0966-\u096F\u0981-\u0983\u09BC\u09BE-\u09C4\u09C7\u09C8\u09CB-\u09CD\u09D7\u09E2\u09E3\u09E6-\u09EF\u09FE\u0A01-\u0A03\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A66-\u0A71\u0A75\u0A81-\u0A83\u0ABC\u0ABE-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AE2\u0AE3\u0AE6-\u0AEF\u0AFA-\u0AFF\u0B01-\u0B03\u0B3C\u0B3E-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B53-\u0B57\u0B62\u0B63\u0B66-\u0B6F\u0B82\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD7\u0BE6-\u0BEF\u0C00-\u0C04\u0C3C\u0C3E-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C62\u0C63\u0C66-\u0C6F\u0C81-\u0C83\u0CBC\u0CBE-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CE2\u0CE3\u0CE6-\u0CEF\u0CF3\u0D00-\u0D03\u0D3B\u0D3C\u0D3E-\u0D44\u0D46-\u0D48\u0D4A-\u0D4D\u0D57\u0D62\u0D63\u0D66-\u0D6F\u0D81-\u0D83\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u0E50-\u0E59\u0EB1\u0EB4-\u0EBC\u0EC8-\u0ECE\u0ED0-\u0ED9\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E\u0F3F\u0F71-\u0F84\u0F86\u0F87\u0F8D-\u0F97\u0F99-\u0FBC\u0FC6\u102B-\u103E\u1040-\u1049\u1056-\u1059\u105E-\u1060\u1062-\u1064\u1067-\u106D\u1071-\u1074\u1082-\u108D\u108F-\u109D\u135D-\u135F\u1369-\u1371\u1712-\u1715\u1732-\u1734\u1752\u1753\u1772\u1773\u17B4-\u17D3\u17DD\u17E0-\u17E9\u180B-\u180D\u180F-\u1819\u18A9\u1920-\u192B\u1930-\u193B\u1946-\u194F\u19D0-\u19DA\u1A17-\u1A1B\u1A55-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AB0-\u1ABD\u1ABF-\u1AF0\u1B00-\u1B04\u1B34-\u1B44\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1B82\u1BA1-\u1BAD\u1BB0-\u1BB9\u1BE6-\u1BF3\u1C24-\u1C37\u1C40-\u1C49\u1C50-\u1C59\u1CD0-\u1CD2\u1CD4-\u1CE8\u1CED\u1CF4\u1CF7-\u1CF9\u1DC0-\u1DFF\u200C\u200D\u203F\u2040\u2054\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2CEF-\u2CF1\u2D7F\u2DE0-\u2DFF\u302A-\u302F\u3099\u309A\u30FB\uA620-\uA629\uA66F\uA674-\uA67D\uA69E\uA69F\uA6F0\uA6F1\uA802\uA806\uA80B\uA823-\uA827\uA82C\uA880\uA881\uA8B4-\uA8C5\uA8D0-\uA8D9\uA8E0-\uA8F1\uA8FF-\uA909\uA926-\uA92D\uA947-\uA953\uA980-\uA983\uA9B3-\uA9C0\uA9D0-\uA9D9\uA9E5\uA9F0-\uA9F9\uAA29-\uAA36\uAA43\uAA4C\uAA4D\uAA50-\uAA59\uAA7B-\uAA7D\uAAB0\uAAB2-\uAAB4\uAAB7\uAAB8\uAABE\uAABF\uAAC1\uAAEB-\uAAEF\uAAF5\uAAF6\uABE3-\uABEA\uABEC\uABED\uABF0-\uABF9\uFB1E\uFE00-\uFE0F\uFE20-\uFE2F\uFE33\uFE34\uFE4D-\uFE4F\uFF10-\uFF19\uFF3F\uFF65";
+var nonASCIIidentifierStartChars = "\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0558\u0559\u0560-\u0588\u058B\u058C\u05D0-\u05EA\u05EF-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u0860-\u086A\u0870-\u0887\u0889-\u088F\u08A0-\u08C9\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u09FC\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0AF9\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58-\u0C5A\u0C5C\u0C5D\u0C60\u0C61\u0C80\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDC-\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D04-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D54-\u0D56\u0D5F-\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E86-\u0E8A\u0E8C-\u0EA3\u0EA5\u0EA7-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u1711\u171F-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1878\u1880-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4C\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1C80-\u1C8A\u1C90-\u1CBA\u1CBD-\u1CBF\u1CE9-\u1CEC\u1CEE-\u1CF3\u1CF5\u1CF6\u1CFA\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u208F-\u209F\u2102\u2107\u210A-\u2113\u2115\u2118-\u211D\u2124\u2126\u2128\u212A-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309B-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312F\u3131-\u318E\u31A0-\u31BF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA7DD\uA7E2\uA7F1-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA8FD\uA8FE\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB69\uAB6C\uAB6D\uAB70-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC";
+var reservedWords = {
+  3: "abstract boolean byte char class double enum export extends final float goto implements import int interface long native package private protected public short static super synchronized throws transient volatile",
+  5: "class enum extends super const export import",
+  6: "enum",
+  strict: "implements interface let package private protected public static yield",
+  strictBind: "eval arguments"
+};
+var ecma5AndLessKeywords = "break case catch continue debugger default do else finally for function if return switch throw try var while with null true false instanceof typeof void delete new in this";
+var keywords$1 = {
+  5: ecma5AndLessKeywords,
+  "5module": ecma5AndLessKeywords + " export import",
+  6: ecma5AndLessKeywords + " const class extends export import super"
+};
+var keywordRelationalOperator = /^in(stanceof)?$/;
+var nonASCIIidentifierStart = new RegExp("[" + nonASCIIidentifierStartChars + "]");
+var nonASCIIidentifier = new RegExp("[" + nonASCIIidentifierStartChars + nonASCIIidentifierChars + "]");
+function isInAstralSet(code, set) {
+  var pos = 65536;
+  for (var i2 = 0; i2 < set.length; i2 += 2) {
+    pos += set[i2];
+    if (pos > code) {
+      return false;
+    }
+    pos += set[i2 + 1];
+    if (pos >= code) {
+      return true;
+    }
+  }
+  return false;
+}
+function isIdentifierStart(code, astral) {
+  if (code < 65) {
+    return code === 36;
+  }
+  if (code < 91) {
+    return true;
+  }
+  if (code < 97) {
+    return code === 95;
+  }
+  if (code < 123) {
+    return true;
+  }
+  if (code <= 65535) {
+    return code >= 170 && nonASCIIidentifierStart.test(String.fromCharCode(code));
+  }
+  if (astral === false) {
+    return false;
+  }
+  return isInAstralSet(code, astralIdentifierStartCodes);
+}
+function isIdentifierChar(code, astral) {
+  if (code < 48) {
+    return code === 36;
+  }
+  if (code < 58) {
+    return true;
+  }
+  if (code < 65) {
+    return false;
+  }
+  if (code < 91) {
+    return true;
+  }
+  if (code < 97) {
+    return code === 95;
+  }
+  if (code < 123) {
+    return true;
+  }
+  if (code <= 65535) {
+    return code >= 170 && nonASCIIidentifier.test(String.fromCharCode(code));
+  }
+  if (astral === false) {
+    return false;
+  }
+  return isInAstralSet(code, astralIdentifierStartCodes) || isInAstralSet(code, astralIdentifierCodes);
+}
+var TokenType = function TokenType2(label2, conf) {
+  if (conf === void 0) conf = {};
+  this.label = label2;
+  this.keyword = conf.keyword;
+  this.beforeExpr = !!conf.beforeExpr;
+  this.startsExpr = !!conf.startsExpr;
+  this.isLoop = !!conf.isLoop;
+  this.isAssign = !!conf.isAssign;
+  this.prefix = !!conf.prefix;
+  this.postfix = !!conf.postfix;
+  this.binop = conf.binop || null;
+  this.updateContext = null;
+};
+function binop(name, prec) {
+  return new TokenType(name, { beforeExpr: true, binop: prec });
+}
+var beforeExpr = { beforeExpr: true };
+var startsExpr = { startsExpr: true };
+var keywords = {};
+function kw(name, options) {
+  if (options === void 0) options = {};
+  options.keyword = name;
+  return keywords[name] = new TokenType(name, options);
+}
+var types$1 = {
+  num: new TokenType("num", startsExpr),
+  regexp: new TokenType("regexp", startsExpr),
+  string: new TokenType("string", startsExpr),
+  name: new TokenType("name", startsExpr),
+  privateId: new TokenType("privateId", startsExpr),
+  eof: new TokenType("eof"),
+  // Punctuation token types.
+  bracketL: new TokenType("[", { beforeExpr: true, startsExpr: true }),
+  bracketR: new TokenType("]"),
+  braceL: new TokenType("{", { beforeExpr: true, startsExpr: true }),
+  braceR: new TokenType("}"),
+  parenL: new TokenType("(", { beforeExpr: true, startsExpr: true }),
+  parenR: new TokenType(")"),
+  comma: new TokenType(",", beforeExpr),
+  semi: new TokenType(";", beforeExpr),
+  colon: new TokenType(":", beforeExpr),
+  dot: new TokenType("."),
+  question: new TokenType("?", beforeExpr),
+  questionDot: new TokenType("?."),
+  arrow: new TokenType("=>", beforeExpr),
+  template: new TokenType("template"),
+  invalidTemplate: new TokenType("invalidTemplate"),
+  ellipsis: new TokenType("...", beforeExpr),
+  backQuote: new TokenType("`", startsExpr),
+  dollarBraceL: new TokenType("${", { beforeExpr: true, startsExpr: true }),
+  // Operators. These carry several kinds of properties to help the
+  // parser use them properly (the presence of these properties is
+  // what categorizes them as operators).
+  //
+  // `binop`, when present, specifies that this operator is a binary
+  // operator, and will refer to its precedence.
+  //
+  // `prefix` and `postfix` mark the operator as a prefix or postfix
+  // unary operator.
+  //
+  // `isAssign` marks all of `=`, `+=`, `-=` etcetera, which act as
+  // binary operators with a very low precedence, that should result
+  // in AssignmentExpression nodes.
+  eq: new TokenType("=", { beforeExpr: true, isAssign: true }),
+  assign: new TokenType("_=", { beforeExpr: true, isAssign: true }),
+  incDec: new TokenType("++/--", { prefix: true, postfix: true, startsExpr: true }),
+  prefix: new TokenType("!/~", { beforeExpr: true, prefix: true, startsExpr: true }),
+  logicalOR: binop("||", 1),
+  logicalAND: binop("&&", 2),
+  bitwiseOR: binop("|", 3),
+  bitwiseXOR: binop("^", 4),
+  bitwiseAND: binop("&", 5),
+  equality: binop("==/!=/===/!==", 6),
+  relational: binop("</>/<=/>=", 7),
+  bitShift: binop("<</>>/>>>", 8),
+  plusMin: new TokenType("+/-", { beforeExpr: true, binop: 9, prefix: true, startsExpr: true }),
+  modulo: binop("%", 10),
+  star: binop("*", 10),
+  slash: binop("/", 10),
+  starstar: new TokenType("**", { beforeExpr: true }),
+  coalesce: binop("??", 1),
+  // Keyword token types.
+  _break: kw("break"),
+  _case: kw("case", beforeExpr),
+  _catch: kw("catch"),
+  _continue: kw("continue"),
+  _debugger: kw("debugger"),
+  _default: kw("default", beforeExpr),
+  _do: kw("do", { isLoop: true, beforeExpr: true }),
+  _else: kw("else", beforeExpr),
+  _finally: kw("finally"),
+  _for: kw("for", { isLoop: true }),
+  _function: kw("function", startsExpr),
+  _if: kw("if"),
+  _return: kw("return", beforeExpr),
+  _switch: kw("switch"),
+  _throw: kw("throw", beforeExpr),
+  _try: kw("try"),
+  _var: kw("var"),
+  _const: kw("const"),
+  _while: kw("while", { isLoop: true }),
+  _with: kw("with"),
+  _new: kw("new", { beforeExpr: true, startsExpr: true }),
+  _this: kw("this", startsExpr),
+  _super: kw("super", startsExpr),
+  _class: kw("class", startsExpr),
+  _extends: kw("extends", beforeExpr),
+  _export: kw("export"),
+  _import: kw("import", startsExpr),
+  _null: kw("null", startsExpr),
+  _true: kw("true", startsExpr),
+  _false: kw("false", startsExpr),
+  _in: kw("in", { beforeExpr: true, binop: 7 }),
+  _instanceof: kw("instanceof", { beforeExpr: true, binop: 7 }),
+  _typeof: kw("typeof", { beforeExpr: true, prefix: true, startsExpr: true }),
+  _void: kw("void", { beforeExpr: true, prefix: true, startsExpr: true }),
+  _delete: kw("delete", { beforeExpr: true, prefix: true, startsExpr: true })
+};
+var lineBreak = /\r\n?|\n|\u2028|\u2029/;
+var lineBreakG = new RegExp(lineBreak.source, "g");
+function isNewLine(code) {
+  return code === 10 || code === 13 || code === 8232 || code === 8233;
+}
+function nextLineBreak(code, from, end) {
+  if (end === void 0) end = code.length;
+  for (var i2 = from; i2 < end; i2++) {
+    var next = code.charCodeAt(i2);
+    if (isNewLine(next)) {
+      return i2 < end - 1 && next === 13 && code.charCodeAt(i2 + 1) === 10 ? i2 + 2 : i2 + 1;
+    }
+  }
+  return -1;
+}
+var nonASCIIwhitespace = /[\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]/;
+var skipWhiteSpace = /(?:\s|\/\/.*|\/\*[^]*?\*\/)*/g;
+var ref = Object.prototype;
+var hasOwnProperty = ref.hasOwnProperty;
+var toString = ref.toString;
+var hasOwn = Object.hasOwn || (function(obj, propName) {
+  return hasOwnProperty.call(obj, propName);
+});
+var isArray = Array.isArray || (function(obj) {
+  return toString.call(obj) === "[object Array]";
+});
+var regexpCache = /* @__PURE__ */ Object.create(null);
+function wordsRegexp(words) {
+  return regexpCache[words] || (regexpCache[words] = new RegExp("^(?:" + words.replace(/ /g, "|") + ")$"));
+}
+function codePointToString(code) {
+  if (code <= 65535) {
+    return String.fromCharCode(code);
+  }
+  code -= 65536;
+  return String.fromCharCode((code >> 10) + 55296, (code & 1023) + 56320);
+}
+var loneSurrogate = /(?:[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF])/;
+var Position = function Position2(line3, col) {
+  this.line = line3;
+  this.column = col;
+};
+Position.prototype.offset = function offset(n) {
+  return new Position(this.line, this.column + n);
+};
+var SourceLocation = function SourceLocation2(p, start, end) {
+  this.start = start;
+  this.end = end;
+  if (p.sourceFile !== null) {
+    this.source = p.sourceFile;
+  }
+};
+function getLineInfo(input, offset2) {
+  for (var line3 = 1, cur = 0; ; ) {
+    var nextBreak = nextLineBreak(input, cur, offset2);
+    if (nextBreak < 0) {
+      return new Position(line3, offset2 - cur);
+    }
+    ++line3;
+    cur = nextBreak;
+  }
+}
+var defaultOptions = {
+  // `ecmaVersion` indicates the ECMAScript version to parse. Must be
+  // either 3, 5, 6 (or 2015), 7 (2016), 8 (2017), 9 (2018), 10
+  // (2019), 11 (2020), 12 (2021), 13 (2022), 14 (2023), or `"latest"`
+  // (the latest version the library supports). This influences
+  // support for strict mode, the set of reserved words, and support
+  // for new syntax features.
+  ecmaVersion: null,
+  // `sourceType` indicates the mode the code should be parsed in.
+  // Can be either `"script"`, `"module"` or `"commonjs"`. This influences global
+  // strict mode and parsing of `import` and `export` declarations.
+  sourceType: "script",
+  // When set to true, enable strict parsing mode even if `sourceType`
+  // is `"script"`.
+  strict: false,
+  // `onInsertedSemicolon` can be a callback that will be called when
+  // a semicolon is automatically inserted. It will be passed the
+  // position of the inserted semicolon as an offset, and if
+  // `locations` is enabled, it is given the location as a `{line,
+  // column}` object as second argument.
+  onInsertedSemicolon: null,
+  // `onTrailingComma` is similar to `onInsertedSemicolon`, but for
+  // trailing commas.
+  onTrailingComma: null,
+  // By default, reserved words are only enforced if ecmaVersion >= 5.
+  // Set `allowReserved` to a boolean value to explicitly turn this on
+  // an off. When this option has the value "never", reserved words
+  // and keywords can also not be used as property names.
+  allowReserved: null,
+  // When enabled, a return at the top level is not considered an
+  // error.
+  allowReturnOutsideFunction: false,
+  // When enabled, import/export statements are not constrained to
+  // appearing at the top of the program, and an import.meta expression
+  // in a script isn't considered an error.
+  allowImportExportEverywhere: false,
+  // By default, await identifiers are allowed to appear at the top-level scope only if ecmaVersion >= 2022.
+  // When enabled, await identifiers are allowed to appear at the top-level scope,
+  // but they are still not allowed in non-async functions.
+  allowAwaitOutsideFunction: null,
+  // When enabled, super identifiers are not constrained to
+  // appearing in methods and do not raise an error when they appear elsewhere.
+  allowSuperOutsideMethod: null,
+  // When enabled, hashbang directive in the beginning of file is
+  // allowed and treated as a line comment. Enabled by default when
+  // `ecmaVersion` >= 2023.
+  allowHashBang: false,
+  // By default, the parser will verify that private properties are
+  // only used in places where they are valid and have been declared.
+  // Set this to false to turn such checks off.
+  checkPrivateFields: true,
+  // When `locations` is on, `loc` properties holding objects with
+  // `start` and `end` properties in `{line, column}` form (with
+  // line being 1-based and column 0-based) will be attached to the
+  // nodes.
+  locations: false,
+  // Pass an optional `{line, column}` object to use for the start of
+  // the parse. This is mostly useful when using `parseExpressionAt`
+  // with `locations: true`, to prevent the parser from having to
+  // determine the line position at the start position.
+  startLocation: null,
+  // A function can be passed as `onToken` option, which will
+  // cause Acorn to call that function with object in the same
+  // format as tokens returned from `tokenizer().getToken()`. Note
+  // that you are not allowed to call the parser from the
+  // callback—that will corrupt its internal state.
+  onToken: null,
+  // A function can be passed as `onComment` option, which will
+  // cause Acorn to call that function with `(block, text, start,
+  // end)` parameters whenever a comment is skipped. `block` is a
+  // boolean indicating whether this is a block (`/* */`) comment,
+  // `text` is the content of the comment, and `start` and `end` are
+  // character offsets that denote the start and end of the comment.
+  // When the `locations` option is on, two more parameters are
+  // passed, the full `{line, column}` locations of the start and
+  // end of the comments. Note that you are not allowed to call the
+  // parser from the callback—that will corrupt its internal state.
+  // When this option has an array as value, objects representing the
+  // comments are pushed to it.
+  onComment: null,
+  // Nodes have their start and end characters offsets recorded in
+  // `start` and `end` properties (directly on the node, rather than
+  // the `loc` object, which holds line/column data. To also add a
+  // [semi-standardized][range] `range` property holding a `[start,
+  // end]` array with the same numbers, set the `ranges` option to
+  // `true`.
+  //
+  // [range]: https://bugzilla.mozilla.org/show_bug.cgi?id=745678
+  ranges: false,
+  // It is possible to parse multiple files into a single AST by
+  // passing the tree produced by parsing the first file as
+  // `program` option in subsequent parses. This will add the
+  // toplevel forms of the parsed file to the `Program` (top) node
+  // of an existing parse tree.
+  program: null,
+  // When `locations` is on, you can pass this to record the source
+  // file in every node's `loc` object.
+  sourceFile: null,
+  // This value, if given, is stored in every node, whether
+  // `locations` is on or off.
+  directSourceFile: null,
+  // When enabled, parenthesized expressions are represented by
+  // (non-standard) ParenthesizedExpression nodes
+  preserveParens: false
+};
+var warnedAboutEcmaVersion = false;
+function getOptions(opts) {
+  var options = {};
+  for (var opt in defaultOptions) {
+    options[opt] = opts && hasOwn(opts, opt) ? opts[opt] : defaultOptions[opt];
+  }
+  if (options.ecmaVersion === "latest") {
+    options.ecmaVersion = 1e8;
+  } else if (options.ecmaVersion == null) {
+    if (!warnedAboutEcmaVersion && typeof console === "object" && console.warn) {
+      warnedAboutEcmaVersion = true;
+      console.warn("Since Acorn 8.0.0, options.ecmaVersion is required.\nDefaulting to 2020, but this will stop working in the future.");
+    }
+    options.ecmaVersion = 11;
+  } else if (options.ecmaVersion >= 2015) {
+    options.ecmaVersion -= 2009;
+  }
+  if (options.allowReserved == null) {
+    options.allowReserved = options.ecmaVersion < 5;
+  }
+  if (!opts || opts.allowHashBang == null) {
+    options.allowHashBang = options.ecmaVersion >= 14;
+  }
+  if (isArray(options.onToken)) {
+    var tokens = options.onToken;
+    options.onToken = function(token) {
+      return tokens.push(token);
+    };
+  }
+  if (isArray(options.onComment)) {
+    options.onComment = pushComment(options, options.onComment);
+  }
+  if (options.sourceType === "commonjs" && options.allowAwaitOutsideFunction) {
+    throw new Error("Cannot use allowAwaitOutsideFunction with sourceType: commonjs");
+  }
+  return options;
+}
+function pushComment(options, array) {
+  return function(block, text3, start, end, startLoc, endLoc) {
+    var comment = {
+      type: block ? "Block" : "Line",
+      value: text3,
+      start,
+      end
+    };
+    if (options.locations) {
+      comment.loc = new SourceLocation(this, startLoc, endLoc);
+    }
+    if (options.ranges) {
+      comment.range = [start, end];
+    }
+    array.push(comment);
+  };
+}
+var SCOPE_TOP = 1;
+var SCOPE_FUNCTION = 2;
+var SCOPE_ASYNC = 4;
+var SCOPE_GENERATOR = 8;
+var SCOPE_ARROW = 16;
+var SCOPE_SIMPLE_CATCH = 32;
+var SCOPE_SUPER = 64;
+var SCOPE_DIRECT_SUPER = 128;
+var SCOPE_CLASS_STATIC_BLOCK = 256;
+var SCOPE_CLASS_FIELD_INIT = 512;
+var SCOPE_SWITCH = 1024;
+var SCOPE_VAR = SCOPE_TOP | SCOPE_FUNCTION | SCOPE_CLASS_STATIC_BLOCK;
+function functionFlags(async, generator) {
+  return SCOPE_FUNCTION | (async ? SCOPE_ASYNC : 0) | (generator ? SCOPE_GENERATOR : 0);
+}
+var BIND_NONE = 0;
+var BIND_VAR = 1;
+var BIND_LEXICAL = 2;
+var BIND_FUNCTION = 3;
+var BIND_SIMPLE_CATCH = 4;
+var BIND_OUTSIDE = 5;
+var Parser = function Parser2(options, input, startPos) {
+  this.options = options = getOptions(options);
+  this.sourceFile = options.sourceFile;
+  this.keywords = wordsRegexp(keywords$1[options.ecmaVersion >= 6 ? 6 : options.sourceType === "module" ? "5module" : 5]);
+  var reserved = "";
+  if (options.allowReserved !== true) {
+    reserved = reservedWords[options.ecmaVersion >= 6 ? 6 : options.ecmaVersion === 5 ? 5 : 3];
+    if (options.sourceType === "module") {
+      reserved += " await";
+    }
+  }
+  this.reservedWords = wordsRegexp(reserved);
+  var reservedStrict = (reserved ? reserved + " " : "") + reservedWords.strict;
+  this.reservedWordsStrict = wordsRegexp(reservedStrict);
+  this.reservedWordsStrictBind = wordsRegexp(reservedStrict + " " + reservedWords.strictBind);
+  this.input = String(input);
+  this.containsEsc = false;
+  this.pos = startPos || 0;
+  this.curLine = 1;
+  if (options.startLocation) {
+    this.lineStart = this.pos - options.startLocation.column;
+    this.curLine = options.startLocation.line;
+  } else if (startPos) {
+    this.lineStart = this.input.lastIndexOf("\n", startPos - 1) + 1;
+    if (this.options.locations) {
+      this.curLine = this.input.slice(0, this.lineStart).split(lineBreak).length;
+    }
+  } else {
+    this.lineStart = 0;
+  }
+  this.type = types$1.eof;
+  this.value = null;
+  this.start = this.end = this.pos;
+  this.startLoc = this.endLoc = this.curPosition();
+  this.lastTokEndLoc = this.lastTokStartLoc = null;
+  this.lastTokStart = this.lastTokEnd = this.pos;
+  this.context = this.initialContext();
+  this.exprAllowed = true;
+  this.inModule = options.sourceType === "module";
+  this.strict = this.inModule || options.strict === true || this.strictDirective(this.pos);
+  this.potentialArrowAt = -1;
+  this.potentialArrowInForAwait = false;
+  this.yieldPos = this.awaitPos = this.awaitIdentPos = 0;
+  this.labels = [];
+  this.undefinedExports = /* @__PURE__ */ Object.create(null);
+  if (this.pos === 0 && options.allowHashBang && this.input.slice(0, 2) === "#!") {
+    this.skipLineComment(2);
+  }
+  this.scopeStack = [];
+  this.enterScope(
+    this.options.sourceType === "commonjs" ? SCOPE_FUNCTION : SCOPE_TOP
+  );
+  this.regexpState = null;
+  this.privateNameStack = [];
+};
+var prototypeAccessors = { inFunction: { configurable: true }, inGenerator: { configurable: true }, inAsync: { configurable: true }, canAwait: { configurable: true }, allowReturn: { configurable: true }, allowSuper: { configurable: true }, allowDirectSuper: { configurable: true }, treatFunctionsAsVar: { configurable: true }, allowNewDotTarget: { configurable: true }, allowUsing: { configurable: true }, inClassStaticBlock: { configurable: true } };
+Parser.prototype.parse = function parse2() {
+  var this$1$1 = this;
+  var node = this.options.program || this.startNode();
+  this.nextToken();
+  return this.catchStackOverflow(function() {
+    return this$1$1.parseTopLevel(node);
+  });
+};
+prototypeAccessors.inFunction.get = function() {
+  return (this.currentVarScope().flags & SCOPE_FUNCTION) > 0;
+};
+prototypeAccessors.inGenerator.get = function() {
+  return (this.currentVarScope().flags & SCOPE_GENERATOR) > 0;
+};
+prototypeAccessors.inAsync.get = function() {
+  return (this.currentVarScope().flags & SCOPE_ASYNC) > 0;
+};
+prototypeAccessors.canAwait.get = function() {
+  for (var i2 = this.scopeStack.length - 1; i2 >= 0; i2--) {
+    var ref2 = this.scopeStack[i2];
+    var flags = ref2.flags;
+    if (flags & (SCOPE_CLASS_STATIC_BLOCK | SCOPE_CLASS_FIELD_INIT)) {
+      return false;
+    }
+    if (flags & SCOPE_FUNCTION) {
+      return (flags & SCOPE_ASYNC) > 0;
+    }
+  }
+  return this.inModule && this.options.ecmaVersion >= 13 || this.options.allowAwaitOutsideFunction;
+};
+prototypeAccessors.allowReturn.get = function() {
+  if (this.inFunction) {
+    return true;
+  }
+  if (this.options.allowReturnOutsideFunction && this.currentVarScope().flags & SCOPE_TOP) {
+    return true;
+  }
+  return false;
+};
+prototypeAccessors.allowSuper.get = function() {
+  var ref2 = this.currentThisScope();
+  var flags = ref2.flags;
+  return (flags & SCOPE_SUPER) > 0 || this.options.allowSuperOutsideMethod;
+};
+prototypeAccessors.allowDirectSuper.get = function() {
+  return (this.currentThisScope().flags & SCOPE_DIRECT_SUPER) > 0;
+};
+prototypeAccessors.treatFunctionsAsVar.get = function() {
+  return this.treatFunctionsAsVarInScope(this.currentScope());
+};
+prototypeAccessors.allowNewDotTarget.get = function() {
+  for (var i2 = this.scopeStack.length - 1; i2 >= 0; i2--) {
+    var ref2 = this.scopeStack[i2];
+    var flags = ref2.flags;
+    if (flags & (SCOPE_CLASS_STATIC_BLOCK | SCOPE_CLASS_FIELD_INIT) || flags & SCOPE_FUNCTION && !(flags & SCOPE_ARROW)) {
+      return true;
+    }
+  }
+  return false;
+};
+prototypeAccessors.allowUsing.get = function() {
+  var ref2 = this.currentScope();
+  var flags = ref2.flags;
+  if (flags & SCOPE_SWITCH) {
+    return false;
+  }
+  if (!this.inModule && flags & SCOPE_TOP) {
+    return false;
+  }
+  return true;
+};
+prototypeAccessors.inClassStaticBlock.get = function() {
+  return (this.currentVarScope().flags & SCOPE_CLASS_STATIC_BLOCK) > 0;
+};
+Parser.extend = function extend() {
+  var plugins = [], len2 = arguments.length;
+  while (len2--) plugins[len2] = arguments[len2];
+  var cls = this;
+  for (var i2 = 0; i2 < plugins.length; i2++) {
+    cls = plugins[i2](cls);
+  }
+  return cls;
+};
+Parser.parse = function parse3(input, options) {
+  return new this(options, input).parse();
+};
+Parser.parseExpressionAt = function parseExpressionAt(input, pos, options) {
+  var parser = new this(options, input, pos);
+  parser.nextToken();
+  return parser.parseExpression();
+};
+Parser.tokenizer = function tokenizer(input, options) {
+  return new this(options, input);
+};
+Object.defineProperties(Parser.prototype, prototypeAccessors);
+var pp$9 = Parser.prototype;
+var literal = /^(?:'((?:\\[^]|[^'\\])*?)'|"((?:\\[^]|[^"\\])*?)")/;
+pp$9.strictDirective = function(start) {
+  if (this.options.ecmaVersion < 5) {
+    return false;
+  }
+  for (; ; ) {
+    skipWhiteSpace.lastIndex = start;
+    start += skipWhiteSpace.exec(this.input)[0].length;
+    var match = literal.exec(this.input.slice(start));
+    if (!match) {
+      return false;
+    }
+    if ((match[1] || match[2]) === "use strict") {
+      skipWhiteSpace.lastIndex = start + match[0].length;
+      var spaceAfter = skipWhiteSpace.exec(this.input), end = spaceAfter.index + spaceAfter[0].length;
+      var next = this.input.charAt(end);
+      return next === ";" || next === "}" || lineBreak.test(spaceAfter[0]) && !(/[(`.[+\-/*%<>=,?^&]/.test(next) || next === "!" && this.input.charAt(end + 1) === "=" || next === "i" && keywordOpAt(this, end));
+    }
+    start += match[0].length;
+    skipWhiteSpace.lastIndex = start;
+    start += skipWhiteSpace.exec(this.input)[0].length;
+    if (this.input[start] === ";") {
+      start++;
+    }
+  }
+};
+function keywordOpAt(parser, pos) {
+  var end = pos + 1, stop = Math.min(parser.input.length, pos + 11);
+  while (end < stop) {
+    var ch = parser.fullCharCodeAt(end);
+    if (!isIdentifierChar(ch, true)) {
+      break;
+    }
+    end += ch <= 65535 ? 1 : 2;
+  }
+  return end === pos + 2 && parser.input.slice(pos, end) === "in" || end === pos + 10 && parser.input.slice(pos, end) === "instanceof";
+}
+pp$9.eat = function(type) {
+  if (this.type === type) {
+    this.next();
+    return true;
+  } else {
+    return false;
+  }
+};
+pp$9.isContextual = function(name) {
+  return this.type === types$1.name && this.value === name && !this.containsEsc;
+};
+pp$9.eatContextual = function(name) {
+  if (!this.isContextual(name)) {
+    return false;
+  }
+  this.next();
+  return true;
+};
+pp$9.catchStackOverflow = function(f) {
+  try {
+    return f();
+  } catch (e) {
+    if (e instanceof Error && (/\bstack\b.*\b(exceeded|overflow)\b/i.test(e.message) || /\btoo much recursion\b/i.test(e.message))) {
+      this.raise(this.start, "Not enough stack space to parse input");
+    } else {
+      throw e;
+    }
+  }
+};
+pp$9.expectContextual = function(name) {
+  if (!this.eatContextual(name)) {
+    this.unexpected();
+  }
+};
+pp$9.canInsertSemicolon = function() {
+  return this.type === types$1.eof || this.type === types$1.braceR || lineBreak.test(this.input.slice(this.lastTokEnd, this.start));
+};
+pp$9.insertSemicolon = function() {
+  if (this.canInsertSemicolon()) {
+    if (this.options.onInsertedSemicolon) {
+      this.options.onInsertedSemicolon(this.lastTokEnd, this.lastTokEndLoc);
+    }
+    return true;
+  }
+};
+pp$9.semicolon = function() {
+  if (!this.eat(types$1.semi) && !this.insertSemicolon()) {
+    this.unexpected();
+  }
+};
+pp$9.afterTrailingComma = function(tokType, notNext) {
+  if (this.type === tokType) {
+    if (this.options.onTrailingComma) {
+      this.options.onTrailingComma(this.lastTokStart, this.lastTokStartLoc);
+    }
+    if (!notNext) {
+      this.next();
+    }
+    return true;
+  }
+};
+pp$9.expect = function(type) {
+  this.eat(type) || this.unexpected();
+};
+pp$9.unexpected = function(pos) {
+  this.raise(pos != null ? pos : this.start, "Unexpected token");
+};
+var DestructuringErrors = function DestructuringErrors2() {
+  this.shorthandAssign = this.trailingComma = this.parenthesizedAssign = this.parenthesizedBind = this.doubleProto = -1;
+};
+pp$9.checkPatternErrors = function(refDestructuringErrors, isAssign) {
+  if (!refDestructuringErrors) {
+    return;
+  }
+  if (refDestructuringErrors.trailingComma > -1) {
+    this.raiseRecoverable(refDestructuringErrors.trailingComma, "Comma is not permitted after the rest element");
+  }
+  var parens = isAssign ? refDestructuringErrors.parenthesizedAssign : refDestructuringErrors.parenthesizedBind;
+  if (parens > -1) {
+    this.raiseRecoverable(parens, isAssign ? "Assigning to rvalue" : "Parenthesized pattern");
+  }
+};
+pp$9.checkExpressionErrors = function(refDestructuringErrors, andThrow) {
+  if (!refDestructuringErrors) {
+    return false;
+  }
+  var shorthandAssign = refDestructuringErrors.shorthandAssign;
+  var doubleProto = refDestructuringErrors.doubleProto;
+  if (!andThrow) {
+    return shorthandAssign >= 0 || doubleProto >= 0;
+  }
+  if (shorthandAssign >= 0) {
+    this.raise(shorthandAssign, "Shorthand property assignments are valid only in destructuring patterns");
+  }
+  if (doubleProto >= 0) {
+    this.raiseRecoverable(doubleProto, "Redefinition of __proto__ property");
+  }
+};
+pp$9.checkYieldAwaitInDefaultParams = function() {
+  if (this.yieldPos && (!this.awaitPos || this.yieldPos < this.awaitPos)) {
+    this.raise(this.yieldPos, "Yield expression cannot be a default value");
+  }
+  if (this.awaitPos) {
+    this.raise(this.awaitPos, "Await expression cannot be a default value");
+  }
+};
+pp$9.isSimpleAssignTarget = function(expr) {
+  if (expr.type === "ParenthesizedExpression") {
+    return this.isSimpleAssignTarget(expr.expression);
+  }
+  return expr.type === "Identifier" || expr.type === "MemberExpression";
+};
+var pp$8 = Parser.prototype;
+pp$8.parseTopLevel = function(node) {
+  var exports$1 = /* @__PURE__ */ Object.create(null);
+  if (!node.body) {
+    node.body = [];
+  }
+  while (this.type !== types$1.eof) {
+    var stmt = this.parseStatement(null, true, exports$1);
+    node.body.push(stmt);
+  }
+  if (this.inModule) {
+    for (var i2 = 0, list2 = Object.keys(this.undefinedExports); i2 < list2.length; i2 += 1) {
+      var name = list2[i2];
+      this.raiseRecoverable(this.undefinedExports[name].start, "Export '" + name + "' is not defined");
+    }
+  }
+  this.adaptDirectivePrologue(node.body);
+  this.next();
+  node.sourceType = this.options.sourceType === "commonjs" ? "script" : this.options.sourceType;
+  return this.finishNode(node, "Program");
+};
+var loopLabel = { kind: "loop" };
+var switchLabel = { kind: "switch" };
+pp$8.isLet = function(context) {
+  if (this.options.ecmaVersion < 6 || !this.isContextual("let")) {
+    return false;
+  }
+  skipWhiteSpace.lastIndex = this.pos;
+  var skip = skipWhiteSpace.exec(this.input);
+  var next = this.pos + skip[0].length, nextCh = this.fullCharCodeAt(next);
+  if (nextCh === 91 || nextCh === 92) {
+    return true;
+  }
+  if (context) {
+    return false;
+  }
+  if (nextCh === 123) {
+    return true;
+  }
+  if (isIdentifierStart(nextCh)) {
+    var start = next;
+    do {
+      next += nextCh <= 65535 ? 1 : 2;
+    } while (isIdentifierChar(nextCh = this.fullCharCodeAt(next)));
+    if (nextCh === 92) {
+      return true;
+    }
+    var ident = this.input.slice(start, next);
+    if (!keywordRelationalOperator.test(ident)) {
+      return true;
+    }
+  }
+  return false;
+};
+pp$8.isAsyncFunction = function() {
+  if (this.options.ecmaVersion < 8 || !this.isContextual("async")) {
+    return false;
+  }
+  skipWhiteSpace.lastIndex = this.pos;
+  var skip = skipWhiteSpace.exec(this.input);
+  var next = this.pos + skip[0].length, after;
+  return !lineBreak.test(this.input.slice(this.pos, next)) && this.input.slice(next, next + 8) === "function" && (next + 8 === this.input.length || !(isIdentifierChar(after = this.fullCharCodeAt(next + 8)) || after === 92));
+};
+pp$8.isUsingKeyword = function(isAwaitUsing, isFor) {
+  if (this.options.ecmaVersion < 17 || !this.isContextual(isAwaitUsing ? "await" : "using")) {
+    return false;
+  }
+  skipWhiteSpace.lastIndex = this.pos;
+  var skip = skipWhiteSpace.exec(this.input);
+  var next = this.pos + skip[0].length;
+  if (lineBreak.test(this.input.slice(this.pos, next))) {
+    return false;
+  }
+  if (isAwaitUsing) {
+    var usingEndPos = next + 5, after;
+    if (this.input.slice(next, usingEndPos) !== "using" || usingEndPos === this.input.length || isIdentifierChar(after = this.fullCharCodeAt(usingEndPos)) || after === 92) {
+      return false;
+    }
+    skipWhiteSpace.lastIndex = usingEndPos;
+    var skipAfterUsing = skipWhiteSpace.exec(this.input);
+    next = usingEndPos + skipAfterUsing[0].length;
+    if (skipAfterUsing && lineBreak.test(this.input.slice(usingEndPos, next))) {
+      return false;
+    }
+  }
+  var ch = this.fullCharCodeAt(next);
+  if (!isIdentifierStart(ch) && ch !== 92) {
+    return false;
+  }
+  var idStart = next;
+  do {
+    next += ch <= 65535 ? 1 : 2;
+  } while (isIdentifierChar(ch = this.fullCharCodeAt(next)));
+  if (ch === 92) {
+    return true;
+  }
+  var id = this.input.slice(idStart, next);
+  if (keywordRelationalOperator.test(id)) {
+    return false;
+  }
+  if (isFor && !isAwaitUsing && id === "of") {
+    skipWhiteSpace.lastIndex = next;
+    var skipAfterOf = skipWhiteSpace.exec(this.input);
+    next = next + skipAfterOf[0].length;
+    if (this.input.charCodeAt(next) !== 61 || // Check for ==, === and => operators
+    (ch = this.input.charCodeAt(next + 1)) === 61 || ch === 62) {
+      return false;
+    }
+  }
+  return true;
+};
+pp$8.isAwaitUsing = function(isFor) {
+  return this.isUsingKeyword(true, isFor);
+};
+pp$8.isUsing = function(isFor) {
+  return this.isUsingKeyword(false, isFor);
+};
+pp$8.parseStatement = function(context, topLevel, exports$1) {
+  var starttype = this.type, node = this.startNode(), kind;
+  if (this.isLet(context)) {
+    starttype = types$1._var;
+    kind = "let";
+  }
+  switch (starttype) {
+    case types$1._break:
+    case types$1._continue:
+      return this.parseBreakContinueStatement(node, starttype.keyword);
+    case types$1._debugger:
+      return this.parseDebuggerStatement(node);
+    case types$1._do:
+      return this.parseDoStatement(node);
+    case types$1._for:
+      return this.parseForStatement(node);
+    case types$1._function:
+      if (context && (this.strict || context !== "if" && context !== "label") && this.options.ecmaVersion >= 6) {
+        this.unexpected();
+      }
+      return this.parseFunctionStatement(node, false, !context);
+    case types$1._class:
+      if (context) {
+        this.unexpected();
+      }
+      return this.parseClass(node, true);
+    case types$1._if:
+      return this.parseIfStatement(node);
+    case types$1._return:
+      return this.parseReturnStatement(node);
+    case types$1._switch:
+      return this.parseSwitchStatement(node);
+    case types$1._throw:
+      return this.parseThrowStatement(node);
+    case types$1._try:
+      return this.parseTryStatement(node);
+    case types$1._const:
+    case types$1._var:
+      kind = kind || this.value;
+      if (context && kind !== "var") {
+        this.unexpected();
+      }
+      return this.parseVarStatement(node, kind);
+    case types$1._while:
+      return this.parseWhileStatement(node);
+    case types$1._with:
+      return this.parseWithStatement(node);
+    case types$1.braceL:
+      return this.parseBlock(true, node);
+    case types$1.semi:
+      return this.parseEmptyStatement(node);
+    case types$1._export:
+    case types$1._import:
+      if (this.options.ecmaVersion > 10 && starttype === types$1._import) {
+        skipWhiteSpace.lastIndex = this.pos;
+        var skip = skipWhiteSpace.exec(this.input);
+        var next = this.pos + skip[0].length, nextCh = this.input.charCodeAt(next);
+        if (nextCh === 40 || nextCh === 46) {
+          return this.parseExpressionStatement(node, this.parseExpression());
+        }
+      }
+      if (!this.options.allowImportExportEverywhere) {
+        if (!topLevel) {
+          this.raise(this.start, "'import' and 'export' may only appear at the top level");
+        }
+        if (!this.inModule) {
+          this.raise(this.start, "'import' and 'export' may appear only with 'sourceType: module'");
+        }
+      }
+      return starttype === types$1._import ? this.parseImport(node) : this.parseExport(node, exports$1);
+    // If the statement does not start with a statement keyword or a
+    // brace, it's an ExpressionStatement or LabeledStatement. We
+    // simply start parsing an expression, and afterwards, if the
+    // next token is a colon and the expression was a simple
+    // Identifier node, we switch to interpreting it as a label.
+    default:
+      if (this.isAsyncFunction()) {
+        if (context) {
+          this.unexpected();
+        }
+        this.next();
+        return this.parseFunctionStatement(node, true, !context);
+      }
+      var usingKind = this.isAwaitUsing(false) ? "await using" : this.isUsing(false) ? "using" : null;
+      if (usingKind) {
+        if (!this.allowUsing) {
+          this.raise(this.start, "Using declaration cannot appear in the top level when source type is `script` or in the bare case statement");
+        }
+        if (context) {
+          this.raise(this.start, "Using declaration is not allowed in single-statement positions");
+        }
+        if (usingKind === "await using") {
+          if (!this.canAwait) {
+            this.raise(this.start, "Await using cannot appear outside of async function");
+          }
+          this.next();
+        }
+        this.next();
+        this.parseVar(node, false, usingKind);
+        this.semicolon();
+        return this.finishNode(node, "VariableDeclaration");
+      }
+      var maybeName = this.value, expr = this.parseExpression();
+      if (starttype === types$1.name && expr.type === "Identifier" && this.eat(types$1.colon)) {
+        return this.parseLabeledStatement(node, maybeName, expr, context);
+      } else {
+        return this.parseExpressionStatement(node, expr);
+      }
+  }
+};
+pp$8.parseBreakContinueStatement = function(node, keyword) {
+  var isBreak = keyword === "break";
+  this.next();
+  if (this.eat(types$1.semi) || this.insertSemicolon()) {
+    node.label = null;
+  } else if (this.type !== types$1.name) {
+    this.unexpected();
+  } else {
+    node.label = this.parseIdent();
+    this.semicolon();
+  }
+  var i2 = 0;
+  for (; i2 < this.labels.length; ++i2) {
+    var lab = this.labels[i2];
+    if (node.label == null || lab.name === node.label.name) {
+      if (lab.kind != null && (isBreak || lab.kind === "loop")) {
+        break;
+      }
+      if (node.label && isBreak) {
+        break;
+      }
+    }
+  }
+  if (i2 === this.labels.length) {
+    this.raise(node.start, "Unsyntactic " + keyword);
+  }
+  return this.finishNode(node, isBreak ? "BreakStatement" : "ContinueStatement");
+};
+pp$8.parseDebuggerStatement = function(node) {
+  this.next();
+  this.semicolon();
+  return this.finishNode(node, "DebuggerStatement");
+};
+pp$8.parseDoStatement = function(node) {
+  this.next();
+  this.labels.push(loopLabel);
+  node.body = this.parseStatement("do");
+  this.labels.pop();
+  this.expect(types$1._while);
+  node.test = this.parseParenExpression();
+  if (this.options.ecmaVersion >= 6) {
+    this.eat(types$1.semi);
+  } else {
+    this.semicolon();
+  }
+  return this.finishNode(node, "DoWhileStatement");
+};
+pp$8.parseForStatement = function(node) {
+  this.next();
+  var awaitAt = this.options.ecmaVersion >= 9 && this.canAwait && this.eatContextual("await") ? this.lastTokStart : -1;
+  this.labels.push(loopLabel);
+  this.enterScope(0);
+  this.expect(types$1.parenL);
+  if (this.type === types$1.semi) {
+    if (awaitAt > -1) {
+      this.unexpected(awaitAt);
+    }
+    return this.parseFor(node, null);
+  }
+  var isLet = this.isLet();
+  if (this.type === types$1._var || this.type === types$1._const || isLet) {
+    var init$1 = this.startNode(), kind = isLet ? "let" : this.value;
+    this.next();
+    this.parseVar(init$1, true, kind);
+    this.finishNode(init$1, "VariableDeclaration");
+    return this.parseForAfterInit(node, init$1, awaitAt);
+  }
+  var startsWithLet = this.isContextual("let"), isForOf = false;
+  var usingKind = this.isUsing(true) ? "using" : this.isAwaitUsing(true) ? "await using" : null;
+  if (usingKind) {
+    var init$2 = this.startNode();
+    this.next();
+    if (usingKind === "await using") {
+      if (!this.canAwait) {
+        this.raise(this.start, "Await using cannot appear outside of async function");
+      }
+      this.next();
+    }
+    this.parseVar(init$2, true, usingKind);
+    this.finishNode(init$2, "VariableDeclaration");
+    return this.parseForAfterInit(node, init$2, awaitAt);
+  }
+  var containsEsc = this.containsEsc;
+  var refDestructuringErrors = new DestructuringErrors();
+  var initPos = this.start;
+  var init = awaitAt > -1 ? this.parseExprSubscripts(refDestructuringErrors, "await") : this.parseExpression(true, refDestructuringErrors);
+  if (this.type === types$1._in || (isForOf = this.options.ecmaVersion >= 6 && this.isContextual("of"))) {
+    if (awaitAt > -1) {
+      if (this.type === types$1._in) {
+        this.unexpected(awaitAt);
+      }
+      node.await = true;
+    } else if (isForOf && this.options.ecmaVersion >= 8) {
+      if (init.start === initPos && !containsEsc && init.type === "Identifier" && init.name === "async") {
+        this.unexpected();
+      } else if (this.options.ecmaVersion >= 9) {
+        node.await = false;
+      }
+    }
+    if (startsWithLet && isForOf) {
+      this.raise(init.start, "The left-hand side of a for-of loop may not start with 'let'.");
+    }
+    this.toAssignable(init, false, refDestructuringErrors);
+    this.checkLValPattern(init);
+    return this.parseForIn(node, init);
+  } else {
+    this.checkExpressionErrors(refDestructuringErrors, true);
+  }
+  if (awaitAt > -1) {
+    this.unexpected(awaitAt);
+  }
+  return this.parseFor(node, init);
+};
+pp$8.parseForAfterInit = function(node, init, awaitAt) {
+  if ((this.type === types$1._in || this.options.ecmaVersion >= 6 && this.isContextual("of")) && init.declarations.length === 1) {
+    if (this.type === types$1._in) {
+      if ((init.kind === "using" || init.kind === "await using") && !init.declarations[0].init) {
+        this.raise(this.start, "Using declaration is not allowed in for-in loops");
+      }
+      if (this.options.ecmaVersion >= 9 && awaitAt > -1) {
+        this.unexpected(awaitAt);
+      }
+    } else if (this.options.ecmaVersion >= 9) {
+      node.await = awaitAt > -1;
+    }
+    return this.parseForIn(node, init);
+  }
+  if (awaitAt > -1) {
+    this.unexpected(awaitAt);
+  }
+  return this.parseFor(node, init);
+};
+pp$8.parseFunctionStatement = function(node, isAsync, declarationPosition) {
+  this.next();
+  return this.parseFunction(node, FUNC_STATEMENT | (declarationPosition ? 0 : FUNC_HANGING_STATEMENT), false, isAsync);
+};
+pp$8.parseIfStatement = function(node) {
+  this.next();
+  node.test = this.parseParenExpression();
+  node.consequent = this.parseStatement("if");
+  node.alternate = this.eat(types$1._else) ? this.parseStatement("if") : null;
+  return this.finishNode(node, "IfStatement");
+};
+pp$8.parseReturnStatement = function(node) {
+  if (!this.allowReturn) {
+    this.raise(this.start, "'return' outside of function");
+  }
+  this.next();
+  if (this.eat(types$1.semi) || this.insertSemicolon()) {
+    node.argument = null;
+  } else {
+    node.argument = this.parseExpression();
+    this.semicolon();
+  }
+  return this.finishNode(node, "ReturnStatement");
+};
+pp$8.parseSwitchStatement = function(node) {
+  this.next();
+  node.discriminant = this.parseParenExpression();
+  node.cases = [];
+  this.expect(types$1.braceL);
+  this.labels.push(switchLabel);
+  this.enterScope(SCOPE_SWITCH);
+  var cur;
+  for (var sawDefault = false; this.type !== types$1.braceR; ) {
+    if (this.type === types$1._case || this.type === types$1._default) {
+      var isCase = this.type === types$1._case;
+      if (cur) {
+        this.finishNode(cur, "SwitchCase");
+      }
+      node.cases.push(cur = this.startNode());
+      cur.consequent = [];
+      this.next();
+      if (isCase) {
+        cur.test = this.parseExpression();
+      } else {
+        if (sawDefault) {
+          this.raiseRecoverable(this.lastTokStart, "Multiple default clauses");
+        }
+        sawDefault = true;
+        cur.test = null;
+      }
+      this.expect(types$1.colon);
+    } else {
+      if (!cur) {
+        this.unexpected();
+      }
+      cur.consequent.push(this.parseStatement(null));
+    }
+  }
+  this.exitScope();
+  if (cur) {
+    this.finishNode(cur, "SwitchCase");
+  }
+  this.next();
+  this.labels.pop();
+  return this.finishNode(node, "SwitchStatement");
+};
+pp$8.parseThrowStatement = function(node) {
+  this.next();
+  if (lineBreak.test(this.input.slice(this.lastTokEnd, this.start))) {
+    this.raise(this.lastTokEnd, "Illegal newline after throw");
+  }
+  node.argument = this.parseExpression();
+  this.semicolon();
+  return this.finishNode(node, "ThrowStatement");
+};
+var empty$1 = [];
+pp$8.parseCatchClauseParam = function() {
+  var param = this.parseBindingAtom();
+  var simple = param.type === "Identifier";
+  this.enterScope(simple ? SCOPE_SIMPLE_CATCH : 0);
+  this.checkLValPattern(param, simple ? BIND_SIMPLE_CATCH : BIND_LEXICAL);
+  this.expect(types$1.parenR);
+  return param;
+};
+pp$8.parseTryStatement = function(node) {
+  this.next();
+  node.block = this.parseBlock();
+  node.handler = null;
+  if (this.type === types$1._catch) {
+    var clause = this.startNode();
+    this.next();
+    if (this.eat(types$1.parenL)) {
+      clause.param = this.parseCatchClauseParam();
+    } else {
+      if (this.options.ecmaVersion < 10) {
+        this.unexpected();
+      }
+      clause.param = null;
+      this.enterScope(0);
+    }
+    clause.body = this.parseBlock(false);
+    this.exitScope();
+    node.handler = this.finishNode(clause, "CatchClause");
+  }
+  node.finalizer = this.eat(types$1._finally) ? this.parseBlock() : null;
+  if (!node.handler && !node.finalizer) {
+    this.raise(node.start, "Missing catch or finally clause");
+  }
+  return this.finishNode(node, "TryStatement");
+};
+pp$8.parseVarStatement = function(node, kind, allowMissingInitializer) {
+  this.next();
+  this.parseVar(node, false, kind, allowMissingInitializer);
+  this.semicolon();
+  return this.finishNode(node, "VariableDeclaration");
+};
+pp$8.parseWhileStatement = function(node) {
+  this.next();
+  node.test = this.parseParenExpression();
+  this.labels.push(loopLabel);
+  node.body = this.parseStatement("while");
+  this.labels.pop();
+  return this.finishNode(node, "WhileStatement");
+};
+pp$8.parseWithStatement = function(node) {
+  if (this.strict) {
+    this.raise(this.start, "'with' in strict mode");
+  }
+  this.next();
+  node.object = this.parseParenExpression();
+  node.body = this.parseStatement("with");
+  return this.finishNode(node, "WithStatement");
+};
+pp$8.parseEmptyStatement = function(node) {
+  this.next();
+  return this.finishNode(node, "EmptyStatement");
+};
+pp$8.parseLabeledStatement = function(node, maybeName, expr, context) {
+  for (var i$1 = 0, list2 = this.labels; i$1 < list2.length; i$1 += 1) {
+    var label2 = list2[i$1];
+    if (label2.name === maybeName) {
+      this.raise(expr.start, "Label '" + maybeName + "' is already declared");
+    }
+  }
+  var kind = this.type.isLoop ? "loop" : this.type === types$1._switch ? "switch" : null;
+  for (var i2 = this.labels.length - 1; i2 >= 0; i2--) {
+    var label$1 = this.labels[i2];
+    if (label$1.statementStart === node.start) {
+      label$1.statementStart = this.start;
+      label$1.kind = kind;
+    } else {
+      break;
+    }
+  }
+  this.labels.push({ name: maybeName, kind, statementStart: this.start });
+  node.body = this.parseStatement(context ? context.indexOf("label") === -1 ? context + "label" : context : "label");
+  this.labels.pop();
+  node.label = expr;
+  return this.finishNode(node, "LabeledStatement");
+};
+pp$8.parseExpressionStatement = function(node, expr) {
+  node.expression = expr;
+  this.semicolon();
+  return this.finishNode(node, "ExpressionStatement");
+};
+pp$8.parseBlock = function(createNewLexicalScope, node, exitStrict) {
+  if (createNewLexicalScope === void 0) createNewLexicalScope = true;
+  if (node === void 0) node = this.startNode();
+  node.body = [];
+  this.expect(types$1.braceL);
+  if (createNewLexicalScope) {
+    this.enterScope(0);
+  }
+  while (this.type !== types$1.braceR) {
+    var stmt = this.parseStatement(null);
+    node.body.push(stmt);
+  }
+  if (exitStrict) {
+    this.strict = false;
+  }
+  this.next();
+  if (createNewLexicalScope) {
+    this.exitScope();
+  }
+  return this.finishNode(node, "BlockStatement");
+};
+pp$8.parseFor = function(node, init) {
+  node.init = init;
+  this.expect(types$1.semi);
+  node.test = this.type === types$1.semi ? null : this.parseExpression();
+  this.expect(types$1.semi);
+  node.update = this.type === types$1.parenR ? null : this.parseExpression();
+  this.expect(types$1.parenR);
+  node.body = this.parseStatement("for");
+  this.exitScope();
+  this.labels.pop();
+  return this.finishNode(node, "ForStatement");
+};
+pp$8.parseForIn = function(node, init) {
+  var isForIn = this.type === types$1._in;
+  this.next();
+  if (init.type === "VariableDeclaration" && init.declarations[0].init != null && (!isForIn || this.options.ecmaVersion < 8 || this.strict || init.kind !== "var" || init.declarations[0].id.type !== "Identifier")) {
+    this.raise(
+      init.start,
+      (isForIn ? "for-in" : "for-of") + " loop variable declaration may not have an initializer"
+    );
+  }
+  node.left = init;
+  node.right = isForIn ? this.parseExpression() : this.parseMaybeAssign();
+  this.expect(types$1.parenR);
+  node.body = this.parseStatement("for");
+  this.exitScope();
+  this.labels.pop();
+  return this.finishNode(node, isForIn ? "ForInStatement" : "ForOfStatement");
+};
+pp$8.parseVar = function(node, isFor, kind, allowMissingInitializer) {
+  node.declarations = [];
+  node.kind = kind;
+  for (; ; ) {
+    var decl = this.startNode();
+    this.parseVarId(decl, kind);
+    if (this.eat(types$1.eq)) {
+      decl.init = this.parseMaybeAssign(isFor);
+    } else if (!allowMissingInitializer && kind === "const" && !(this.type === types$1._in || this.options.ecmaVersion >= 6 && this.isContextual("of"))) {
+      this.unexpected();
+    } else if (!allowMissingInitializer && (kind === "using" || kind === "await using") && this.options.ecmaVersion >= 17 && this.type !== types$1._in && !this.isContextual("of")) {
+      this.raise(this.lastTokEnd, "Missing initializer in " + kind + " declaration");
+    } else if (!allowMissingInitializer && decl.id.type !== "Identifier" && !(isFor && (this.type === types$1._in || this.isContextual("of")))) {
+      this.raise(this.lastTokEnd, "Complex binding patterns require an initialization value");
+    } else {
+      decl.init = null;
+    }
+    node.declarations.push(this.finishNode(decl, "VariableDeclarator"));
+    if (!this.eat(types$1.comma)) {
+      break;
+    }
+  }
+  return node;
+};
+pp$8.parseVarId = function(decl, kind) {
+  decl.id = kind === "using" || kind === "await using" ? this.parseIdent() : this.parseBindingAtom();
+  this.checkLValPattern(decl.id, kind === "var" ? BIND_VAR : BIND_LEXICAL, false);
+};
+var FUNC_STATEMENT = 1;
+var FUNC_HANGING_STATEMENT = 2;
+var FUNC_NULLABLE_ID = 4;
+pp$8.parseFunction = function(node, statement, allowExpressionBody, isAsync, forInit) {
+  this.initFunction(node);
+  if (this.options.ecmaVersion >= 9 || this.options.ecmaVersion >= 6 && !isAsync) {
+    if (this.type === types$1.star && statement & FUNC_HANGING_STATEMENT) {
+      this.unexpected();
+    }
+    node.generator = this.eat(types$1.star);
+  }
+  if (this.options.ecmaVersion >= 8) {
+    node.async = !!isAsync;
+  }
+  if (statement & FUNC_STATEMENT) {
+    node.id = statement & FUNC_NULLABLE_ID && this.type !== types$1.name ? null : this.parseIdent();
+    if (node.id && !(statement & FUNC_HANGING_STATEMENT)) {
+      this.checkLValSimple(node.id, this.strict || node.generator || node.async ? this.treatFunctionsAsVar ? BIND_VAR : BIND_LEXICAL : BIND_FUNCTION);
+    }
+  }
+  var oldYieldPos = this.yieldPos, oldAwaitPos = this.awaitPos, oldAwaitIdentPos = this.awaitIdentPos;
+  this.yieldPos = 0;
+  this.awaitPos = 0;
+  this.awaitIdentPos = 0;
+  this.enterScope(functionFlags(node.async, node.generator));
+  if (!(statement & FUNC_STATEMENT)) {
+    node.id = this.type === types$1.name ? this.parseIdent() : null;
+  }
+  this.parseFunctionParams(node);
+  this.parseFunctionBody(node, allowExpressionBody, false, forInit);
+  this.yieldPos = oldYieldPos;
+  this.awaitPos = oldAwaitPos;
+  this.awaitIdentPos = oldAwaitIdentPos;
+  return this.finishNode(node, statement & FUNC_STATEMENT ? "FunctionDeclaration" : "FunctionExpression");
+};
+pp$8.parseFunctionParams = function(node) {
+  this.expect(types$1.parenL);
+  node.params = this.parseBindingList(types$1.parenR, false, this.options.ecmaVersion >= 8);
+  this.checkYieldAwaitInDefaultParams();
+};
+pp$8.parseClass = function(node, isStatement) {
+  this.next();
+  var oldStrict = this.strict;
+  this.strict = true;
+  this.parseClassId(node, isStatement);
+  this.parseClassSuper(node);
+  var privateNameMap = this.enterClassBody();
+  var classBody = this.startNode();
+  var hadConstructor = false;
+  classBody.body = [];
+  this.expect(types$1.braceL);
+  while (this.type !== types$1.braceR) {
+    var element = this.parseClassElement(node.superClass !== null);
+    if (element) {
+      classBody.body.push(element);
+      if (element.type === "MethodDefinition" && element.kind === "constructor") {
+        if (hadConstructor) {
+          this.raiseRecoverable(element.start, "Duplicate constructor in the same class");
+        }
+        hadConstructor = true;
+      } else if (element.key && element.key.type === "PrivateIdentifier" && isPrivateNameConflicted(privateNameMap, element)) {
+        this.raiseRecoverable(element.key.start, "Identifier '#" + element.key.name + "' has already been declared");
+      }
+    }
+  }
+  this.strict = oldStrict;
+  this.next();
+  node.body = this.finishNode(classBody, "ClassBody");
+  this.exitClassBody();
+  return this.finishNode(node, isStatement ? "ClassDeclaration" : "ClassExpression");
+};
+pp$8.parseClassElement = function(constructorAllowsSuper) {
+  if (this.eat(types$1.semi)) {
+    return null;
+  }
+  var ecmaVersion2 = this.options.ecmaVersion;
+  var node = this.startNode();
+  var keyName = "";
+  var isGenerator = false;
+  var isAsync = false;
+  var kind = "method";
+  var isStatic = false;
+  if (this.eatContextual("static")) {
+    if (ecmaVersion2 >= 13 && this.eat(types$1.braceL)) {
+      this.parseClassStaticBlock(node);
+      return node;
+    }
+    if (this.isClassElementNameStart() || this.type === types$1.star) {
+      isStatic = true;
+    } else {
+      keyName = "static";
+    }
+  }
+  node.static = isStatic;
+  if (!keyName && ecmaVersion2 >= 8 && this.eatContextual("async")) {
+    if ((this.isClassElementNameStart() || this.type === types$1.star) && !this.canInsertSemicolon()) {
+      isAsync = true;
+    } else {
+      keyName = "async";
+    }
+  }
+  if (!keyName && (ecmaVersion2 >= 9 || !isAsync) && this.eat(types$1.star)) {
+    isGenerator = true;
+  }
+  if (!keyName && !isAsync && !isGenerator) {
+    var lastValue = this.value;
+    if (this.eatContextual("get") || this.eatContextual("set")) {
+      if (this.isClassElementNameStart()) {
+        kind = lastValue;
+      } else {
+        keyName = lastValue;
+      }
+    }
+  }
+  if (keyName) {
+    node.computed = false;
+    node.key = this.startNodeAt(this.lastTokStart, this.lastTokStartLoc);
+    node.key.name = keyName;
+    this.finishNode(node.key, "Identifier");
+  } else {
+    this.parseClassElementName(node);
+  }
+  if (ecmaVersion2 < 13 || this.type === types$1.parenL || kind !== "method" || isGenerator || isAsync) {
+    var isConstructor = !node.static && checkKeyName(node, "constructor");
+    var allowsDirectSuper = isConstructor && constructorAllowsSuper;
+    if (isConstructor && kind !== "method") {
+      this.raise(node.key.start, "Constructor can't have get/set modifier");
+    }
+    node.kind = isConstructor ? "constructor" : kind;
+    this.parseClassMethod(node, isGenerator, isAsync, allowsDirectSuper);
+  } else {
+    this.parseClassField(node);
+  }
+  return node;
+};
+pp$8.isClassElementNameStart = function() {
+  return this.type === types$1.name || this.type === types$1.privateId || this.type === types$1.num || this.type === types$1.string || this.type === types$1.bracketL || this.type.keyword;
+};
+pp$8.parseClassElementName = function(element) {
+  if (this.type === types$1.privateId) {
+    if (this.value === "constructor") {
+      this.raise(this.start, "Classes can't have an element named '#constructor'");
+    }
+    element.computed = false;
+    element.key = this.parsePrivateIdent();
+  } else {
+    this.parsePropertyName(element);
+  }
+};
+pp$8.parseClassMethod = function(method, isGenerator, isAsync, allowsDirectSuper) {
+  var key = method.key;
+  if (method.kind === "constructor") {
+    if (isGenerator) {
+      this.raise(key.start, "Constructor can't be a generator");
+    }
+    if (isAsync) {
+      this.raise(key.start, "Constructor can't be an async method");
+    }
+  } else if (method.static && checkKeyName(method, "prototype")) {
+    this.raise(key.start, "Classes may not have a static property named prototype");
+  }
+  var value = method.value = this.parseMethod(isGenerator, isAsync, allowsDirectSuper);
+  if (method.kind === "get" && value.params.length !== 0) {
+    this.raiseRecoverable(value.start, "getter should have no params");
+  }
+  if (method.kind === "set" && value.params.length !== 1) {
+    this.raiseRecoverable(value.start, "setter should have exactly one param");
+  }
+  if (method.kind === "set" && value.params[0].type === "RestElement") {
+    this.raiseRecoverable(value.params[0].start, "Setter cannot use rest params");
+  }
+  return this.finishNode(method, "MethodDefinition");
+};
+pp$8.parseClassField = function(field) {
+  if (checkKeyName(field, "constructor")) {
+    this.raise(field.key.start, "Classes can't have a field named 'constructor'");
+  } else if (field.static && checkKeyName(field, "prototype")) {
+    this.raise(field.key.start, "Classes can't have a static field named 'prototype'");
+  }
+  if (this.eat(types$1.eq)) {
+    this.enterScope(SCOPE_CLASS_FIELD_INIT | SCOPE_SUPER);
+    field.value = this.parseMaybeAssign();
+    this.exitScope();
+  } else {
+    field.value = null;
+  }
+  this.semicolon();
+  return this.finishNode(field, "PropertyDefinition");
+};
+pp$8.parseClassStaticBlock = function(node) {
+  node.body = [];
+  var oldLabels = this.labels;
+  this.labels = [];
+  this.enterScope(SCOPE_CLASS_STATIC_BLOCK | SCOPE_SUPER);
+  while (this.type !== types$1.braceR) {
+    var stmt = this.parseStatement(null);
+    node.body.push(stmt);
+  }
+  this.next();
+  this.exitScope();
+  this.labels = oldLabels;
+  return this.finishNode(node, "StaticBlock");
+};
+pp$8.parseClassId = function(node, isStatement) {
+  if (this.type === types$1.name) {
+    node.id = this.parseIdent();
+    if (isStatement) {
+      this.checkLValSimple(node.id, BIND_LEXICAL, false);
+    }
+  } else {
+    if (isStatement === true) {
+      this.unexpected();
+    }
+    node.id = null;
+  }
+};
+pp$8.parseClassSuper = function(node) {
+  node.superClass = this.eat(types$1._extends) ? this.parseExprSubscripts(null, false) : null;
+};
+pp$8.enterClassBody = function() {
+  var element = { declared: /* @__PURE__ */ Object.create(null), used: [] };
+  this.privateNameStack.push(element);
+  return element.declared;
+};
+pp$8.exitClassBody = function() {
+  var ref2 = this.privateNameStack.pop();
+  var declared = ref2.declared;
+  var used = ref2.used;
+  if (!this.options.checkPrivateFields) {
+    return;
+  }
+  var len2 = this.privateNameStack.length;
+  var parent = len2 === 0 ? null : this.privateNameStack[len2 - 1];
+  for (var i2 = 0; i2 < used.length; ++i2) {
+    var id = used[i2];
+    if (!hasOwn(declared, id.name)) {
+      if (parent) {
+        parent.used.push(id);
+      } else {
+        this.raiseRecoverable(id.start, "Private field '#" + id.name + "' must be declared in an enclosing class");
+      }
+    }
+  }
+};
+function isPrivateNameConflicted(privateNameMap, element) {
+  var name = element.key.name;
+  var curr = privateNameMap[name];
+  var next = "true";
+  if (element.type === "MethodDefinition" && (element.kind === "get" || element.kind === "set")) {
+    next = (element.static ? "s" : "i") + element.kind;
+  }
+  if (curr === "iget" && next === "iset" || curr === "iset" && next === "iget" || curr === "sget" && next === "sset" || curr === "sset" && next === "sget") {
+    privateNameMap[name] = "true";
+    return false;
+  } else if (!curr) {
+    privateNameMap[name] = next;
+    return false;
+  } else {
+    return true;
+  }
+}
+function checkKeyName(node, name) {
+  var computed = node.computed;
+  var key = node.key;
+  return !computed && (key.type === "Identifier" && key.name === name || key.type === "Literal" && key.value === name);
+}
+pp$8.parseExportAllDeclaration = function(node, exports$1) {
+  if (this.options.ecmaVersion >= 11) {
+    if (this.eatContextual("as")) {
+      node.exported = this.parseModuleExportName();
+      this.checkExport(exports$1, node.exported, this.lastTokStart);
+    } else {
+      node.exported = null;
+    }
+  }
+  this.expectContextual("from");
+  if (this.type !== types$1.string) {
+    this.unexpected();
+  }
+  node.source = this.parseExprAtom();
+  if (this.options.ecmaVersion >= 16) {
+    node.attributes = this.parseWithClause();
+  }
+  this.semicolon();
+  return this.finishNode(node, "ExportAllDeclaration");
+};
+pp$8.parseExport = function(node, exports$1) {
+  this.next();
+  if (this.eat(types$1.star)) {
+    return this.parseExportAllDeclaration(node, exports$1);
+  }
+  if (this.eat(types$1._default)) {
+    this.checkExport(exports$1, "default", this.lastTokStart);
+    node.declaration = this.parseExportDefaultDeclaration();
+    return this.finishNode(node, "ExportDefaultDeclaration");
+  }
+  if (this.shouldParseExportStatement()) {
+    node.declaration = this.parseExportDeclaration(node);
+    if (node.declaration.type === "VariableDeclaration") {
+      this.checkVariableExport(exports$1, node.declaration.declarations);
+    } else {
+      this.checkExport(exports$1, node.declaration.id, node.declaration.id.start);
+    }
+    node.specifiers = [];
+    node.source = null;
+    if (this.options.ecmaVersion >= 16) {
+      node.attributes = [];
+    }
+  } else {
+    node.declaration = null;
+    node.specifiers = this.parseExportSpecifiers(exports$1);
+    if (this.eatContextual("from")) {
+      if (this.type !== types$1.string) {
+        this.unexpected();
+      }
+      node.source = this.parseExprAtom();
+      if (this.options.ecmaVersion >= 16) {
+        node.attributes = this.parseWithClause();
+      }
+    } else {
+      for (var i2 = 0, list2 = node.specifiers; i2 < list2.length; i2 += 1) {
+        var spec = list2[i2];
+        this.checkUnreserved(spec.local);
+        this.checkLocalExport(spec.local);
+        if (spec.local.type === "Literal") {
+          this.raise(spec.local.start, "A string literal cannot be used as an exported binding without `from`.");
+        }
+      }
+      node.source = null;
+      if (this.options.ecmaVersion >= 16) {
+        node.attributes = [];
+      }
+    }
+    this.semicolon();
+  }
+  return this.finishNode(node, "ExportNamedDeclaration");
+};
+pp$8.parseExportDeclaration = function(node) {
+  return this.parseStatement(null);
+};
+pp$8.parseExportDefaultDeclaration = function() {
+  var isAsync;
+  if (this.type === types$1._function || (isAsync = this.isAsyncFunction())) {
+    var fNode = this.startNode();
+    this.next();
+    if (isAsync) {
+      this.next();
+    }
+    return this.parseFunction(fNode, FUNC_STATEMENT | FUNC_NULLABLE_ID, false, isAsync);
+  } else if (this.type === types$1._class) {
+    var cNode = this.startNode();
+    return this.parseClass(cNode, "nullableID");
+  } else {
+    var declaration = this.parseMaybeAssign();
+    this.semicolon();
+    return declaration;
+  }
+};
+pp$8.checkExport = function(exports$1, name, pos) {
+  if (!exports$1) {
+    return;
+  }
+  if (typeof name !== "string") {
+    name = name.type === "Identifier" ? name.name : name.value;
+  }
+  if (hasOwn(exports$1, name)) {
+    this.raiseRecoverable(pos, "Duplicate export '" + name + "'");
+  }
+  exports$1[name] = true;
+};
+pp$8.checkPatternExport = function(exports$1, pat) {
+  var type = pat.type;
+  if (type === "Identifier") {
+    this.checkExport(exports$1, pat, pat.start);
+  } else if (type === "ObjectPattern") {
+    for (var i2 = 0, list2 = pat.properties; i2 < list2.length; i2 += 1) {
+      var prop = list2[i2];
+      this.checkPatternExport(exports$1, prop);
+    }
+  } else if (type === "ArrayPattern") {
+    for (var i$1 = 0, list$1 = pat.elements; i$1 < list$1.length; i$1 += 1) {
+      var elt = list$1[i$1];
+      if (elt) {
+        this.checkPatternExport(exports$1, elt);
+      }
+    }
+  } else if (type === "Property") {
+    this.checkPatternExport(exports$1, pat.value);
+  } else if (type === "AssignmentPattern") {
+    this.checkPatternExport(exports$1, pat.left);
+  } else if (type === "RestElement") {
+    this.checkPatternExport(exports$1, pat.argument);
+  }
+};
+pp$8.checkVariableExport = function(exports$1, decls) {
+  if (!exports$1) {
+    return;
+  }
+  for (var i2 = 0, list2 = decls; i2 < list2.length; i2 += 1) {
+    var decl = list2[i2];
+    this.checkPatternExport(exports$1, decl.id);
+  }
+};
+pp$8.shouldParseExportStatement = function() {
+  return this.type.keyword === "var" || this.type.keyword === "const" || this.type.keyword === "class" || this.type.keyword === "function" || this.isLet() || this.isAsyncFunction();
+};
+pp$8.parseExportSpecifier = function(exports$1) {
+  var node = this.startNode();
+  node.local = this.parseModuleExportName();
+  node.exported = this.eatContextual("as") ? this.parseModuleExportName() : node.local;
+  this.checkExport(
+    exports$1,
+    node.exported,
+    node.exported.start
+  );
+  return this.finishNode(node, "ExportSpecifier");
+};
+pp$8.parseExportSpecifiers = function(exports$1) {
+  var nodes = [], first = true;
+  this.expect(types$1.braceL);
+  while (!this.eat(types$1.braceR)) {
+    if (!first) {
+      this.expect(types$1.comma);
+      if (this.afterTrailingComma(types$1.braceR)) {
+        break;
+      }
+    } else {
+      first = false;
+    }
+    nodes.push(this.parseExportSpecifier(exports$1));
+  }
+  return nodes;
+};
+pp$8.parseImport = function(node) {
+  this.next();
+  if (this.type === types$1.string) {
+    node.specifiers = empty$1;
+    node.source = this.parseExprAtom();
+  } else {
+    node.specifiers = this.parseImportSpecifiers();
+    this.expectContextual("from");
+    node.source = this.type === types$1.string ? this.parseExprAtom() : this.unexpected();
+  }
+  if (this.options.ecmaVersion >= 16) {
+    node.attributes = this.parseWithClause();
+  }
+  this.semicolon();
+  return this.finishNode(node, "ImportDeclaration");
+};
+pp$8.parseImportSpecifier = function() {
+  var node = this.startNode();
+  node.imported = this.parseModuleExportName();
+  if (this.eatContextual("as")) {
+    node.local = this.parseIdent();
+  } else {
+    this.checkUnreserved(node.imported);
+    node.local = node.imported;
+  }
+  this.checkLValSimple(node.local, BIND_LEXICAL);
+  return this.finishNode(node, "ImportSpecifier");
+};
+pp$8.parseImportDefaultSpecifier = function() {
+  var node = this.startNode();
+  node.local = this.parseIdent();
+  this.checkLValSimple(node.local, BIND_LEXICAL);
+  return this.finishNode(node, "ImportDefaultSpecifier");
+};
+pp$8.parseImportNamespaceSpecifier = function() {
+  var node = this.startNode();
+  this.next();
+  this.expectContextual("as");
+  node.local = this.parseIdent();
+  this.checkLValSimple(node.local, BIND_LEXICAL);
+  return this.finishNode(node, "ImportNamespaceSpecifier");
+};
+pp$8.parseImportSpecifiers = function() {
+  var nodes = [], first = true;
+  if (this.type === types$1.name) {
+    nodes.push(this.parseImportDefaultSpecifier());
+    if (!this.eat(types$1.comma)) {
+      return nodes;
+    }
+  }
+  if (this.type === types$1.star) {
+    nodes.push(this.parseImportNamespaceSpecifier());
+    return nodes;
+  }
+  this.expect(types$1.braceL);
+  while (!this.eat(types$1.braceR)) {
+    if (!first) {
+      this.expect(types$1.comma);
+      if (this.afterTrailingComma(types$1.braceR)) {
+        break;
+      }
+    } else {
+      first = false;
+    }
+    nodes.push(this.parseImportSpecifier());
+  }
+  return nodes;
+};
+pp$8.parseWithClause = function() {
+  var nodes = [];
+  if (!this.eat(types$1._with)) {
+    return nodes;
+  }
+  this.expect(types$1.braceL);
+  var attributeKeys = {};
+  var first = true;
+  while (!this.eat(types$1.braceR)) {
+    if (!first) {
+      this.expect(types$1.comma);
+      if (this.afterTrailingComma(types$1.braceR)) {
+        break;
+      }
+    } else {
+      first = false;
+    }
+    var attr = this.parseImportAttribute();
+    var keyName = attr.key.type === "Identifier" ? attr.key.name : attr.key.value;
+    if (hasOwn(attributeKeys, keyName)) {
+      this.raiseRecoverable(attr.key.start, "Duplicate attribute key '" + keyName + "'");
+    }
+    attributeKeys[keyName] = true;
+    nodes.push(attr);
+  }
+  return nodes;
+};
+pp$8.parseImportAttribute = function() {
+  var node = this.startNode();
+  node.key = this.type === types$1.string ? this.parseExprAtom() : this.parseIdent(this.options.allowReserved !== "never");
+  this.expect(types$1.colon);
+  if (this.type !== types$1.string) {
+    this.unexpected();
+  }
+  node.value = this.parseExprAtom();
+  return this.finishNode(node, "ImportAttribute");
+};
+pp$8.parseModuleExportName = function() {
+  if (this.options.ecmaVersion >= 13 && this.type === types$1.string) {
+    var stringLiteral = this.parseLiteral(this.value);
+    if (loneSurrogate.test(stringLiteral.value)) {
+      this.raise(stringLiteral.start, "An export name cannot include a lone surrogate.");
+    }
+    return stringLiteral;
+  }
+  return this.parseIdent(true);
+};
+pp$8.adaptDirectivePrologue = function(statements) {
+  for (var i2 = 0; i2 < statements.length && this.isDirectiveCandidate(statements[i2]); ++i2) {
+    statements[i2].directive = statements[i2].expression.raw.slice(1, -1);
+  }
+};
+pp$8.isDirectiveCandidate = function(statement) {
+  return this.options.ecmaVersion >= 5 && statement.type === "ExpressionStatement" && statement.expression.type === "Literal" && typeof statement.expression.value === "string" && // Reject parenthesized strings.
+  (this.input[statement.start] === '"' || this.input[statement.start] === "'");
+};
+var pp$7 = Parser.prototype;
+pp$7.toAssignable = function(node, isBinding, refDestructuringErrors) {
+  if (this.options.ecmaVersion >= 6 && node) {
+    switch (node.type) {
+      case "Identifier":
+        if (this.inAsync && node.name === "await") {
+          this.raise(node.start, "Cannot use 'await' as identifier inside an async function");
+        }
+        break;
+      case "ObjectPattern":
+      case "ArrayPattern":
+      case "AssignmentPattern":
+      case "RestElement":
+        break;
+      case "ObjectExpression":
+        node.type = "ObjectPattern";
+        if (refDestructuringErrors) {
+          this.checkPatternErrors(refDestructuringErrors, true);
+        }
+        for (var i2 = 0, list2 = node.properties; i2 < list2.length; i2 += 1) {
+          var prop = list2[i2];
+          this.toAssignable(prop, isBinding);
+          if (prop.type === "RestElement" && (prop.argument.type === "ArrayPattern" || prop.argument.type === "ObjectPattern")) {
+            this.raise(prop.argument.start, "Unexpected token");
+          }
+        }
+        break;
+      case "Property":
+        if (node.kind !== "init") {
+          this.raise(node.key.start, "Object pattern can't contain getter or setter");
+        }
+        this.toAssignable(node.value, isBinding);
+        break;
+      case "ArrayExpression":
+        node.type = "ArrayPattern";
+        if (refDestructuringErrors) {
+          this.checkPatternErrors(refDestructuringErrors, true);
+        }
+        this.toAssignableList(node.elements, isBinding);
+        break;
+      case "SpreadElement":
+        node.type = "RestElement";
+        this.toAssignable(node.argument, isBinding);
+        if (node.argument.type === "AssignmentPattern") {
+          this.raise(node.argument.start, "Rest elements cannot have a default value");
+        }
+        break;
+      case "AssignmentExpression":
+        if (node.operator !== "=") {
+          this.raise(node.left.end, "Only '=' operator can be used for specifying default value.");
+        }
+        node.type = "AssignmentPattern";
+        delete node.operator;
+        this.toAssignable(node.left, isBinding);
+        break;
+      case "ParenthesizedExpression":
+        this.toAssignable(node.expression, isBinding, refDestructuringErrors);
+        break;
+      case "ChainExpression":
+        this.raiseRecoverable(node.start, "Optional chaining cannot appear in left-hand side");
+        break;
+      case "MemberExpression":
+        if (!isBinding) {
+          break;
+        }
+      default:
+        this.raise(node.start, "Assigning to rvalue");
+    }
+  } else if (refDestructuringErrors) {
+    this.checkPatternErrors(refDestructuringErrors, true);
+  }
+  return node;
+};
+pp$7.toAssignableList = function(exprList, isBinding) {
+  var end = exprList.length;
+  for (var i2 = 0; i2 < end; i2++) {
+    var elt = exprList[i2];
+    if (elt) {
+      this.toAssignable(elt, isBinding);
+    }
+  }
+  if (end) {
+    var last = exprList[end - 1];
+    if (this.options.ecmaVersion === 6 && isBinding && last && last.type === "RestElement" && last.argument.type !== "Identifier") {
+      this.unexpected(last.argument.start);
+    }
+  }
+  return exprList;
+};
+pp$7.parseSpread = function(refDestructuringErrors) {
+  var node = this.startNode();
+  this.next();
+  node.argument = this.parseMaybeAssign(false, refDestructuringErrors);
+  return this.finishNode(node, "SpreadElement");
+};
+pp$7.parseRestBinding = function() {
+  var node = this.startNode();
+  this.next();
+  if (this.options.ecmaVersion === 6 && this.type !== types$1.name) {
+    this.unexpected();
+  }
+  node.argument = this.parseBindingAtom();
+  return this.finishNode(node, "RestElement");
+};
+pp$7.parseBindingAtom = function() {
+  if (this.options.ecmaVersion >= 6) {
+    switch (this.type) {
+      case types$1.bracketL:
+        var node = this.startNode();
+        this.next();
+        node.elements = this.parseBindingList(types$1.bracketR, true, true);
+        return this.finishNode(node, "ArrayPattern");
+      case types$1.braceL:
+        return this.parseObj(true);
+    }
+  }
+  return this.parseIdent();
+};
+pp$7.parseBindingList = function(close, allowEmpty, allowTrailingComma, allowModifiers) {
+  var elts = [], first = true;
+  while (!this.eat(close)) {
+    if (first) {
+      first = false;
+    } else {
+      this.expect(types$1.comma);
+    }
+    if (allowEmpty && this.type === types$1.comma) {
+      elts.push(null);
+    } else if (allowTrailingComma && this.afterTrailingComma(close)) {
+      break;
+    } else if (this.type === types$1.ellipsis) {
+      var rest = this.parseRestBinding();
+      this.parseBindingListItem(rest);
+      elts.push(rest);
+      if (this.type === types$1.comma) {
+        this.raiseRecoverable(this.start, "Comma is not permitted after the rest element");
+      }
+      this.expect(close);
+      break;
+    } else {
+      elts.push(this.parseAssignableListItem(allowModifiers));
+    }
+  }
+  return elts;
+};
+pp$7.parseAssignableListItem = function(allowModifiers) {
+  var elem = this.parseMaybeDefault(this.start, this.startLoc);
+  this.parseBindingListItem(elem);
+  return elem;
+};
+pp$7.parseBindingListItem = function(param) {
+  return param;
+};
+pp$7.parseMaybeDefault = function(startPos, startLoc, left) {
+  left = left || this.parseBindingAtom();
+  if (this.options.ecmaVersion < 6 || !this.eat(types$1.eq)) {
+    return left;
+  }
+  var node = this.startNodeAt(startPos, startLoc);
+  node.left = left;
+  node.right = this.parseMaybeAssign();
+  return this.finishNode(node, "AssignmentPattern");
+};
+pp$7.checkLValSimple = function(expr, bindingType, checkClashes) {
+  if (bindingType === void 0) bindingType = BIND_NONE;
+  var isBind = bindingType !== BIND_NONE;
+  switch (expr.type) {
+    case "Identifier":
+      if (this.strict && this.reservedWordsStrictBind.test(expr.name)) {
+        this.raiseRecoverable(expr.start, (isBind ? "Binding " : "Assigning to ") + expr.name + " in strict mode");
+      }
+      if (isBind) {
+        if (bindingType === BIND_LEXICAL && expr.name === "let") {
+          this.raiseRecoverable(expr.start, "let is disallowed as a lexically bound name");
+        }
+        if (checkClashes) {
+          if (hasOwn(checkClashes, expr.name)) {
+            this.raiseRecoverable(expr.start, "Argument name clash");
+          }
+          checkClashes[expr.name] = true;
+        }
+        if (bindingType !== BIND_OUTSIDE) {
+          this.declareName(expr.name, bindingType, expr.start);
+        }
+      }
+      break;
+    case "ChainExpression":
+      this.raiseRecoverable(expr.start, "Optional chaining cannot appear in left-hand side");
+      break;
+    case "MemberExpression":
+      if (isBind) {
+        this.raiseRecoverable(expr.start, "Binding member expression");
+      }
+      break;
+    case "ParenthesizedExpression":
+      if (isBind) {
+        this.raiseRecoverable(expr.start, "Binding parenthesized expression");
+      }
+      return this.checkLValSimple(expr.expression, bindingType, checkClashes);
+    default:
+      this.raise(expr.start, (isBind ? "Binding" : "Assigning to") + " rvalue");
+  }
+};
+pp$7.checkLValPattern = function(expr, bindingType, checkClashes) {
+  if (bindingType === void 0) bindingType = BIND_NONE;
+  switch (expr.type) {
+    case "ObjectPattern":
+      for (var i2 = 0, list2 = expr.properties; i2 < list2.length; i2 += 1) {
+        var prop = list2[i2];
+        this.checkLValInnerPattern(prop, bindingType, checkClashes);
+      }
+      break;
+    case "ArrayPattern":
+      for (var i$1 = 0, list$1 = expr.elements; i$1 < list$1.length; i$1 += 1) {
+        var elem = list$1[i$1];
+        if (elem) {
+          this.checkLValInnerPattern(elem, bindingType, checkClashes);
+        }
+      }
+      break;
+    default:
+      this.checkLValSimple(expr, bindingType, checkClashes);
+  }
+};
+pp$7.checkLValInnerPattern = function(expr, bindingType, checkClashes) {
+  if (bindingType === void 0) bindingType = BIND_NONE;
+  switch (expr.type) {
+    case "Property":
+      this.checkLValInnerPattern(expr.value, bindingType, checkClashes);
+      break;
+    case "AssignmentPattern":
+      this.checkLValPattern(expr.left, bindingType, checkClashes);
+      break;
+    case "RestElement":
+      this.checkLValPattern(expr.argument, bindingType, checkClashes);
+      break;
+    default:
+      this.checkLValPattern(expr, bindingType, checkClashes);
+  }
+};
+var TokContext = function TokContext2(token, isExpr, preserveSpace, override, generator) {
+  this.token = token;
+  this.isExpr = !!isExpr;
+  this.preserveSpace = !!preserveSpace;
+  this.override = override;
+  this.generator = !!generator;
+};
+var types = {
+  b_stat: new TokContext("{", false),
+  b_expr: new TokContext("{", true),
+  b_tmpl: new TokContext("${", false),
+  p_stat: new TokContext("(", false),
+  p_expr: new TokContext("(", true),
+  q_tmpl: new TokContext("`", true, true, function(p) {
+    return p.tryReadTemplateToken();
+  }),
+  f_stat: new TokContext("function", false),
+  f_expr: new TokContext("function", true),
+  f_expr_gen: new TokContext("function", true, false, null, true),
+  f_gen: new TokContext("function", false, false, null, true)
+};
+var pp$6 = Parser.prototype;
+pp$6.initialContext = function() {
+  return [types.b_stat];
+};
+pp$6.curContext = function() {
+  return this.context[this.context.length - 1];
+};
+pp$6.braceIsBlock = function(prevType) {
+  var parent = this.curContext();
+  if (parent === types.f_expr || parent === types.f_stat) {
+    return true;
+  }
+  if (prevType === types$1.colon && (parent === types.b_stat || parent === types.b_expr)) {
+    return !parent.isExpr;
+  }
+  if (prevType === types$1._return || prevType === types$1.name && this.exprAllowed) {
+    return lineBreak.test(this.input.slice(this.lastTokEnd, this.start));
+  }
+  if (prevType === types$1._else || prevType === types$1.semi || prevType === types$1.eof || prevType === types$1.parenR || prevType === types$1.arrow) {
+    return true;
+  }
+  if (prevType === types$1.braceL) {
+    return parent === types.b_stat;
+  }
+  if (prevType === types$1._var || prevType === types$1._const || prevType === types$1.name) {
+    return false;
+  }
+  return !this.exprAllowed;
+};
+pp$6.inGeneratorContext = function() {
+  for (var i2 = this.context.length - 1; i2 >= 1; i2--) {
+    var context = this.context[i2];
+    if (context.token === "function") {
+      return context.generator;
+    }
+  }
+  return false;
+};
+pp$6.updateContext = function(prevType) {
+  var update, type = this.type;
+  if (type.keyword && prevType === types$1.dot) {
+    this.exprAllowed = false;
+  } else if (update = type.updateContext) {
+    update.call(this, prevType);
+  } else {
+    this.exprAllowed = type.beforeExpr;
+  }
+};
+pp$6.overrideContext = function(tokenCtx) {
+  if (this.curContext() !== tokenCtx) {
+    this.context[this.context.length - 1] = tokenCtx;
+  }
+};
+types$1.parenR.updateContext = types$1.braceR.updateContext = function() {
+  if (this.context.length === 1) {
+    this.exprAllowed = true;
+    return;
+  }
+  var out = this.context.pop();
+  if (out === types.b_stat && this.curContext().token === "function") {
+    out = this.context.pop();
+  }
+  this.exprAllowed = !out.isExpr;
+};
+types$1.braceL.updateContext = function(prevType) {
+  this.context.push(this.braceIsBlock(prevType) ? types.b_stat : types.b_expr);
+  this.exprAllowed = true;
+};
+types$1.dollarBraceL.updateContext = function() {
+  this.context.push(types.b_tmpl);
+  this.exprAllowed = true;
+};
+types$1.parenL.updateContext = function(prevType) {
+  var statementParens = prevType === types$1._if || prevType === types$1._for || prevType === types$1._with || prevType === types$1._while;
+  this.context.push(statementParens ? types.p_stat : types.p_expr);
+  this.exprAllowed = true;
+};
+types$1.incDec.updateContext = function() {
+};
+types$1._function.updateContext = types$1._class.updateContext = function(prevType) {
+  if (prevType.beforeExpr && prevType !== types$1._else && !(prevType === types$1.semi && this.curContext() !== types.p_stat) && !(prevType === types$1._return && lineBreak.test(this.input.slice(this.lastTokEnd, this.start))) && !((prevType === types$1.colon || prevType === types$1.braceL) && this.curContext() === types.b_stat)) {
+    this.context.push(types.f_expr);
+  } else {
+    this.context.push(types.f_stat);
+  }
+  this.exprAllowed = false;
+};
+types$1.colon.updateContext = function() {
+  if (this.curContext().token === "function") {
+    this.context.pop();
+  }
+  this.exprAllowed = true;
+};
+types$1.backQuote.updateContext = function() {
+  if (this.curContext() === types.q_tmpl) {
+    this.context.pop();
+  } else {
+    this.context.push(types.q_tmpl);
+  }
+  this.exprAllowed = false;
+};
+types$1.star.updateContext = function(prevType) {
+  if (prevType === types$1._function) {
+    var index = this.context.length - 1;
+    if (this.context[index] === types.f_expr) {
+      this.context[index] = types.f_expr_gen;
+    } else {
+      this.context[index] = types.f_gen;
+    }
+  }
+  this.exprAllowed = true;
+};
+types$1.name.updateContext = function(prevType) {
+  var allowed = false;
+  if (this.options.ecmaVersion >= 6 && prevType !== types$1.dot) {
+    if (this.value === "of" && !this.exprAllowed || this.value === "yield" && this.inGeneratorContext()) {
+      allowed = true;
+    }
+  }
+  this.exprAllowed = allowed;
+};
+var pp$5 = Parser.prototype;
+pp$5.checkPropClash = function(prop, propHash, refDestructuringErrors) {
+  if (this.options.ecmaVersion >= 9 && prop.type === "SpreadElement") {
+    return;
+  }
+  if (this.options.ecmaVersion >= 6 && (prop.computed || prop.method || prop.shorthand)) {
+    return;
+  }
+  var key = prop.key;
+  var name;
+  switch (key.type) {
+    case "Identifier":
+      name = key.name;
+      break;
+    case "Literal":
+      name = String(key.value);
+      break;
+    default:
+      return;
+  }
+  var kind = prop.kind;
+  if (this.options.ecmaVersion >= 6) {
+    if (name === "__proto__" && kind === "init") {
+      if (propHash.proto) {
+        if (refDestructuringErrors) {
+          if (refDestructuringErrors.doubleProto < 0) {
+            refDestructuringErrors.doubleProto = key.start;
+          }
+        } else {
+          this.raiseRecoverable(key.start, "Redefinition of __proto__ property");
+        }
+      }
+      propHash.proto = true;
+    }
+    return;
+  }
+  name = "$" + name;
+  var other = propHash[name];
+  if (other) {
+    var redefinition;
+    if (kind === "init") {
+      redefinition = this.strict && other.init || other.get || other.set;
+    } else {
+      redefinition = other.init || other[kind];
+    }
+    if (redefinition) {
+      this.raiseRecoverable(key.start, "Redefinition of property");
+    }
+  } else {
+    other = propHash[name] = {
+      init: false,
+      get: false,
+      set: false
+    };
+  }
+  other[kind] = true;
+};
+pp$5.parseExpression = function(forInit, refDestructuringErrors) {
+  var this$1$1 = this;
+  return this.catchStackOverflow(function() {
+    var startPos = this$1$1.start, startLoc = this$1$1.startLoc;
+    var expr = this$1$1.parseMaybeAssign(forInit, refDestructuringErrors);
+    if (this$1$1.type === types$1.comma) {
+      var node = this$1$1.startNodeAt(startPos, startLoc);
+      node.expressions = [expr];
+      while (this$1$1.eat(types$1.comma)) {
+        node.expressions.push(this$1$1.parseMaybeAssign(forInit, refDestructuringErrors));
+      }
+      return this$1$1.finishNode(node, "SequenceExpression");
+    }
+    return expr;
+  });
+};
+pp$5.parseMaybeAssign = function(forInit, refDestructuringErrors, afterLeftParse) {
+  if (this.isContextual("yield")) {
+    if (this.inGenerator) {
+      return this.parseYield(forInit);
+    } else {
+      this.exprAllowed = false;
+    }
+  }
+  var ownDestructuringErrors = false, oldParenAssign = -1, oldTrailingComma = -1, oldDoubleProto = -1;
+  if (refDestructuringErrors) {
+    oldParenAssign = refDestructuringErrors.parenthesizedAssign;
+    oldTrailingComma = refDestructuringErrors.trailingComma;
+    oldDoubleProto = refDestructuringErrors.doubleProto;
+    refDestructuringErrors.parenthesizedAssign = refDestructuringErrors.trailingComma = -1;
+  } else {
+    refDestructuringErrors = new DestructuringErrors();
+    ownDestructuringErrors = true;
+  }
+  var startPos = this.start, startLoc = this.startLoc;
+  if (this.type === types$1.parenL || this.type === types$1.name) {
+    this.potentialArrowAt = this.start;
+    this.potentialArrowInForAwait = forInit === "await";
+  }
+  var left = this.parseMaybeConditional(forInit, refDestructuringErrors);
+  if (afterLeftParse) {
+    left = afterLeftParse.call(this, left, startPos, startLoc);
+  }
+  if (this.type.isAssign) {
+    var node = this.startNodeAt(startPos, startLoc);
+    node.operator = this.value;
+    if (this.type === types$1.eq) {
+      left = this.toAssignable(left, false, refDestructuringErrors);
+    }
+    if (!ownDestructuringErrors) {
+      refDestructuringErrors.parenthesizedAssign = refDestructuringErrors.trailingComma = -1;
+      if (refDestructuringErrors.shorthandAssign >= left.start) {
+        refDestructuringErrors.shorthandAssign = -1;
+      }
+      if (refDestructuringErrors.doubleProto >= left.start) {
+        refDestructuringErrors.doubleProto = -1;
+      }
+    }
+    if (this.type === types$1.eq) {
+      this.checkLValPattern(left);
+    } else {
+      this.checkLValSimple(left);
+    }
+    node.left = left;
+    this.next();
+    node.right = this.parseMaybeAssign(forInit);
+    if (oldDoubleProto > -1) {
+      refDestructuringErrors.doubleProto = oldDoubleProto;
+    }
+    return this.finishNode(node, "AssignmentExpression");
+  } else {
+    if (ownDestructuringErrors) {
+      this.checkExpressionErrors(refDestructuringErrors, true);
+    }
+  }
+  if (oldParenAssign > -1) {
+    refDestructuringErrors.parenthesizedAssign = oldParenAssign;
+  }
+  if (oldTrailingComma > -1) {
+    refDestructuringErrors.trailingComma = oldTrailingComma;
+  }
+  return left;
+};
+pp$5.parseMaybeConditional = function(forInit, refDestructuringErrors) {
+  var startPos = this.start, startLoc = this.startLoc;
+  var expr = this.parseExprOps(forInit, refDestructuringErrors);
+  if (this.checkExpressionErrors(refDestructuringErrors)) {
+    return expr;
+  }
+  if (!(expr.type === "ArrowFunctionExpression" && expr.start === startPos) && this.eat(types$1.question)) {
+    var node = this.startNodeAt(startPos, startLoc);
+    node.test = expr;
+    node.consequent = this.parseMaybeAssign();
+    this.expect(types$1.colon);
+    node.alternate = this.parseMaybeAssign(forInit);
+    return this.finishNode(node, "ConditionalExpression");
+  }
+  return expr;
+};
+pp$5.parseExprOps = function(forInit, refDestructuringErrors) {
+  var startPos = this.start, startLoc = this.startLoc;
+  var expr = this.parseMaybeUnary(refDestructuringErrors, false, false, forInit);
+  if (this.checkExpressionErrors(refDestructuringErrors)) {
+    return expr;
+  }
+  return expr.start === startPos && expr.type === "ArrowFunctionExpression" ? expr : this.parseExprOp(expr, startPos, startLoc, -1, forInit);
+};
+pp$5.parseExprOp = function(left, leftStartPos, leftStartLoc, minPrec, forInit) {
+  var prec = this.type.binop;
+  if (prec != null && (!forInit || this.type !== types$1._in)) {
+    if (prec > minPrec) {
+      var logical = this.type === types$1.logicalOR || this.type === types$1.logicalAND;
+      var coalesce = this.type === types$1.coalesce;
+      if (coalesce) {
+        prec = types$1.logicalAND.binop;
+      }
+      var op = this.value;
+      this.next();
+      var startPos = this.start, startLoc = this.startLoc;
+      var right = this.parseExprOp(this.parseMaybeUnary(null, false, false, forInit), startPos, startLoc, prec, forInit);
+      var node = this.buildBinary(leftStartPos, leftStartLoc, left, right, op, logical || coalesce);
+      if (logical && this.type === types$1.coalesce || coalesce && (this.type === types$1.logicalOR || this.type === types$1.logicalAND)) {
+        this.raiseRecoverable(this.start, "Logical expressions and coalesce expressions cannot be mixed. Wrap either by parentheses");
+      }
+      return this.parseExprOp(node, leftStartPos, leftStartLoc, minPrec, forInit);
+    }
+  }
+  return left;
+};
+pp$5.buildBinary = function(startPos, startLoc, left, right, op, logical) {
+  if (right.type === "PrivateIdentifier") {
+    this.raise(right.start, "Private identifier can only be left side of binary expression");
+  }
+  var node = this.startNodeAt(startPos, startLoc);
+  node.left = left;
+  node.operator = op;
+  node.right = right;
+  return this.finishNode(node, logical ? "LogicalExpression" : "BinaryExpression");
+};
+pp$5.parseMaybeUnary = function(refDestructuringErrors, sawUnary, incDec, forInit) {
+  var startPos = this.start, startLoc = this.startLoc, expr;
+  if (this.isContextual("await") && this.canAwait) {
+    expr = this.parseAwait(forInit);
+    sawUnary = true;
+  } else if (this.type.prefix) {
+    var node = this.startNode(), update = this.type === types$1.incDec;
+    node.operator = this.value;
+    node.prefix = true;
+    this.next();
+    node.argument = this.parseMaybeUnary(null, true, update, forInit);
+    this.checkExpressionErrors(refDestructuringErrors, true);
+    if (update) {
+      this.checkLValSimple(node.argument);
+    } else if (this.strict && node.operator === "delete" && isLocalVariableAccess(node.argument)) {
+      this.raiseRecoverable(node.start, "Deleting local variable in strict mode");
+    } else if (node.operator === "delete" && isPrivateFieldAccess(node.argument)) {
+      this.raiseRecoverable(node.start, "Private fields can not be deleted");
+    } else {
+      sawUnary = true;
+    }
+    expr = this.finishNode(node, update ? "UpdateExpression" : "UnaryExpression");
+  } else if (!sawUnary && this.type === types$1.privateId) {
+    if ((forInit || this.privateNameStack.length === 0) && this.options.checkPrivateFields) {
+      this.unexpected();
+    }
+    expr = this.parsePrivateIdent();
+    if (this.type !== types$1._in) {
+      this.unexpected();
+    }
+  } else {
+    expr = this.parseExprSubscripts(refDestructuringErrors, forInit);
+    if (this.checkExpressionErrors(refDestructuringErrors)) {
+      return expr;
+    }
+    while (this.type.postfix && !this.canInsertSemicolon()) {
+      var node$1 = this.startNodeAt(startPos, startLoc);
+      node$1.operator = this.value;
+      node$1.prefix = false;
+      node$1.argument = expr;
+      this.checkLValSimple(expr);
+      this.next();
+      expr = this.finishNode(node$1, "UpdateExpression");
+    }
+  }
+  if (!incDec && !(expr.type === "ArrowFunctionExpression" && expr.start === startPos) && this.eat(types$1.starstar)) {
+    if (sawUnary) {
+      this.unexpected(this.lastTokStart);
+    } else {
+      return this.buildBinary(startPos, startLoc, expr, this.parseMaybeUnary(null, false, false, forInit), "**", false);
+    }
+  } else {
+    return expr;
+  }
+};
+function isLocalVariableAccess(node) {
+  return node.type === "Identifier" || node.type === "ParenthesizedExpression" && isLocalVariableAccess(node.expression);
+}
+function isPrivateFieldAccess(node) {
+  return node.type === "MemberExpression" && node.property.type === "PrivateIdentifier" || node.type === "ChainExpression" && isPrivateFieldAccess(node.expression) || node.type === "ParenthesizedExpression" && isPrivateFieldAccess(node.expression);
+}
+pp$5.parseExprSubscripts = function(refDestructuringErrors, forInit) {
+  var startPos = this.start, startLoc = this.startLoc;
+  var oldDoubleProto = -1, oldShorthandAssign = -1;
+  if (refDestructuringErrors) {
+    oldDoubleProto = refDestructuringErrors.doubleProto;
+    oldShorthandAssign = refDestructuringErrors.shorthandAssign;
+    refDestructuringErrors.doubleProto = refDestructuringErrors.shorthandAssign = -1;
+  }
+  var expr = this.parseExprAtom(refDestructuringErrors, forInit);
+  if (expr.type === "ArrowFunctionExpression" && this.input.slice(this.lastTokStart, this.lastTokEnd) !== ")") {
+    return expr;
+  }
+  var result = this.parseSubscripts(expr, startPos, startLoc, false, forInit);
+  if (refDestructuringErrors) {
+    if (result.end > expr.end) {
+      this.checkExpressionErrors(refDestructuringErrors, true);
+      if (refDestructuringErrors.parenthesizedAssign >= result.start) {
+        refDestructuringErrors.parenthesizedAssign = -1;
+      }
+      if (refDestructuringErrors.parenthesizedBind >= result.start) {
+        refDestructuringErrors.parenthesizedBind = -1;
+      }
+      if (refDestructuringErrors.trailingComma >= result.start) {
+        refDestructuringErrors.trailingComma = -1;
+      }
+    }
+    if (oldDoubleProto > -1) {
+      refDestructuringErrors.doubleProto = oldDoubleProto;
+    }
+    if (oldShorthandAssign > -1) {
+      refDestructuringErrors.shorthandAssign = oldShorthandAssign;
+    }
+  }
+  return result;
+};
+pp$5.parseSubscripts = function(base, startPos, startLoc, noCalls, forInit) {
+  var maybeAsyncArrow = this.options.ecmaVersion >= 8 && base.type === "Identifier" && base.name === "async" && this.lastTokEnd === base.end && !this.canInsertSemicolon() && base.end - base.start === 5 && this.potentialArrowAt === base.start;
+  var optionalChained = false;
+  while (true) {
+    var element = this.parseSubscript(base, startPos, startLoc, noCalls, maybeAsyncArrow, optionalChained, forInit);
+    if (element.optional) {
+      optionalChained = true;
+    }
+    if (element.end === base.end || element.type === "ArrowFunctionExpression") {
+      if (optionalChained) {
+        var chainNode = this.startNodeAt(startPos, startLoc);
+        chainNode.expression = element;
+        element = this.finishNode(chainNode, "ChainExpression");
+      }
+      return element;
+    }
+    base = element;
+    maybeAsyncArrow = false;
+  }
+};
+pp$5.shouldParseAsyncArrow = function() {
+  return !this.canInsertSemicolon() && this.eat(types$1.arrow);
+};
+pp$5.parseSubscriptAsyncArrow = function(startPos, startLoc, exprList, forInit) {
+  return this.parseArrowExpression(this.startNodeAt(startPos, startLoc), exprList, true, forInit);
+};
+pp$5.parseSubscript = function(base, startPos, startLoc, noCalls, maybeAsyncArrow, optionalChained, forInit) {
+  var optionalSupported = this.options.ecmaVersion >= 11;
+  var optional = optionalSupported && this.eat(types$1.questionDot);
+  if (noCalls && optional) {
+    this.raise(this.lastTokStart, "Optional chaining cannot appear in the callee of new expressions");
+  }
+  var computed = this.eat(types$1.bracketL);
+  if (computed || optional && this.type !== types$1.parenL && this.type !== types$1.backQuote || this.eat(types$1.dot)) {
+    var node = this.startNodeAt(startPos, startLoc);
+    node.object = base;
+    if (computed) {
+      node.property = this.parseExpression();
+      this.expect(types$1.bracketR);
+    } else if (this.type === types$1.privateId && base.type !== "Super") {
+      node.property = this.parsePrivateIdent();
+    } else {
+      node.property = this.parseIdent(this.options.allowReserved !== "never");
+    }
+    node.computed = !!computed;
+    if (optionalSupported) {
+      node.optional = optional;
+    }
+    base = this.finishNode(node, "MemberExpression");
+  } else if (!noCalls && this.eat(types$1.parenL)) {
+    var refDestructuringErrors = new DestructuringErrors(), oldYieldPos = this.yieldPos, oldAwaitPos = this.awaitPos, oldAwaitIdentPos = this.awaitIdentPos;
+    this.yieldPos = 0;
+    this.awaitPos = 0;
+    this.awaitIdentPos = 0;
+    var exprList = this.parseExprList(types$1.parenR, this.options.ecmaVersion >= 8, false, refDestructuringErrors);
+    if (maybeAsyncArrow && !optional && this.shouldParseAsyncArrow()) {
+      this.checkPatternErrors(refDestructuringErrors, false);
+      this.checkYieldAwaitInDefaultParams();
+      if (this.awaitIdentPos > 0) {
+        this.raise(this.awaitIdentPos, "Cannot use 'await' as identifier inside an async function");
+      }
+      this.yieldPos = oldYieldPos;
+      this.awaitPos = oldAwaitPos;
+      this.awaitIdentPos = oldAwaitIdentPos;
+      return this.parseSubscriptAsyncArrow(startPos, startLoc, exprList, forInit);
+    }
+    this.checkExpressionErrors(refDestructuringErrors, true);
+    this.yieldPos = oldYieldPos || this.yieldPos;
+    this.awaitPos = oldAwaitPos || this.awaitPos;
+    this.awaitIdentPos = oldAwaitIdentPos || this.awaitIdentPos;
+    var node$1 = this.startNodeAt(startPos, startLoc);
+    node$1.callee = base;
+    node$1.arguments = exprList;
+    if (optionalSupported) {
+      node$1.optional = optional;
+    }
+    base = this.finishNode(node$1, "CallExpression");
+  } else if (this.type === types$1.backQuote) {
+    if (optional || optionalChained) {
+      this.raise(this.start, "Optional chaining cannot appear in the tag of tagged template expressions");
+    }
+    var node$2 = this.startNodeAt(startPos, startLoc);
+    node$2.tag = base;
+    node$2.quasi = this.parseTemplate({ isTagged: true });
+    base = this.finishNode(node$2, "TaggedTemplateExpression");
+  }
+  return base;
+};
+pp$5.parseExprAtom = function(refDestructuringErrors, forInit, forNew) {
+  if (this.type === types$1.slash) {
+    this.readRegexp();
+  }
+  var node, canBeArrow = this.potentialArrowAt === this.start;
+  switch (this.type) {
+    case types$1._super:
+      if (!this.allowSuper) {
+        this.raise(this.start, "'super' keyword outside a method");
+      }
+      node = this.startNode();
+      this.next();
+      if (this.type === types$1.parenL && !this.allowDirectSuper) {
+        this.raise(node.start, "super() call outside constructor of a subclass");
+      }
+      if (this.type !== types$1.dot && this.type !== types$1.bracketL && this.type !== types$1.parenL) {
+        this.unexpected();
+      }
+      return this.finishNode(node, "Super");
+    case types$1._this:
+      node = this.startNode();
+      this.next();
+      return this.finishNode(node, "ThisExpression");
+    case types$1.name:
+      var startPos = this.start, startLoc = this.startLoc, containsEsc = this.containsEsc;
+      var id = this.parseIdent(false);
+      if (this.options.ecmaVersion >= 8 && !containsEsc && id.name === "async" && !this.canInsertSemicolon() && this.eat(types$1._function)) {
+        this.overrideContext(types.f_expr);
+        return this.parseFunction(this.startNodeAt(startPos, startLoc), 0, false, true, forInit);
+      }
+      if (canBeArrow && !this.canInsertSemicolon()) {
+        if (this.eat(types$1.arrow)) {
+          return this.parseArrowExpression(this.startNodeAt(startPos, startLoc), [id], false, forInit);
+        }
+        if (this.options.ecmaVersion >= 8 && id.name === "async" && this.type === types$1.name && !containsEsc && (!this.potentialArrowInForAwait || this.value !== "of" || this.containsEsc)) {
+          id = this.parseIdent(false);
+          if (this.canInsertSemicolon() || !this.eat(types$1.arrow)) {
+            this.unexpected();
+          }
+          return this.parseArrowExpression(this.startNodeAt(startPos, startLoc), [id], true, forInit);
+        }
+      }
+      return id;
+    case types$1.regexp:
+      var value = this.value;
+      node = this.parseLiteral(value.value);
+      node.regex = { pattern: value.pattern, flags: value.flags };
+      return node;
+    case types$1.num:
+    case types$1.string:
+      return this.parseLiteral(this.value);
+    case types$1._null:
+    case types$1._true:
+    case types$1._false:
+      node = this.startNode();
+      node.value = this.type === types$1._null ? null : this.type === types$1._true;
+      node.raw = this.type.keyword;
+      this.next();
+      return this.finishNode(node, "Literal");
+    case types$1.parenL:
+      var start = this.start, expr = this.parseParenAndDistinguishExpression(canBeArrow, forInit);
+      if (refDestructuringErrors) {
+        if (refDestructuringErrors.parenthesizedAssign < 0 && !this.isSimpleAssignTarget(expr)) {
+          refDestructuringErrors.parenthesizedAssign = start;
+        }
+        if (refDestructuringErrors.parenthesizedBind < 0) {
+          refDestructuringErrors.parenthesizedBind = start;
+        }
+      }
+      return expr;
+    case types$1.bracketL:
+      node = this.startNode();
+      this.next();
+      node.elements = this.parseExprList(types$1.bracketR, true, true, refDestructuringErrors);
+      return this.finishNode(node, "ArrayExpression");
+    case types$1.braceL:
+      this.overrideContext(types.b_expr);
+      return this.parseObj(false, refDestructuringErrors);
+    case types$1._function:
+      node = this.startNode();
+      this.next();
+      return this.parseFunction(node, 0);
+    case types$1._class:
+      return this.parseClass(this.startNode(), false);
+    case types$1._new:
+      return this.parseNew();
+    case types$1.backQuote:
+      return this.parseTemplate();
+    case types$1._import:
+      if (this.options.ecmaVersion >= 11) {
+        return this.parseExprImport(forNew);
+      } else {
+        return this.unexpected();
+      }
+    default:
+      return this.parseExprAtomDefault();
+  }
+};
+pp$5.parseExprAtomDefault = function() {
+  this.unexpected();
+};
+pp$5.parseExprImport = function(forNew) {
+  var node = this.startNode();
+  if (this.containsEsc) {
+    this.raiseRecoverable(this.start, "Escape sequence in keyword import");
+  }
+  this.next();
+  if (this.type === types$1.parenL && !forNew) {
+    return this.parseDynamicImport(node);
+  } else if (this.type === types$1.dot) {
+    var meta24 = this.startNodeAt(node.start, node.loc && node.loc.start);
+    meta24.name = "import";
+    node.meta = this.finishNode(meta24, "Identifier");
+    return this.parseImportMeta(node);
+  } else {
+    this.unexpected();
+  }
+};
+pp$5.parseDynamicImport = function(node) {
+  this.next();
+  node.source = this.parseMaybeAssign();
+  if (this.options.ecmaVersion >= 16) {
+    if (!this.eat(types$1.parenR)) {
+      this.expect(types$1.comma);
+      if (!this.afterTrailingComma(types$1.parenR)) {
+        node.options = this.parseMaybeAssign();
+        if (!this.eat(types$1.parenR)) {
+          this.expect(types$1.comma);
+          if (!this.afterTrailingComma(types$1.parenR)) {
+            this.unexpected();
+          }
+        }
+      } else {
+        node.options = null;
+      }
+    } else {
+      node.options = null;
+    }
+  } else {
+    if (!this.eat(types$1.parenR)) {
+      var errorPos = this.start;
+      if (this.eat(types$1.comma) && this.eat(types$1.parenR)) {
+        this.raiseRecoverable(errorPos, "Trailing comma is not allowed in import()");
+      } else {
+        this.unexpected(errorPos);
+      }
+    }
+  }
+  return this.finishNode(node, "ImportExpression");
+};
+pp$5.parseImportMeta = function(node) {
+  this.next();
+  var containsEsc = this.containsEsc;
+  node.property = this.parseIdent(true);
+  if (node.property.name !== "meta") {
+    this.raiseRecoverable(node.property.start, "The only valid meta property for import is 'import.meta'");
+  }
+  if (containsEsc) {
+    this.raiseRecoverable(node.start, "'import.meta' must not contain escaped characters");
+  }
+  if (this.options.sourceType !== "module" && !this.options.allowImportExportEverywhere) {
+    this.raiseRecoverable(node.start, "Cannot use 'import.meta' outside a module");
+  }
+  return this.finishNode(node, "MetaProperty");
+};
+pp$5.parseLiteral = function(value) {
+  var node = this.startNode();
+  node.value = value;
+  node.raw = this.input.slice(this.start, this.end);
+  if (node.raw.charCodeAt(node.raw.length - 1) === 110) {
+    node.bigint = node.value != null ? node.value.toString() : node.raw.slice(0, -1).replace(/_/g, "");
+  }
+  this.next();
+  return this.finishNode(node, "Literal");
+};
+pp$5.parseParenExpression = function() {
+  this.expect(types$1.parenL);
+  var val = this.parseExpression();
+  this.expect(types$1.parenR);
+  return val;
+};
+pp$5.shouldParseArrow = function(exprList) {
+  return !this.canInsertSemicolon();
+};
+pp$5.parseParenAndDistinguishExpression = function(canBeArrow, forInit) {
+  var startPos = this.start, startLoc = this.startLoc, val, allowTrailingComma = this.options.ecmaVersion >= 8;
+  if (this.options.ecmaVersion >= 6) {
+    this.next();
+    var innerStartPos = this.start, innerStartLoc = this.startLoc;
+    var exprList = [], first = true, lastIsComma = false;
+    var refDestructuringErrors = new DestructuringErrors(), oldYieldPos = this.yieldPos, oldAwaitPos = this.awaitPos, spreadStart;
+    this.yieldPos = 0;
+    this.awaitPos = 0;
+    while (this.type !== types$1.parenR) {
+      first ? first = false : this.expect(types$1.comma);
+      if (allowTrailingComma && this.afterTrailingComma(types$1.parenR, true)) {
+        lastIsComma = true;
+        break;
+      } else if (this.type === types$1.ellipsis) {
+        spreadStart = this.start;
+        exprList.push(this.parseParenItem(this.parseRestBinding()));
+        if (this.type === types$1.comma) {
+          this.raiseRecoverable(
+            this.start,
+            "Comma is not permitted after the rest element"
+          );
+        }
+        break;
+      } else {
+        exprList.push(this.parseMaybeAssign(false, refDestructuringErrors, this.parseParenItem));
+      }
+    }
+    var innerEndPos = this.lastTokEnd, innerEndLoc = this.lastTokEndLoc;
+    this.expect(types$1.parenR);
+    if (canBeArrow && this.shouldParseArrow(exprList) && this.eat(types$1.arrow)) {
+      this.checkPatternErrors(refDestructuringErrors, false);
+      this.checkYieldAwaitInDefaultParams();
+      this.yieldPos = oldYieldPos;
+      this.awaitPos = oldAwaitPos;
+      return this.parseParenArrowList(startPos, startLoc, exprList, forInit);
+    }
+    if (!exprList.length || lastIsComma) {
+      this.unexpected(this.lastTokStart);
+    }
+    if (spreadStart) {
+      this.unexpected(spreadStart);
+    }
+    this.checkExpressionErrors(refDestructuringErrors, true);
+    this.yieldPos = oldYieldPos || this.yieldPos;
+    this.awaitPos = oldAwaitPos || this.awaitPos;
+    if (exprList.length > 1) {
+      val = this.startNodeAt(innerStartPos, innerStartLoc);
+      val.expressions = exprList;
+      this.finishNodeAt(val, "SequenceExpression", innerEndPos, innerEndLoc);
+    } else {
+      val = exprList[0];
+    }
+  } else {
+    val = this.parseParenExpression();
+  }
+  if (this.options.preserveParens) {
+    var par = this.startNodeAt(startPos, startLoc);
+    par.expression = val;
+    return this.finishNode(par, "ParenthesizedExpression");
+  } else {
+    return val;
+  }
+};
+pp$5.parseParenItem = function(item) {
+  return item;
+};
+pp$5.parseParenArrowList = function(startPos, startLoc, exprList, forInit) {
+  return this.parseArrowExpression(this.startNodeAt(startPos, startLoc), exprList, false, forInit);
+};
+var empty = [];
+pp$5.parseNew = function() {
+  if (this.containsEsc) {
+    this.raiseRecoverable(this.start, "Escape sequence in keyword new");
+  }
+  var node = this.startNode();
+  this.next();
+  if (this.options.ecmaVersion >= 6 && this.type === types$1.dot) {
+    var meta24 = this.startNodeAt(node.start, node.loc && node.loc.start);
+    meta24.name = "new";
+    node.meta = this.finishNode(meta24, "Identifier");
+    this.next();
+    var containsEsc = this.containsEsc;
+    node.property = this.parseIdent(true);
+    if (node.property.name !== "target") {
+      this.raiseRecoverable(node.property.start, "The only valid meta property for new is 'new.target'");
+    }
+    if (containsEsc) {
+      this.raiseRecoverable(node.start, "'new.target' must not contain escaped characters");
+    }
+    if (!this.allowNewDotTarget) {
+      this.raiseRecoverable(node.start, "'new.target' can only be used in functions and class static block");
+    }
+    return this.finishNode(node, "MetaProperty");
+  }
+  var startPos = this.start, startLoc = this.startLoc;
+  node.callee = this.parseSubscripts(this.parseExprAtom(null, false, true), startPos, startLoc, true, false);
+  if (node.callee.type === "Super") {
+    this.raiseRecoverable(startPos, "Invalid use of 'super'");
+  }
+  if (this.eat(types$1.parenL)) {
+    node.arguments = this.parseExprList(types$1.parenR, this.options.ecmaVersion >= 8, false);
+  } else {
+    node.arguments = empty;
+  }
+  return this.finishNode(node, "NewExpression");
+};
+pp$5.parseTemplateElement = function(ref2) {
+  var isTagged = ref2.isTagged;
+  var elem = this.startNode();
+  if (this.type === types$1.invalidTemplate) {
+    if (!isTagged) {
+      this.raiseRecoverable(this.start, "Bad escape sequence in untagged template literal");
+    }
+    elem.value = {
+      raw: this.value.replace(/\r\n?/g, "\n"),
+      cooked: null
+    };
+  } else {
+    elem.value = {
+      raw: this.input.slice(this.start, this.end).replace(/\r\n?/g, "\n"),
+      cooked: this.value
+    };
+  }
+  this.next();
+  elem.tail = this.type === types$1.backQuote;
+  return this.finishNode(elem, "TemplateElement");
+};
+pp$5.parseTemplate = function(ref2) {
+  if (ref2 === void 0) ref2 = {};
+  var isTagged = ref2.isTagged;
+  if (isTagged === void 0) isTagged = false;
+  var node = this.startNode();
+  this.next();
+  node.expressions = [];
+  var curElt = this.parseTemplateElement({ isTagged });
+  node.quasis = [curElt];
+  while (!curElt.tail) {
+    if (this.type === types$1.eof) {
+      this.raise(this.pos, "Unterminated template literal");
+    }
+    this.expect(types$1.dollarBraceL);
+    node.expressions.push(this.parseExpression());
+    this.expect(types$1.braceR);
+    node.quasis.push(curElt = this.parseTemplateElement({ isTagged }));
+  }
+  this.next();
+  return this.finishNode(node, "TemplateLiteral");
+};
+pp$5.isAsyncProp = function(prop) {
+  return !prop.computed && prop.key.type === "Identifier" && prop.key.name === "async" && (this.type === types$1.name || this.type === types$1.num || this.type === types$1.string || this.type === types$1.bracketL || this.type.keyword || this.options.ecmaVersion >= 9 && this.type === types$1.star) && !lineBreak.test(this.input.slice(this.lastTokEnd, this.start));
+};
+pp$5.parseObj = function(isPattern, refDestructuringErrors) {
+  var node = this.startNode(), first = true, propHash = {};
+  node.properties = [];
+  this.next();
+  while (!this.eat(types$1.braceR)) {
+    if (!first) {
+      this.expect(types$1.comma);
+      if (this.options.ecmaVersion >= 5 && this.afterTrailingComma(types$1.braceR)) {
+        break;
+      }
+    } else {
+      first = false;
+    }
+    var prop = this.parseProperty(isPattern, refDestructuringErrors);
+    if (!isPattern) {
+      this.checkPropClash(prop, propHash, refDestructuringErrors);
+    }
+    node.properties.push(prop);
+  }
+  return this.finishNode(node, isPattern ? "ObjectPattern" : "ObjectExpression");
+};
+pp$5.parseProperty = function(isPattern, refDestructuringErrors) {
+  var prop = this.startNode(), isGenerator, isAsync, startPos, startLoc;
+  if (this.options.ecmaVersion >= 9 && this.eat(types$1.ellipsis)) {
+    if (isPattern) {
+      prop.argument = this.parseIdent(false);
+      if (this.type === types$1.comma) {
+        this.raiseRecoverable(this.start, "Comma is not permitted after the rest element");
+      }
+      return this.finishNode(prop, "RestElement");
+    }
+    prop.argument = this.parseMaybeAssign(false, refDestructuringErrors);
+    if (this.type === types$1.comma && refDestructuringErrors && refDestructuringErrors.trailingComma < 0) {
+      refDestructuringErrors.trailingComma = this.start;
+    }
+    return this.finishNode(prop, "SpreadElement");
+  }
+  if (this.options.ecmaVersion >= 6) {
+    prop.method = false;
+    prop.shorthand = false;
+    if (isPattern || refDestructuringErrors) {
+      startPos = this.start;
+      startLoc = this.startLoc;
+    }
+    if (!isPattern) {
+      isGenerator = this.eat(types$1.star);
+    }
+  }
+  var containsEsc = this.containsEsc;
+  this.parsePropertyName(prop);
+  if (!isPattern && !containsEsc && this.options.ecmaVersion >= 8 && !isGenerator && this.isAsyncProp(prop)) {
+    isAsync = true;
+    isGenerator = this.options.ecmaVersion >= 9 && this.eat(types$1.star);
+    this.parsePropertyName(prop);
+  } else {
+    isAsync = false;
+  }
+  this.parsePropertyValue(prop, isPattern, isGenerator, isAsync, startPos, startLoc, refDestructuringErrors, containsEsc);
+  return this.finishNode(prop, "Property");
+};
+pp$5.parseGetterSetter = function(prop) {
+  var kind = prop.key.name;
+  this.parsePropertyName(prop);
+  prop.value = this.parseMethod(false);
+  prop.kind = kind;
+  var paramCount = prop.kind === "get" ? 0 : 1;
+  if (prop.value.params.length !== paramCount) {
+    var start = prop.value.start;
+    if (prop.kind === "get") {
+      this.raiseRecoverable(start, "getter should have no params");
+    } else {
+      this.raiseRecoverable(start, "setter should have exactly one param");
+    }
+  } else {
+    if (prop.kind === "set" && prop.value.params[0].type === "RestElement") {
+      this.raiseRecoverable(prop.value.params[0].start, "Setter cannot use rest params");
+    }
+  }
+};
+pp$5.parsePropertyValue = function(prop, isPattern, isGenerator, isAsync, startPos, startLoc, refDestructuringErrors, containsEsc) {
+  if ((isGenerator || isAsync) && this.type === types$1.colon) {
+    this.unexpected();
+  }
+  if (this.eat(types$1.colon)) {
+    prop.value = isPattern ? this.parseMaybeDefault(this.start, this.startLoc) : this.parseMaybeAssign(false, refDestructuringErrors);
+    prop.kind = "init";
+  } else if (this.options.ecmaVersion >= 6 && this.type === types$1.parenL) {
+    if (isPattern) {
+      this.unexpected();
+    }
+    prop.method = true;
+    prop.value = this.parseMethod(isGenerator, isAsync);
+    prop.kind = "init";
+  } else if (!isPattern && !containsEsc && this.options.ecmaVersion >= 5 && !prop.computed && prop.key.type === "Identifier" && (prop.key.name === "get" || prop.key.name === "set") && (this.type !== types$1.comma && this.type !== types$1.braceR && this.type !== types$1.eq)) {
+    if (isGenerator || isAsync) {
+      this.unexpected();
+    }
+    this.parseGetterSetter(prop);
+  } else if (this.options.ecmaVersion >= 6 && !prop.computed && prop.key.type === "Identifier") {
+    if (isGenerator || isAsync) {
+      this.unexpected();
+    }
+    this.checkUnreserved(prop.key);
+    if (prop.key.name === "await" && !this.awaitIdentPos) {
+      this.awaitIdentPos = startPos;
+    }
+    if (isPattern) {
+      prop.value = this.parseMaybeDefault(startPos, startLoc, this.copyNode(prop.key));
+    } else if (this.type === types$1.eq && refDestructuringErrors) {
+      if (refDestructuringErrors.shorthandAssign < 0) {
+        refDestructuringErrors.shorthandAssign = this.start;
+      }
+      prop.value = this.parseMaybeDefault(startPos, startLoc, this.copyNode(prop.key));
+    } else {
+      prop.value = this.copyNode(prop.key);
+    }
+    prop.kind = "init";
+    prop.shorthand = true;
+  } else {
+    this.unexpected();
+  }
+};
+pp$5.parsePropertyName = function(prop) {
+  if (this.options.ecmaVersion >= 6) {
+    if (this.eat(types$1.bracketL)) {
+      prop.computed = true;
+      prop.key = this.parseMaybeAssign();
+      this.expect(types$1.bracketR);
+      return prop.key;
+    } else {
+      prop.computed = false;
+    }
+  }
+  return prop.key = this.type === types$1.num || this.type === types$1.string ? this.parseExprAtom() : this.parseIdent(this.options.allowReserved !== "never");
+};
+pp$5.initFunction = function(node) {
+  node.id = null;
+  if (this.options.ecmaVersion >= 6) {
+    node.generator = node.expression = false;
+  }
+  if (this.options.ecmaVersion >= 8) {
+    node.async = false;
+  }
+};
+pp$5.parseMethod = function(isGenerator, isAsync, allowDirectSuper) {
+  var node = this.startNode(), oldYieldPos = this.yieldPos, oldAwaitPos = this.awaitPos, oldAwaitIdentPos = this.awaitIdentPos;
+  this.initFunction(node);
+  if (this.options.ecmaVersion >= 6) {
+    node.generator = isGenerator;
+  }
+  if (this.options.ecmaVersion >= 8) {
+    node.async = !!isAsync;
+  }
+  this.yieldPos = 0;
+  this.awaitPos = 0;
+  this.awaitIdentPos = 0;
+  this.enterScope(functionFlags(isAsync, node.generator) | SCOPE_SUPER | (allowDirectSuper ? SCOPE_DIRECT_SUPER : 0));
+  this.expect(types$1.parenL);
+  node.params = this.parseBindingList(types$1.parenR, false, this.options.ecmaVersion >= 8);
+  this.checkYieldAwaitInDefaultParams();
+  this.parseFunctionBody(node, false, true, false);
+  this.yieldPos = oldYieldPos;
+  this.awaitPos = oldAwaitPos;
+  this.awaitIdentPos = oldAwaitIdentPos;
+  return this.finishNode(node, "FunctionExpression");
+};
+pp$5.parseArrowExpression = function(node, params, isAsync, forInit) {
+  var oldYieldPos = this.yieldPos, oldAwaitPos = this.awaitPos, oldAwaitIdentPos = this.awaitIdentPos;
+  this.enterScope(functionFlags(isAsync, false) | SCOPE_ARROW);
+  this.initFunction(node);
+  if (this.options.ecmaVersion >= 8) {
+    node.async = !!isAsync;
+  }
+  this.yieldPos = 0;
+  this.awaitPos = 0;
+  this.awaitIdentPos = 0;
+  node.params = this.toAssignableList(params, true);
+  this.parseFunctionBody(node, true, false, forInit);
+  this.yieldPos = oldYieldPos;
+  this.awaitPos = oldAwaitPos;
+  this.awaitIdentPos = oldAwaitIdentPos;
+  return this.finishNode(node, "ArrowFunctionExpression");
+};
+pp$5.parseFunctionBody = function(node, isArrowFunction, isMethod, forInit) {
+  var isExpression = isArrowFunction && this.type !== types$1.braceL;
+  var oldStrict = this.strict, useStrict = false;
+  if (isExpression) {
+    node.body = this.parseMaybeAssign(forInit);
+    node.expression = true;
+    this.checkParams(node, false);
+  } else {
+    var nonSimple = this.options.ecmaVersion >= 7 && !this.isSimpleParamList(node.params);
+    if (!oldStrict || nonSimple) {
+      useStrict = this.strictDirective(this.end);
+      if (useStrict && nonSimple) {
+        this.raiseRecoverable(node.start, "Illegal 'use strict' directive in function with non-simple parameter list");
+      }
+    }
+    var oldLabels = this.labels;
+    this.labels = [];
+    if (useStrict) {
+      this.strict = true;
+    }
+    this.checkParams(node, !oldStrict && !useStrict && !isArrowFunction && !isMethod && this.isSimpleParamList(node.params));
+    if (this.strict && node.id) {
+      this.checkLValSimple(node.id, BIND_OUTSIDE);
+    }
+    node.body = this.parseBlock(false, void 0, useStrict && !oldStrict);
+    node.expression = false;
+    this.adaptDirectivePrologue(node.body.body);
+    this.labels = oldLabels;
+  }
+  this.exitScope();
+};
+pp$5.isSimpleParamList = function(params) {
+  for (var i2 = 0, list2 = params; i2 < list2.length; i2 += 1) {
+    var param = list2[i2];
+    if (param.type !== "Identifier") {
+      return false;
+    }
+  }
+  return true;
+};
+pp$5.checkParams = function(node, allowDuplicates) {
+  var nameHash = /* @__PURE__ */ Object.create(null);
+  for (var i2 = 0, list2 = node.params; i2 < list2.length; i2 += 1) {
+    var param = list2[i2];
+    this.checkLValInnerPattern(param, BIND_VAR, allowDuplicates ? null : nameHash);
+  }
+};
+pp$5.parseExprList = function(close, allowTrailingComma, allowEmpty, refDestructuringErrors) {
+  var elts = [], first = true;
+  while (!this.eat(close)) {
+    if (!first) {
+      this.expect(types$1.comma);
+      if (allowTrailingComma && this.afterTrailingComma(close)) {
+        break;
+      }
+    } else {
+      first = false;
+    }
+    var elt = void 0;
+    if (allowEmpty && this.type === types$1.comma) {
+      elt = null;
+    } else if (this.type === types$1.ellipsis) {
+      elt = this.parseSpread(refDestructuringErrors);
+      if (refDestructuringErrors && this.type === types$1.comma && refDestructuringErrors.trailingComma < 0) {
+        refDestructuringErrors.trailingComma = this.start;
+      }
+    } else {
+      elt = this.parseMaybeAssign(false, refDestructuringErrors);
+    }
+    elts.push(elt);
+  }
+  return elts;
+};
+pp$5.checkUnreserved = function(ref2) {
+  var start = ref2.start;
+  var end = ref2.end;
+  var name = ref2.name;
+  if (this.inGenerator && name === "yield") {
+    this.raiseRecoverable(start, "Cannot use 'yield' as identifier inside a generator");
+  }
+  if (this.inAsync && name === "await") {
+    this.raiseRecoverable(start, "Cannot use 'await' as identifier inside an async function");
+  }
+  if (!(this.currentThisScope().flags & SCOPE_VAR) && name === "arguments") {
+    this.raiseRecoverable(start, "Cannot use 'arguments' in class field initializer");
+  }
+  if (this.inClassStaticBlock && (name === "arguments" || name === "await")) {
+    this.raise(start, "Cannot use " + name + " in class static initialization block");
+  }
+  if (this.keywords.test(name)) {
+    this.raise(start, "Unexpected keyword '" + name + "'");
+  }
+  if (this.options.ecmaVersion < 6 && this.input.slice(start, end).indexOf("\\") !== -1) {
+    return;
+  }
+  var re = this.strict ? this.reservedWordsStrict : this.reservedWords;
+  if (re.test(name)) {
+    if (!this.inAsync && name === "await") {
+      this.raiseRecoverable(start, "Cannot use keyword 'await' outside an async function");
+    }
+    this.raiseRecoverable(start, "The keyword '" + name + "' is reserved");
+  }
+};
+pp$5.parseIdent = function(liberal) {
+  var node = this.parseIdentNode();
+  this.next(!!liberal);
+  this.finishNode(node, "Identifier");
+  if (!liberal) {
+    this.checkUnreserved(node);
+    if (node.name === "await" && !this.awaitIdentPos) {
+      this.awaitIdentPos = node.start;
+    }
+  }
+  return node;
+};
+pp$5.parseIdentNode = function() {
+  var node = this.startNode();
+  if (this.type === types$1.name) {
+    node.name = this.value;
+  } else if (this.type.keyword) {
+    node.name = this.type.keyword;
+    if ((node.name === "class" || node.name === "function") && (this.lastTokEnd !== this.lastTokStart + 1 || this.input.charCodeAt(this.lastTokStart) !== 46)) {
+      this.context.pop();
+    }
+    this.type = types$1.name;
+  } else {
+    this.unexpected();
+  }
+  return node;
+};
+pp$5.parsePrivateIdent = function() {
+  var node = this.startNode();
+  if (this.type === types$1.privateId) {
+    node.name = this.value;
+  } else {
+    this.unexpected();
+  }
+  this.next();
+  this.finishNode(node, "PrivateIdentifier");
+  if (this.options.checkPrivateFields) {
+    if (this.privateNameStack.length === 0) {
+      this.raise(node.start, "Private field '#" + node.name + "' must be declared in an enclosing class");
+    } else {
+      this.privateNameStack[this.privateNameStack.length - 1].used.push(node);
+    }
+  }
+  return node;
+};
+pp$5.parseYield = function(forInit) {
+  if (!this.yieldPos) {
+    this.yieldPos = this.start;
+  }
+  var node = this.startNode();
+  this.next();
+  if (this.type === types$1.semi || this.canInsertSemicolon() || this.type !== types$1.star && !this.type.startsExpr) {
+    node.delegate = false;
+    node.argument = null;
+  } else {
+    node.delegate = this.eat(types$1.star);
+    node.argument = this.parseMaybeAssign(forInit);
+  }
+  return this.finishNode(node, "YieldExpression");
+};
+pp$5.parseAwait = function(forInit) {
+  if (!this.awaitPos) {
+    this.awaitPos = this.start;
+  }
+  var node = this.startNode();
+  this.next();
+  node.argument = this.parseMaybeUnary(null, true, false, forInit);
+  return this.finishNode(node, "AwaitExpression");
+};
+var pp$4 = Parser.prototype;
+pp$4.raise = function(pos, message) {
+  var loc = getLineInfo(this.input, pos);
+  message += " (" + loc.line + ":" + loc.column + ")";
+  if (this.sourceFile) {
+    message += " in " + this.sourceFile;
+  }
+  var err = new SyntaxError(message);
+  err.pos = pos;
+  err.loc = loc;
+  err.raisedAt = this.pos;
+  throw err;
+};
+pp$4.raiseRecoverable = pp$4.raise;
+pp$4.curPosition = function() {
+  if (this.options.locations) {
+    return new Position(this.curLine, this.pos - this.lineStart);
+  }
+};
+var pp$3 = Parser.prototype;
+var Scope = function Scope2(flags) {
+  this.flags = flags;
+  this.var = [];
+  this.lexical = [];
+  this.functions = [];
+};
+pp$3.enterScope = function(flags) {
+  this.scopeStack.push(new Scope(flags));
+};
+pp$3.exitScope = function() {
+  this.scopeStack.pop();
+};
+pp$3.treatFunctionsAsVarInScope = function(scope) {
+  return scope.flags & SCOPE_FUNCTION || !this.inModule && scope.flags & SCOPE_TOP;
+};
+pp$3.declareName = function(name, bindingType, pos) {
+  var redeclared = false;
+  if (bindingType === BIND_LEXICAL) {
+    var scope = this.currentScope();
+    redeclared = scope.lexical.indexOf(name) > -1 || scope.functions.indexOf(name) > -1 || scope.var.indexOf(name) > -1;
+    scope.lexical.push(name);
+    if (this.inModule && scope.flags & SCOPE_TOP) {
+      delete this.undefinedExports[name];
+    }
+  } else if (bindingType === BIND_SIMPLE_CATCH) {
+    var scope$1 = this.currentScope();
+    scope$1.lexical.push(name);
+  } else if (bindingType === BIND_FUNCTION) {
+    var scope$2 = this.currentScope();
+    if (this.treatFunctionsAsVar) {
+      redeclared = scope$2.lexical.indexOf(name) > -1;
+    } else {
+      redeclared = scope$2.lexical.indexOf(name) > -1 || scope$2.var.indexOf(name) > -1;
+    }
+    scope$2.functions.push(name);
+  } else {
+    for (var i2 = this.scopeStack.length - 1; i2 >= 0; --i2) {
+      var scope$3 = this.scopeStack[i2];
+      if (scope$3.lexical.indexOf(name) > -1 && !(scope$3.flags & SCOPE_SIMPLE_CATCH && scope$3.lexical[0] === name) || !this.treatFunctionsAsVarInScope(scope$3) && scope$3.functions.indexOf(name) > -1) {
+        redeclared = true;
+        break;
+      }
+      scope$3.var.push(name);
+      if (this.inModule && scope$3.flags & SCOPE_TOP) {
+        delete this.undefinedExports[name];
+      }
+      if (scope$3.flags & SCOPE_VAR) {
+        break;
+      }
+    }
+  }
+  if (redeclared) {
+    this.raiseRecoverable(pos, "Identifier '" + name + "' has already been declared");
+  }
+};
+pp$3.checkLocalExport = function(id) {
+  if (this.scopeStack[0].lexical.indexOf(id.name) === -1 && this.scopeStack[0].var.indexOf(id.name) === -1) {
+    this.undefinedExports[id.name] = id;
+  }
+};
+pp$3.currentScope = function() {
+  return this.scopeStack[this.scopeStack.length - 1];
+};
+pp$3.currentVarScope = function() {
+  for (var i2 = this.scopeStack.length - 1; ; i2--) {
+    var scope = this.scopeStack[i2];
+    if (scope.flags & (SCOPE_VAR | SCOPE_CLASS_FIELD_INIT | SCOPE_CLASS_STATIC_BLOCK)) {
+      return scope;
+    }
+  }
+};
+pp$3.currentThisScope = function() {
+  for (var i2 = this.scopeStack.length - 1; ; i2--) {
+    var scope = this.scopeStack[i2];
+    if (scope.flags & (SCOPE_VAR | SCOPE_CLASS_FIELD_INIT | SCOPE_CLASS_STATIC_BLOCK) && !(scope.flags & SCOPE_ARROW)) {
+      return scope;
+    }
+  }
+};
+var Node = function Node2(parser, pos, loc) {
+  this.type = "";
+  this.start = pos;
+  this.end = 0;
+  if (parser.options.locations) {
+    this.loc = new SourceLocation(parser, loc);
+  }
+  if (parser.options.directSourceFile) {
+    this.sourceFile = parser.options.directSourceFile;
+  }
+  if (parser.options.ranges) {
+    this.range = [pos, 0];
+  }
+};
+var pp$2 = Parser.prototype;
+pp$2.startNode = function() {
+  return new Node(this, this.start, this.startLoc);
+};
+pp$2.startNodeAt = function(pos, loc) {
+  return new Node(this, pos, loc);
+};
+function finishNodeAt(node, type, pos, loc) {
+  node.type = type;
+  node.end = pos;
+  if (this.options.locations) {
+    node.loc.end = loc;
+  }
+  if (this.options.ranges) {
+    node.range[1] = pos;
+  }
+  return node;
+}
+pp$2.finishNode = function(node, type) {
+  return finishNodeAt.call(this, node, type, this.lastTokEnd, this.lastTokEndLoc);
+};
+pp$2.finishNodeAt = function(node, type, pos, loc) {
+  return finishNodeAt.call(this, node, type, pos, loc);
+};
+pp$2.copyNode = function(node) {
+  var newNode = new Node(this, node.start, this.startLoc);
+  for (var prop in node) {
+    newNode[prop] = node[prop];
+  }
+  return newNode;
+};
+var scriptValuesAddedInUnicode = "Berf Beria_Erfe Gara Garay Gukh Gurung_Khema Hrkt Katakana_Or_Hiragana Kawi Kirat_Rai Krai Nag_Mundari Nagm Ol_Onal Onao Sidetic Sidt Sunu Sunuwar Tai_Yo Tayo Todhri Todr Tolong_Siki Tols Tulu_Tigalari Tutg Unknown Zzzz";
+var ecma9BinaryProperties = "ASCII ASCII_Hex_Digit AHex Alphabetic Alpha Any Assigned Bidi_Control Bidi_C Bidi_Mirrored Bidi_M Case_Ignorable CI Cased Changes_When_Casefolded CWCF Changes_When_Casemapped CWCM Changes_When_Lowercased CWL Changes_When_NFKC_Casefolded CWKCF Changes_When_Titlecased CWT Changes_When_Uppercased CWU Dash Default_Ignorable_Code_Point DI Deprecated Dep Diacritic Dia Emoji Emoji_Component Emoji_Modifier Emoji_Modifier_Base Emoji_Presentation Extender Ext Grapheme_Base Gr_Base Grapheme_Extend Gr_Ext Hex_Digit Hex IDS_Binary_Operator IDSB IDS_Trinary_Operator IDST ID_Continue IDC ID_Start IDS Ideographic Ideo Join_Control Join_C Logical_Order_Exception LOE Lowercase Lower Math Noncharacter_Code_Point NChar Pattern_Syntax Pat_Syn Pattern_White_Space Pat_WS Quotation_Mark QMark Radical Regional_Indicator RI Sentence_Terminal STerm Soft_Dotted SD Terminal_Punctuation Term Unified_Ideograph UIdeo Uppercase Upper Variation_Selector VS White_Space space XID_Continue XIDC XID_Start XIDS";
+var ecma10BinaryProperties = ecma9BinaryProperties + " Extended_Pictographic";
+var ecma11BinaryProperties = ecma10BinaryProperties;
+var ecma12BinaryProperties = ecma11BinaryProperties + " EBase EComp EMod EPres ExtPict";
+var ecma13BinaryProperties = ecma12BinaryProperties;
+var ecma14BinaryProperties = ecma13BinaryProperties;
+var unicodeBinaryProperties = {
+  9: ecma9BinaryProperties,
+  10: ecma10BinaryProperties,
+  11: ecma11BinaryProperties,
+  12: ecma12BinaryProperties,
+  13: ecma13BinaryProperties,
+  14: ecma14BinaryProperties
+};
+var ecma14BinaryPropertiesOfStrings = "Basic_Emoji Emoji_Keycap_Sequence RGI_Emoji_Modifier_Sequence RGI_Emoji_Flag_Sequence RGI_Emoji_Tag_Sequence RGI_Emoji_ZWJ_Sequence RGI_Emoji";
+var unicodeBinaryPropertiesOfStrings = {
+  9: "",
+  10: "",
+  11: "",
+  12: "",
+  13: "",
+  14: ecma14BinaryPropertiesOfStrings
+};
+var unicodeGeneralCategoryValues = "Cased_Letter LC Close_Punctuation Pe Connector_Punctuation Pc Control Cc cntrl Currency_Symbol Sc Dash_Punctuation Pd Decimal_Number Nd digit Enclosing_Mark Me Final_Punctuation Pf Format Cf Initial_Punctuation Pi Letter L Letter_Number Nl Line_Separator Zl Lowercase_Letter Ll Mark M Combining_Mark Math_Symbol Sm Modifier_Letter Lm Modifier_Symbol Sk Nonspacing_Mark Mn Number N Open_Punctuation Ps Other C Other_Letter Lo Other_Number No Other_Punctuation Po Other_Symbol So Paragraph_Separator Zp Private_Use Co Punctuation P punct Separator Z Space_Separator Zs Spacing_Mark Mc Surrogate Cs Symbol S Titlecase_Letter Lt Unassigned Cn Uppercase_Letter Lu";
+var ecma9ScriptValues = "Adlam Adlm Ahom Anatolian_Hieroglyphs Hluw Arabic Arab Armenian Armn Avestan Avst Balinese Bali Bamum Bamu Bassa_Vah Bass Batak Batk Bengali Beng Bhaiksuki Bhks Bopomofo Bopo Brahmi Brah Braille Brai Buginese Bugi Buhid Buhd Canadian_Aboriginal Cans Carian Cari Caucasian_Albanian Aghb Chakma Cakm Cham Cham Cherokee Cher Common Zyyy Coptic Copt Qaac Cuneiform Xsux Cypriot Cprt Cyrillic Cyrl Deseret Dsrt Devanagari Deva Duployan Dupl Egyptian_Hieroglyphs Egyp Elbasan Elba Ethiopic Ethi Georgian Geor Glagolitic Glag Gothic Goth Grantha Gran Greek Grek Gujarati Gujr Gurmukhi Guru Han Hani Hangul Hang Hanunoo Hano Hatran Hatr Hebrew Hebr Hiragana Hira Imperial_Aramaic Armi Inherited Zinh Qaai Inscriptional_Pahlavi Phli Inscriptional_Parthian Prti Javanese Java Kaithi Kthi Kannada Knda Katakana Kana Kayah_Li Kali Kharoshthi Khar Khmer Khmr Khojki Khoj Khudawadi Sind Lao Laoo Latin Latn Lepcha Lepc Limbu Limb Linear_A Lina Linear_B Linb Lisu Lisu Lycian Lyci Lydian Lydi Mahajani Mahj Malayalam Mlym Mandaic Mand Manichaean Mani Marchen Marc Masaram_Gondi Gonm Meetei_Mayek Mtei Mende_Kikakui Mend Meroitic_Cursive Merc Meroitic_Hieroglyphs Mero Miao Plrd Modi Mongolian Mong Mro Mroo Multani Mult Myanmar Mymr Nabataean Nbat New_Tai_Lue Talu Newa Newa Nko Nkoo Nushu Nshu Ogham Ogam Ol_Chiki Olck Old_Hungarian Hung Old_Italic Ital Old_North_Arabian Narb Old_Permic Perm Old_Persian Xpeo Old_South_Arabian Sarb Old_Turkic Orkh Oriya Orya Osage Osge Osmanya Osma Pahawh_Hmong Hmng Palmyrene Palm Pau_Cin_Hau Pauc Phags_Pa Phag Phoenician Phnx Psalter_Pahlavi Phlp Rejang Rjng Runic Runr Samaritan Samr Saurashtra Saur Sharada Shrd Shavian Shaw Siddham Sidd SignWriting Sgnw Sinhala Sinh Sora_Sompeng Sora Soyombo Soyo Sundanese Sund Syloti_Nagri Sylo Syriac Syrc Tagalog Tglg Tagbanwa Tagb Tai_Le Tale Tai_Tham Lana Tai_Viet Tavt Takri Takr Tamil Taml Tangut Tang Telugu Telu Thaana Thaa Thai Thai Tibetan Tibt Tifinagh Tfng Tirhuta Tirh Ugaritic Ugar Vai Vaii Warang_Citi Wara Yi Yiii Zanabazar_Square Zanb";
+var ecma10ScriptValues = ecma9ScriptValues + " Dogra Dogr Gunjala_Gondi Gong Hanifi_Rohingya Rohg Makasar Maka Medefaidrin Medf Old_Sogdian Sogo Sogdian Sogd";
+var ecma11ScriptValues = ecma10ScriptValues + " Elymaic Elym Nandinagari Nand Nyiakeng_Puachue_Hmong Hmnp Wancho Wcho";
+var ecma12ScriptValues = ecma11ScriptValues + " Chorasmian Chrs Diak Dives_Akuru Khitan_Small_Script Kits Yezi Yezidi";
+var ecma13ScriptValues = ecma12ScriptValues + " Cypro_Minoan Cpmn Old_Uyghur Ougr Tangsa Tnsa Toto Vithkuqi Vith";
+var ecma14ScriptValues = ecma13ScriptValues + " " + scriptValuesAddedInUnicode;
+var unicodeScriptValues = {
+  9: ecma9ScriptValues,
+  10: ecma10ScriptValues,
+  11: ecma11ScriptValues,
+  12: ecma12ScriptValues,
+  13: ecma13ScriptValues,
+  14: ecma14ScriptValues
+};
+var data = {};
+function buildUnicodeData(ecmaVersion2) {
+  var d = data[ecmaVersion2] = {
+    binary: wordsRegexp(unicodeBinaryProperties[ecmaVersion2] + " " + unicodeGeneralCategoryValues),
+    binaryOfStrings: wordsRegexp(unicodeBinaryPropertiesOfStrings[ecmaVersion2]),
+    nonBinary: {
+      General_Category: wordsRegexp(unicodeGeneralCategoryValues),
+      Script: wordsRegexp(unicodeScriptValues[ecmaVersion2])
+    }
+  };
+  d.nonBinary.Script_Extensions = d.nonBinary.Script;
+  d.nonBinary.gc = d.nonBinary.General_Category;
+  d.nonBinary.sc = d.nonBinary.Script;
+  d.nonBinary.scx = d.nonBinary.Script_Extensions;
+}
+for (i = 0, list = [9, 10, 11, 12, 13, 14]; i < list.length; i += 1) {
+  ecmaVersion = list[i];
+  buildUnicodeData(ecmaVersion);
+}
+var ecmaVersion;
+var i;
+var list;
+var pp$1 = Parser.prototype;
+var BranchID = function BranchID2(parent, base) {
+  this.parent = parent;
+  this.base = base || this;
+};
+BranchID.prototype.separatedFrom = function separatedFrom(alt) {
+  for (var self = this; self; self = self.parent) {
+    for (var other = alt; other; other = other.parent) {
+      if (self.base === other.base && self !== other) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+BranchID.prototype.sibling = function sibling() {
+  return new BranchID(this.parent, this.base);
+};
+var RegExpValidationState = function RegExpValidationState2(parser) {
+  this.parser = parser;
+  this.validFlags = "gim" + (parser.options.ecmaVersion >= 6 ? "uy" : "") + (parser.options.ecmaVersion >= 9 ? "s" : "") + (parser.options.ecmaVersion >= 13 ? "d" : "") + (parser.options.ecmaVersion >= 15 ? "v" : "");
+  this.unicodeProperties = data[parser.options.ecmaVersion >= 14 ? 14 : parser.options.ecmaVersion];
+  this.source = "";
+  this.flags = "";
+  this.start = 0;
+  this.switchU = false;
+  this.switchV = false;
+  this.switchN = false;
+  this.pos = 0;
+  this.lastIntValue = 0;
+  this.lastStringValue = "";
+  this.lastAssertionIsQuantifiable = false;
+  this.numCapturingParens = 0;
+  this.maxBackReference = 0;
+  this.groupNames = /* @__PURE__ */ Object.create(null);
+  this.backReferenceNames = [];
+  this.branchID = null;
+};
+RegExpValidationState.prototype.reset = function reset(start, pattern, flags) {
+  var unicodeSets = flags.indexOf("v") !== -1;
+  var unicode = flags.indexOf("u") !== -1;
+  this.start = start | 0;
+  this.source = pattern + "";
+  this.flags = flags;
+  if (unicodeSets && this.parser.options.ecmaVersion >= 15) {
+    this.switchU = true;
+    this.switchV = true;
+    this.switchN = true;
+  } else {
+    this.switchU = unicode && this.parser.options.ecmaVersion >= 6;
+    this.switchV = false;
+    this.switchN = unicode && this.parser.options.ecmaVersion >= 9;
+  }
+};
+RegExpValidationState.prototype.raise = function raise(message) {
+  this.parser.raiseRecoverable(this.start, "Invalid regular expression: /" + this.source + "/: " + message);
+};
+RegExpValidationState.prototype.at = function at(i2, forceU) {
+  if (forceU === void 0) forceU = false;
+  var s = this.source;
+  var l = s.length;
+  if (i2 >= l) {
+    return -1;
+  }
+  var c = s.charCodeAt(i2);
+  if (!(forceU || this.switchU) || c <= 55295 || c >= 57344 || i2 + 1 >= l) {
+    return c;
+  }
+  var next = s.charCodeAt(i2 + 1);
+  return next >= 56320 && next <= 57343 ? (c << 10) + next - 56613888 : c;
+};
+RegExpValidationState.prototype.nextIndex = function nextIndex(i2, forceU) {
+  if (forceU === void 0) forceU = false;
+  var s = this.source;
+  var l = s.length;
+  if (i2 >= l) {
+    return l;
+  }
+  var c = s.charCodeAt(i2), next;
+  if (!(forceU || this.switchU) || c <= 55295 || c >= 57344 || i2 + 1 >= l || (next = s.charCodeAt(i2 + 1)) < 56320 || next > 57343) {
+    return i2 + 1;
+  }
+  return i2 + 2;
+};
+RegExpValidationState.prototype.current = function current(forceU) {
+  if (forceU === void 0) forceU = false;
+  return this.at(this.pos, forceU);
+};
+RegExpValidationState.prototype.lookahead = function lookahead(forceU) {
+  if (forceU === void 0) forceU = false;
+  return this.at(this.nextIndex(this.pos, forceU), forceU);
+};
+RegExpValidationState.prototype.advance = function advance(forceU) {
+  if (forceU === void 0) forceU = false;
+  this.pos = this.nextIndex(this.pos, forceU);
+};
+RegExpValidationState.prototype.eat = function eat(ch, forceU) {
+  if (forceU === void 0) forceU = false;
+  if (this.current(forceU) === ch) {
+    this.advance(forceU);
+    return true;
+  }
+  return false;
+};
+RegExpValidationState.prototype.eatChars = function eatChars(chs, forceU) {
+  if (forceU === void 0) forceU = false;
+  var pos = this.pos;
+  for (var i2 = 0, list2 = chs; i2 < list2.length; i2 += 1) {
+    var ch = list2[i2];
+    var current2 = this.at(pos, forceU);
+    if (current2 === -1 || current2 !== ch) {
+      return false;
+    }
+    pos = this.nextIndex(pos, forceU);
+  }
+  this.pos = pos;
+  return true;
+};
+pp$1.validateRegExpFlags = function(state) {
+  var validFlags = state.validFlags;
+  var flags = state.flags;
+  var u = false;
+  var v = false;
+  for (var i2 = 0; i2 < flags.length; i2++) {
+    var flag = flags.charAt(i2);
+    if (validFlags.indexOf(flag) === -1) {
+      this.raise(state.start, "Invalid regular expression flag");
+    }
+    if (flags.indexOf(flag, i2 + 1) > -1) {
+      this.raise(state.start, "Duplicate regular expression flag");
+    }
+    if (flag === "u") {
+      u = true;
+    }
+    if (flag === "v") {
+      v = true;
+    }
+  }
+  if (this.options.ecmaVersion >= 15 && u && v) {
+    this.raise(state.start, "Invalid regular expression flag");
+  }
+};
+function hasProp(obj) {
+  for (var _ in obj) {
+    return true;
+  }
+  return false;
+}
+pp$1.validateRegExpPattern = function(state) {
+  this.regexp_pattern(state);
+  if (!state.switchN && this.options.ecmaVersion >= 9 && hasProp(state.groupNames)) {
+    state.switchN = true;
+    this.regexp_pattern(state);
+  }
+};
+pp$1.regexp_pattern = function(state) {
+  state.pos = 0;
+  state.lastIntValue = 0;
+  state.lastStringValue = "";
+  state.lastAssertionIsQuantifiable = false;
+  state.numCapturingParens = 0;
+  state.maxBackReference = 0;
+  state.groupNames = /* @__PURE__ */ Object.create(null);
+  state.backReferenceNames.length = 0;
+  state.branchID = null;
+  this.regexp_disjunction(state);
+  if (state.pos !== state.source.length) {
+    if (state.eat(
+      41
+      /* ) */
+    )) {
+      state.raise("Unmatched ')'");
+    }
+    if (state.eat(
+      93
+      /* ] */
+    ) || state.eat(
+      125
+      /* } */
+    )) {
+      state.raise("Lone quantifier brackets");
+    }
+  }
+  if (state.maxBackReference > state.numCapturingParens) {
+    state.raise("Invalid escape");
+  }
+  for (var i2 = 0, list2 = state.backReferenceNames; i2 < list2.length; i2 += 1) {
+    var name = list2[i2];
+    if (!state.groupNames[name]) {
+      state.raise("Invalid named capture referenced");
+    }
+  }
+};
+pp$1.regexp_disjunction = function(state) {
+  var trackDisjunction = this.options.ecmaVersion >= 16;
+  if (trackDisjunction) {
+    state.branchID = new BranchID(state.branchID, null);
+  }
+  this.regexp_alternative(state);
+  while (state.eat(
+    124
+    /* | */
+  )) {
+    if (trackDisjunction) {
+      state.branchID = state.branchID.sibling();
+    }
+    this.regexp_alternative(state);
+  }
+  if (trackDisjunction) {
+    state.branchID = state.branchID.parent;
+  }
+  if (this.regexp_eatQuantifier(state, true)) {
+    state.raise("Nothing to repeat");
+  }
+  if (state.eat(
+    123
+    /* { */
+  )) {
+    state.raise("Lone quantifier brackets");
+  }
+};
+pp$1.regexp_alternative = function(state) {
+  while (state.pos < state.source.length && this.regexp_eatTerm(state)) {
+  }
+};
+pp$1.regexp_eatTerm = function(state) {
+  if (this.regexp_eatAssertion(state)) {
+    if (state.lastAssertionIsQuantifiable && this.regexp_eatQuantifier(state)) {
+      if (state.switchU) {
+        state.raise("Invalid quantifier");
+      }
+    }
+    return true;
+  }
+  if (state.switchU ? this.regexp_eatAtom(state) : this.regexp_eatExtendedAtom(state)) {
+    this.regexp_eatQuantifier(state);
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatAssertion = function(state) {
+  var start = state.pos;
+  state.lastAssertionIsQuantifiable = false;
+  if (state.eat(
+    94
+    /* ^ */
+  ) || state.eat(
+    36
+    /* $ */
+  )) {
+    return true;
+  }
+  if (state.eat(
+    92
+    /* \ */
+  )) {
+    if (state.eat(
+      66
+      /* B */
+    ) || state.eat(
+      98
+      /* b */
+    )) {
+      return true;
+    }
+    state.pos = start;
+  }
+  if (state.eat(
+    40
+    /* ( */
+  ) && state.eat(
+    63
+    /* ? */
+  )) {
+    var lookbehind = false;
+    if (this.options.ecmaVersion >= 9) {
+      lookbehind = state.eat(
+        60
+        /* < */
+      );
+    }
+    if (state.eat(
+      61
+      /* = */
+    ) || state.eat(
+      33
+      /* ! */
+    )) {
+      this.regexp_disjunction(state);
+      if (!state.eat(
+        41
+        /* ) */
+      )) {
+        state.raise("Unterminated group");
+      }
+      state.lastAssertionIsQuantifiable = !lookbehind;
+      return true;
+    }
+  }
+  state.pos = start;
+  return false;
+};
+pp$1.regexp_eatQuantifier = function(state, noError) {
+  if (noError === void 0) noError = false;
+  if (this.regexp_eatQuantifierPrefix(state, noError)) {
+    state.eat(
+      63
+      /* ? */
+    );
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatQuantifierPrefix = function(state, noError) {
+  return state.eat(
+    42
+    /* * */
+  ) || state.eat(
+    43
+    /* + */
+  ) || state.eat(
+    63
+    /* ? */
+  ) || this.regexp_eatBracedQuantifier(state, noError);
+};
+pp$1.regexp_eatBracedQuantifier = function(state, noError) {
+  var start = state.pos;
+  if (state.eat(
+    123
+    /* { */
+  )) {
+    var min = 0, max = -1;
+    if (this.regexp_eatDecimalDigits(state)) {
+      min = state.lastIntValue;
+      if (state.eat(
+        44
+        /* , */
+      ) && this.regexp_eatDecimalDigits(state)) {
+        max = state.lastIntValue;
+      }
+      if (state.eat(
+        125
+        /* } */
+      )) {
+        if (max !== -1 && max < min && !noError) {
+          state.raise("numbers out of order in {} quantifier");
+        }
+        return true;
+      }
+    }
+    if (state.switchU && !noError) {
+      state.raise("Incomplete quantifier");
+    }
+    state.pos = start;
+  }
+  return false;
+};
+pp$1.regexp_eatAtom = function(state) {
+  return this.regexp_eatPatternCharacters(state) || state.eat(
+    46
+    /* . */
+  ) || this.regexp_eatReverseSolidusAtomEscape(state) || this.regexp_eatCharacterClass(state) || this.regexp_eatUncapturingGroup(state) || this.regexp_eatCapturingGroup(state);
+};
+pp$1.regexp_eatReverseSolidusAtomEscape = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    92
+    /* \ */
+  )) {
+    if (this.regexp_eatAtomEscape(state)) {
+      return true;
+    }
+    state.pos = start;
+  }
+  return false;
+};
+pp$1.regexp_eatUncapturingGroup = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    40
+    /* ( */
+  )) {
+    if (state.eat(
+      63
+      /* ? */
+    )) {
+      if (this.options.ecmaVersion >= 16) {
+        var addModifiers = this.regexp_eatModifiers(state);
+        var hasHyphen = state.eat(
+          45
+          /* - */
+        );
+        if (addModifiers || hasHyphen) {
+          for (var i2 = 0; i2 < addModifiers.length; i2++) {
+            var modifier = addModifiers.charAt(i2);
+            if (addModifiers.indexOf(modifier, i2 + 1) > -1) {
+              state.raise("Duplicate regular expression modifiers");
+            }
+          }
+          if (hasHyphen) {
+            var removeModifiers = this.regexp_eatModifiers(state);
+            if (!addModifiers && !removeModifiers && state.current() === 58) {
+              state.raise("Invalid regular expression modifiers");
+            }
+            for (var i$1 = 0; i$1 < removeModifiers.length; i$1++) {
+              var modifier$1 = removeModifiers.charAt(i$1);
+              if (removeModifiers.indexOf(modifier$1, i$1 + 1) > -1 || addModifiers.indexOf(modifier$1) > -1) {
+                state.raise("Duplicate regular expression modifiers");
+              }
+            }
+          }
+        }
+      }
+      if (state.eat(
+        58
+        /* : */
+      )) {
+        this.regexp_disjunction(state);
+        if (state.eat(
+          41
+          /* ) */
+        )) {
+          return true;
+        }
+        state.raise("Unterminated group");
+      }
+    }
+    state.pos = start;
+  }
+  return false;
+};
+pp$1.regexp_eatCapturingGroup = function(state) {
+  if (state.eat(
+    40
+    /* ( */
+  )) {
+    if (this.options.ecmaVersion >= 9) {
+      this.regexp_groupSpecifier(state);
+    } else if (state.current() === 63) {
+      state.raise("Invalid group");
+    }
+    this.regexp_disjunction(state);
+    if (state.eat(
+      41
+      /* ) */
+    )) {
+      state.numCapturingParens += 1;
+      return true;
+    }
+    state.raise("Unterminated group");
+  }
+  return false;
+};
+pp$1.regexp_eatModifiers = function(state) {
+  var modifiers = "";
+  var ch = 0;
+  while ((ch = state.current()) !== -1 && isRegularExpressionModifier(ch)) {
+    modifiers += codePointToString(ch);
+    state.advance();
+  }
+  return modifiers;
+};
+function isRegularExpressionModifier(ch) {
+  return ch === 105 || ch === 109 || ch === 115;
+}
+pp$1.regexp_eatExtendedAtom = function(state) {
+  return state.eat(
+    46
+    /* . */
+  ) || this.regexp_eatReverseSolidusAtomEscape(state) || this.regexp_eatCharacterClass(state) || this.regexp_eatUncapturingGroup(state) || this.regexp_eatCapturingGroup(state) || this.regexp_eatInvalidBracedQuantifier(state) || this.regexp_eatExtendedPatternCharacter(state);
+};
+pp$1.regexp_eatInvalidBracedQuantifier = function(state) {
+  if (this.regexp_eatBracedQuantifier(state, true)) {
+    state.raise("Nothing to repeat");
+  }
+  return false;
+};
+pp$1.regexp_eatSyntaxCharacter = function(state) {
+  var ch = state.current();
+  if (isSyntaxCharacter(ch)) {
+    state.lastIntValue = ch;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+function isSyntaxCharacter(ch) {
+  return ch === 36 || ch >= 40 && ch <= 43 || ch === 46 || ch === 63 || ch >= 91 && ch <= 94 || ch >= 123 && ch <= 125;
+}
+pp$1.regexp_eatPatternCharacters = function(state) {
+  var start = state.pos;
+  var ch = 0;
+  while ((ch = state.current()) !== -1 && !isSyntaxCharacter(ch)) {
+    state.advance();
+  }
+  return state.pos !== start;
+};
+pp$1.regexp_eatExtendedPatternCharacter = function(state) {
+  var ch = state.current();
+  if (ch !== -1 && ch !== 36 && !(ch >= 40 && ch <= 43) && ch !== 46 && ch !== 63 && ch !== 91 && ch !== 94 && ch !== 124) {
+    state.advance();
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_groupSpecifier = function(state) {
+  if (state.eat(
+    63
+    /* ? */
+  )) {
+    if (!this.regexp_eatGroupName(state)) {
+      state.raise("Invalid group");
+    }
+    var trackDisjunction = this.options.ecmaVersion >= 16;
+    var known = state.groupNames[state.lastStringValue];
+    if (known) {
+      if (trackDisjunction) {
+        for (var i2 = 0, list2 = known; i2 < list2.length; i2 += 1) {
+          var altID = list2[i2];
+          if (!altID.separatedFrom(state.branchID)) {
+            state.raise("Duplicate capture group name");
+          }
+        }
+      } else {
+        state.raise("Duplicate capture group name");
+      }
+    }
+    if (trackDisjunction) {
+      (known || (state.groupNames[state.lastStringValue] = [])).push(state.branchID);
+    } else {
+      state.groupNames[state.lastStringValue] = true;
+    }
+  }
+};
+pp$1.regexp_eatGroupName = function(state) {
+  state.lastStringValue = "";
+  if (state.eat(
+    60
+    /* < */
+  )) {
+    if (this.regexp_eatRegExpIdentifierName(state) && state.eat(
+      62
+      /* > */
+    )) {
+      return true;
+    }
+    state.raise("Invalid capture group name");
+  }
+  return false;
+};
+pp$1.regexp_eatRegExpIdentifierName = function(state) {
+  state.lastStringValue = "";
+  if (this.regexp_eatRegExpIdentifierStart(state)) {
+    state.lastStringValue += codePointToString(state.lastIntValue);
+    while (this.regexp_eatRegExpIdentifierPart(state)) {
+      state.lastStringValue += codePointToString(state.lastIntValue);
+    }
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatRegExpIdentifierStart = function(state) {
+  var start = state.pos;
+  var forceU = this.options.ecmaVersion >= 11;
+  var ch = state.current(forceU);
+  state.advance(forceU);
+  if (ch === 92 && this.regexp_eatRegExpUnicodeEscapeSequence(state, forceU)) {
+    ch = state.lastIntValue;
+  }
+  if (isRegExpIdentifierStart(ch)) {
+    state.lastIntValue = ch;
+    return true;
+  }
+  state.pos = start;
+  return false;
+};
+function isRegExpIdentifierStart(ch) {
+  return isIdentifierStart(ch, true) || ch === 36 || ch === 95;
+}
+pp$1.regexp_eatRegExpIdentifierPart = function(state) {
+  var start = state.pos;
+  var forceU = this.options.ecmaVersion >= 11;
+  var ch = state.current(forceU);
+  state.advance(forceU);
+  if (ch === 92 && this.regexp_eatRegExpUnicodeEscapeSequence(state, forceU)) {
+    ch = state.lastIntValue;
+  }
+  if (isRegExpIdentifierPart(ch)) {
+    state.lastIntValue = ch;
+    return true;
+  }
+  state.pos = start;
+  return false;
+};
+function isRegExpIdentifierPart(ch) {
+  return isIdentifierChar(ch, true) || ch === 36 || ch === 95 || ch === 8204 || ch === 8205;
+}
+pp$1.regexp_eatAtomEscape = function(state) {
+  if (this.regexp_eatBackReference(state) || this.regexp_eatCharacterClassEscape(state) || this.regexp_eatCharacterEscape(state) || state.switchN && this.regexp_eatKGroupName(state)) {
+    return true;
+  }
+  if (state.switchU) {
+    if (state.current() === 99) {
+      state.raise("Invalid unicode escape");
+    }
+    state.raise("Invalid escape");
+  }
+  return false;
+};
+pp$1.regexp_eatBackReference = function(state) {
+  var start = state.pos;
+  if (this.regexp_eatDecimalEscape(state)) {
+    var n = state.lastIntValue;
+    if (state.switchU) {
+      if (n > state.maxBackReference) {
+        state.maxBackReference = n;
+      }
+      return true;
+    }
+    if (n <= state.numCapturingParens) {
+      return true;
+    }
+    state.pos = start;
+  }
+  return false;
+};
+pp$1.regexp_eatKGroupName = function(state) {
+  if (state.eat(
+    107
+    /* k */
+  )) {
+    if (this.regexp_eatGroupName(state)) {
+      state.backReferenceNames.push(state.lastStringValue);
+      return true;
+    }
+    state.raise("Invalid named reference");
+  }
+  return false;
+};
+pp$1.regexp_eatCharacterEscape = function(state) {
+  return this.regexp_eatControlEscape(state) || this.regexp_eatCControlLetter(state) || this.regexp_eatZero(state) || this.regexp_eatHexEscapeSequence(state) || this.regexp_eatRegExpUnicodeEscapeSequence(state, false) || !state.switchU && this.regexp_eatLegacyOctalEscapeSequence(state) || this.regexp_eatIdentityEscape(state);
+};
+pp$1.regexp_eatCControlLetter = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    99
+    /* c */
+  )) {
+    if (this.regexp_eatControlLetter(state)) {
+      return true;
+    }
+    state.pos = start;
+  }
+  return false;
+};
+pp$1.regexp_eatZero = function(state) {
+  if (state.current() === 48 && !isDecimalDigit(state.lookahead())) {
+    state.lastIntValue = 0;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatControlEscape = function(state) {
+  var ch = state.current();
+  if (ch === 116) {
+    state.lastIntValue = 9;
+    state.advance();
+    return true;
+  }
+  if (ch === 110) {
+    state.lastIntValue = 10;
+    state.advance();
+    return true;
+  }
+  if (ch === 118) {
+    state.lastIntValue = 11;
+    state.advance();
+    return true;
+  }
+  if (ch === 102) {
+    state.lastIntValue = 12;
+    state.advance();
+    return true;
+  }
+  if (ch === 114) {
+    state.lastIntValue = 13;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatControlLetter = function(state) {
+  var ch = state.current();
+  if (isControlLetter(ch)) {
+    state.lastIntValue = ch % 32;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+function isControlLetter(ch) {
+  return ch >= 65 && ch <= 90 || ch >= 97 && ch <= 122;
+}
+pp$1.regexp_eatRegExpUnicodeEscapeSequence = function(state, forceU) {
+  if (forceU === void 0) forceU = false;
+  var start = state.pos;
+  var switchU = forceU || state.switchU;
+  if (state.eat(
+    117
+    /* u */
+  )) {
+    if (this.regexp_eatFixedHexDigits(state, 4)) {
+      var lead = state.lastIntValue;
+      if (switchU && lead >= 55296 && lead <= 56319) {
+        var leadSurrogateEnd = state.pos;
+        if (state.eat(
+          92
+          /* \ */
+        ) && state.eat(
+          117
+          /* u */
+        ) && this.regexp_eatFixedHexDigits(state, 4)) {
+          var trail = state.lastIntValue;
+          if (trail >= 56320 && trail <= 57343) {
+            state.lastIntValue = (lead - 55296) * 1024 + (trail - 56320) + 65536;
+            return true;
+          }
+        }
+        state.pos = leadSurrogateEnd;
+        state.lastIntValue = lead;
+      }
+      return true;
+    }
+    if (switchU && state.eat(
+      123
+      /* { */
+    ) && this.regexp_eatHexDigits(state) && state.eat(
+      125
+      /* } */
+    ) && isValidUnicode(state.lastIntValue)) {
+      return true;
+    }
+    if (switchU) {
+      state.raise("Invalid unicode escape");
+    }
+    state.pos = start;
+  }
+  return false;
+};
+function isValidUnicode(ch) {
+  return ch >= 0 && ch <= 1114111;
+}
+pp$1.regexp_eatIdentityEscape = function(state) {
+  if (state.switchU) {
+    if (this.regexp_eatSyntaxCharacter(state)) {
+      return true;
+    }
+    if (state.eat(
+      47
+      /* / */
+    )) {
+      state.lastIntValue = 47;
+      return true;
+    }
+    return false;
+  }
+  var ch = state.current();
+  if (ch !== 99 && (!state.switchN || ch !== 107)) {
+    state.lastIntValue = ch;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatDecimalEscape = function(state) {
+  state.lastIntValue = 0;
+  var ch = state.current();
+  if (ch >= 49 && ch <= 57) {
+    do {
+      state.lastIntValue = 10 * state.lastIntValue + (ch - 48);
+      state.advance();
+    } while ((ch = state.current()) >= 48 && ch <= 57);
+    return true;
+  }
+  return false;
+};
+var CharSetNone = 0;
+var CharSetOk = 1;
+var CharSetString = 2;
+pp$1.regexp_eatCharacterClassEscape = function(state) {
+  var ch = state.current();
+  if (isCharacterClassEscape(ch)) {
+    state.lastIntValue = -1;
+    state.advance();
+    return CharSetOk;
+  }
+  var negate = false;
+  if (state.switchU && this.options.ecmaVersion >= 9 && ((negate = ch === 80) || ch === 112)) {
+    state.lastIntValue = -1;
+    state.advance();
+    var result;
+    if (state.eat(
+      123
+      /* { */
+    ) && (result = this.regexp_eatUnicodePropertyValueExpression(state)) && state.eat(
+      125
+      /* } */
+    )) {
+      if (negate && result === CharSetString) {
+        state.raise("Invalid property name");
+      }
+      return result;
+    }
+    state.raise("Invalid property name");
+  }
+  return CharSetNone;
+};
+function isCharacterClassEscape(ch) {
+  return ch === 100 || ch === 68 || ch === 115 || ch === 83 || ch === 119 || ch === 87;
+}
+pp$1.regexp_eatUnicodePropertyValueExpression = function(state) {
+  var start = state.pos;
+  if (this.regexp_eatUnicodePropertyName(state) && state.eat(
+    61
+    /* = */
+  )) {
+    var name = state.lastStringValue;
+    if (this.regexp_eatUnicodePropertyValue(state)) {
+      var value = state.lastStringValue;
+      this.regexp_validateUnicodePropertyNameAndValue(state, name, value);
+      return CharSetOk;
+    }
+  }
+  state.pos = start;
+  if (this.regexp_eatLoneUnicodePropertyNameOrValue(state)) {
+    var nameOrValue = state.lastStringValue;
+    return this.regexp_validateUnicodePropertyNameOrValue(state, nameOrValue);
+  }
+  return CharSetNone;
+};
+pp$1.regexp_validateUnicodePropertyNameAndValue = function(state, name, value) {
+  if (!hasOwn(state.unicodeProperties.nonBinary, name)) {
+    state.raise("Invalid property name");
+  }
+  if (!state.unicodeProperties.nonBinary[name].test(value)) {
+    state.raise("Invalid property value");
+  }
+};
+pp$1.regexp_validateUnicodePropertyNameOrValue = function(state, nameOrValue) {
+  if (state.unicodeProperties.binary.test(nameOrValue)) {
+    return CharSetOk;
+  }
+  if (state.switchV && state.unicodeProperties.binaryOfStrings.test(nameOrValue)) {
+    return CharSetString;
+  }
+  state.raise("Invalid property name");
+};
+pp$1.regexp_eatUnicodePropertyName = function(state) {
+  var ch = 0;
+  state.lastStringValue = "";
+  while (isUnicodePropertyNameCharacter(ch = state.current())) {
+    state.lastStringValue += codePointToString(ch);
+    state.advance();
+  }
+  return state.lastStringValue !== "";
+};
+function isUnicodePropertyNameCharacter(ch) {
+  return isControlLetter(ch) || ch === 95;
+}
+pp$1.regexp_eatUnicodePropertyValue = function(state) {
+  var ch = 0;
+  state.lastStringValue = "";
+  while (isUnicodePropertyValueCharacter(ch = state.current())) {
+    state.lastStringValue += codePointToString(ch);
+    state.advance();
+  }
+  return state.lastStringValue !== "";
+};
+function isUnicodePropertyValueCharacter(ch) {
+  return isUnicodePropertyNameCharacter(ch) || isDecimalDigit(ch);
+}
+pp$1.regexp_eatLoneUnicodePropertyNameOrValue = function(state) {
+  return this.regexp_eatUnicodePropertyValue(state);
+};
+pp$1.regexp_eatCharacterClass = function(state) {
+  if (state.eat(
+    91
+    /* [ */
+  )) {
+    var negate = state.eat(
+      94
+      /* ^ */
+    );
+    var result = this.regexp_classContents(state);
+    if (!state.eat(
+      93
+      /* ] */
+    )) {
+      state.raise("Unterminated character class");
+    }
+    if (negate && result === CharSetString) {
+      state.raise("Negated character class may contain strings");
+    }
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_classContents = function(state) {
+  if (state.current() === 93) {
+    return CharSetOk;
+  }
+  if (state.switchV) {
+    return this.regexp_classSetExpression(state);
+  }
+  this.regexp_nonEmptyClassRanges(state);
+  return CharSetOk;
+};
+pp$1.regexp_nonEmptyClassRanges = function(state) {
+  while (this.regexp_eatClassAtom(state)) {
+    var left = state.lastIntValue;
+    if (state.eat(
+      45
+      /* - */
+    ) && this.regexp_eatClassAtom(state)) {
+      var right = state.lastIntValue;
+      if (state.switchU && (left === -1 || right === -1)) {
+        state.raise("Invalid character class");
+      }
+      if (left !== -1 && right !== -1 && left > right) {
+        state.raise("Range out of order in character class");
+      }
+    }
+  }
+};
+pp$1.regexp_eatClassAtom = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    92
+    /* \ */
+  )) {
+    if (this.regexp_eatClassEscape(state)) {
+      return true;
+    }
+    if (state.switchU) {
+      var ch$1 = state.current();
+      if (ch$1 === 99 || isOctalDigit(ch$1)) {
+        state.raise("Invalid class escape");
+      }
+      state.raise("Invalid escape");
+    }
+    state.pos = start;
+  }
+  var ch = state.current();
+  if (ch !== 93) {
+    state.lastIntValue = ch;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatClassEscape = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    98
+    /* b */
+  )) {
+    state.lastIntValue = 8;
+    return true;
+  }
+  if (state.switchU && state.eat(
+    45
+    /* - */
+  )) {
+    state.lastIntValue = 45;
+    return true;
+  }
+  if (!state.switchU && state.eat(
+    99
+    /* c */
+  )) {
+    if (this.regexp_eatClassControlLetter(state)) {
+      return true;
+    }
+    state.pos = start;
+  }
+  return this.regexp_eatCharacterClassEscape(state) || this.regexp_eatCharacterEscape(state);
+};
+pp$1.regexp_classSetExpression = function(state) {
+  var result = CharSetOk, subResult;
+  if (this.regexp_eatClassSetRange(state)) ;
+  else if (subResult = this.regexp_eatClassSetOperand(state)) {
+    if (subResult === CharSetString) {
+      result = CharSetString;
+    }
+    var start = state.pos;
+    while (state.eatChars(
+      [38, 38]
+      /* && */
+    )) {
+      if (state.current() !== 38 && (subResult = this.regexp_eatClassSetOperand(state))) {
+        if (subResult !== CharSetString) {
+          result = CharSetOk;
+        }
+        continue;
+      }
+      state.raise("Invalid character in character class");
+    }
+    if (start !== state.pos) {
+      return result;
+    }
+    while (state.eatChars(
+      [45, 45]
+      /* -- */
+    )) {
+      if (this.regexp_eatClassSetOperand(state)) {
+        continue;
+      }
+      state.raise("Invalid character in character class");
+    }
+    if (start !== state.pos) {
+      return result;
+    }
+  } else {
+    state.raise("Invalid character in character class");
+  }
+  for (; ; ) {
+    if (this.regexp_eatClassSetRange(state)) {
+      continue;
+    }
+    subResult = this.regexp_eatClassSetOperand(state);
+    if (!subResult) {
+      return result;
+    }
+    if (subResult === CharSetString) {
+      result = CharSetString;
+    }
+  }
+};
+pp$1.regexp_eatClassSetRange = function(state) {
+  var start = state.pos;
+  if (this.regexp_eatClassSetCharacter(state)) {
+    var left = state.lastIntValue;
+    if (state.eat(
+      45
+      /* - */
+    ) && this.regexp_eatClassSetCharacter(state)) {
+      var right = state.lastIntValue;
+      if (left !== -1 && right !== -1 && left > right) {
+        state.raise("Range out of order in character class");
+      }
+      return true;
+    }
+    state.pos = start;
+  }
+  return false;
+};
+pp$1.regexp_eatClassSetOperand = function(state) {
+  if (this.regexp_eatClassSetCharacter(state)) {
+    return CharSetOk;
+  }
+  return this.regexp_eatClassStringDisjunction(state) || this.regexp_eatNestedClass(state);
+};
+pp$1.regexp_eatNestedClass = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    91
+    /* [ */
+  )) {
+    var negate = state.eat(
+      94
+      /* ^ */
+    );
+    var result = this.regexp_classContents(state);
+    if (state.eat(
+      93
+      /* ] */
+    )) {
+      if (negate && result === CharSetString) {
+        state.raise("Negated character class may contain strings");
+      }
+      return result;
+    }
+    state.pos = start;
+  }
+  if (state.eat(
+    92
+    /* \ */
+  )) {
+    var result$1 = this.regexp_eatCharacterClassEscape(state);
+    if (result$1) {
+      return result$1;
+    }
+    state.pos = start;
+  }
+  return null;
+};
+pp$1.regexp_eatClassStringDisjunction = function(state) {
+  var start = state.pos;
+  if (state.eatChars(
+    [92, 113]
+    /* \q */
+  )) {
+    if (state.eat(
+      123
+      /* { */
+    )) {
+      var result = this.regexp_classStringDisjunctionContents(state);
+      if (state.eat(
+        125
+        /* } */
+      )) {
+        return result;
+      }
+    } else {
+      state.raise("Invalid escape");
+    }
+    state.pos = start;
+  }
+  return null;
+};
+pp$1.regexp_classStringDisjunctionContents = function(state) {
+  var result = this.regexp_classString(state);
+  while (state.eat(
+    124
+    /* | */
+  )) {
+    if (this.regexp_classString(state) === CharSetString) {
+      result = CharSetString;
+    }
+  }
+  return result;
+};
+pp$1.regexp_classString = function(state) {
+  var count = 0;
+  while (this.regexp_eatClassSetCharacter(state)) {
+    count++;
+  }
+  return count === 1 ? CharSetOk : CharSetString;
+};
+pp$1.regexp_eatClassSetCharacter = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    92
+    /* \ */
+  )) {
+    if (this.regexp_eatCharacterEscape(state) || this.regexp_eatClassSetReservedPunctuator(state)) {
+      return true;
+    }
+    if (state.eat(
+      98
+      /* b */
+    )) {
+      state.lastIntValue = 8;
+      return true;
+    }
+    state.pos = start;
+    return false;
+  }
+  var ch = state.current();
+  if (ch < 0 || ch === state.lookahead() && isClassSetReservedDoublePunctuatorCharacter(ch)) {
+    return false;
+  }
+  if (isClassSetSyntaxCharacter(ch)) {
+    return false;
+  }
+  state.advance();
+  state.lastIntValue = ch;
+  return true;
+};
+function isClassSetReservedDoublePunctuatorCharacter(ch) {
+  return ch === 33 || ch >= 35 && ch <= 38 || ch >= 42 && ch <= 44 || ch === 46 || ch >= 58 && ch <= 64 || ch === 94 || ch === 96 || ch === 126;
+}
+function isClassSetSyntaxCharacter(ch) {
+  return ch === 40 || ch === 41 || ch === 45 || ch === 47 || ch >= 91 && ch <= 93 || ch >= 123 && ch <= 125;
+}
+pp$1.regexp_eatClassSetReservedPunctuator = function(state) {
+  var ch = state.current();
+  if (isClassSetReservedPunctuator(ch)) {
+    state.lastIntValue = ch;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+function isClassSetReservedPunctuator(ch) {
+  return ch === 33 || ch === 35 || ch === 37 || ch === 38 || ch === 44 || ch === 45 || ch >= 58 && ch <= 62 || ch === 64 || ch === 96 || ch === 126;
+}
+pp$1.regexp_eatClassControlLetter = function(state) {
+  var ch = state.current();
+  if (isDecimalDigit(ch) || ch === 95) {
+    state.lastIntValue = ch % 32;
+    state.advance();
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatHexEscapeSequence = function(state) {
+  var start = state.pos;
+  if (state.eat(
+    120
+    /* x */
+  )) {
+    if (this.regexp_eatFixedHexDigits(state, 2)) {
+      return true;
+    }
+    if (state.switchU) {
+      state.raise("Invalid escape");
+    }
+    state.pos = start;
+  }
+  return false;
+};
+pp$1.regexp_eatDecimalDigits = function(state) {
+  var start = state.pos;
+  var ch = 0;
+  state.lastIntValue = 0;
+  while (isDecimalDigit(ch = state.current())) {
+    state.lastIntValue = 10 * state.lastIntValue + (ch - 48);
+    state.advance();
+  }
+  return state.pos !== start;
+};
+function isDecimalDigit(ch) {
+  return ch >= 48 && ch <= 57;
+}
+pp$1.regexp_eatHexDigits = function(state) {
+  var start = state.pos;
+  var ch = 0;
+  state.lastIntValue = 0;
+  while (isHexDigit(ch = state.current())) {
+    state.lastIntValue = 16 * state.lastIntValue + hexToInt(ch);
+    state.advance();
+  }
+  return state.pos !== start;
+};
+function isHexDigit(ch) {
+  return ch >= 48 && ch <= 57 || ch >= 65 && ch <= 70 || ch >= 97 && ch <= 102;
+}
+function hexToInt(ch) {
+  if (ch >= 65 && ch <= 70) {
+    return 10 + (ch - 65);
+  }
+  if (ch >= 97 && ch <= 102) {
+    return 10 + (ch - 97);
+  }
+  return ch - 48;
+}
+pp$1.regexp_eatLegacyOctalEscapeSequence = function(state) {
+  if (this.regexp_eatOctalDigit(state)) {
+    var n1 = state.lastIntValue;
+    if (this.regexp_eatOctalDigit(state)) {
+      var n2 = state.lastIntValue;
+      if (n1 <= 3 && this.regexp_eatOctalDigit(state)) {
+        state.lastIntValue = n1 * 64 + n2 * 8 + state.lastIntValue;
+      } else {
+        state.lastIntValue = n1 * 8 + n2;
+      }
+    } else {
+      state.lastIntValue = n1;
+    }
+    return true;
+  }
+  return false;
+};
+pp$1.regexp_eatOctalDigit = function(state) {
+  var ch = state.current();
+  if (isOctalDigit(ch)) {
+    state.lastIntValue = ch - 48;
+    state.advance();
+    return true;
+  }
+  state.lastIntValue = 0;
+  return false;
+};
+function isOctalDigit(ch) {
+  return ch >= 48 && ch <= 55;
+}
+pp$1.regexp_eatFixedHexDigits = function(state, length) {
+  var start = state.pos;
+  state.lastIntValue = 0;
+  for (var i2 = 0; i2 < length; ++i2) {
+    var ch = state.current();
+    if (!isHexDigit(ch)) {
+      state.pos = start;
+      return false;
+    }
+    state.lastIntValue = 16 * state.lastIntValue + hexToInt(ch);
+    state.advance();
+  }
+  return true;
+};
+var Token = function Token2(p) {
+  this.type = p.type;
+  this.value = p.value;
+  this.start = p.start;
+  this.end = p.end;
+  if (p.options.locations) {
+    this.loc = new SourceLocation(p, p.startLoc, p.endLoc);
+  }
+  if (p.options.ranges) {
+    this.range = [p.start, p.end];
+  }
+};
+var pp = Parser.prototype;
+pp.next = function(ignoreEscapeSequenceInKeyword) {
+  if (!ignoreEscapeSequenceInKeyword && this.type.keyword && this.containsEsc) {
+    this.raiseRecoverable(this.start, "Escape sequence in keyword " + this.type.keyword);
+  }
+  if (this.options.onToken) {
+    this.options.onToken(new Token(this));
+  }
+  this.lastTokEnd = this.end;
+  this.lastTokStart = this.start;
+  this.lastTokEndLoc = this.endLoc;
+  this.lastTokStartLoc = this.startLoc;
+  this.nextToken();
+};
+pp.getToken = function() {
+  this.next();
+  return new Token(this);
+};
+if (typeof Symbol !== "undefined") {
+  pp[Symbol.iterator] = function() {
+    var this$1$1 = this;
+    return {
+      next: function() {
+        var token = this$1$1.getToken();
+        return {
+          done: token.type === types$1.eof,
+          value: token
+        };
+      }
+    };
+  };
+}
+pp.nextToken = function() {
+  var curContext = this.curContext();
+  if (!curContext || !curContext.preserveSpace) {
+    this.skipSpace();
+  }
+  this.start = this.pos;
+  if (this.options.locations) {
+    this.startLoc = this.curPosition();
+  }
+  if (this.pos >= this.input.length) {
+    return this.finishToken(types$1.eof);
+  }
+  if (curContext.override) {
+    return curContext.override(this);
+  } else {
+    this.readToken(this.fullCharCodeAtPos());
+  }
+};
+pp.readToken = function(code) {
+  if (isIdentifierStart(code, this.options.ecmaVersion >= 6) || code === 92) {
+    return this.readWord();
+  }
+  return this.getTokenFromCode(code);
+};
+pp.fullCharCodeAt = function(pos) {
+  var code = this.input.charCodeAt(pos);
+  if (code <= 55295 || code >= 56320) {
+    return code;
+  }
+  var next = this.input.charCodeAt(pos + 1);
+  return next <= 56319 || next >= 57344 ? code : (code << 10) + next - 56613888;
+};
+pp.fullCharCodeAtPos = function() {
+  return this.fullCharCodeAt(this.pos);
+};
+pp.skipBlockComment = function() {
+  var startLoc = this.options.onComment && this.curPosition();
+  var start = this.pos, end = this.input.indexOf("*/", this.pos += 2);
+  if (end === -1) {
+    this.raise(this.pos - 2, "Unterminated comment");
+  }
+  this.pos = end + 2;
+  if (this.options.locations) {
+    for (var nextBreak = void 0, pos = start; (nextBreak = nextLineBreak(this.input, pos, this.pos)) > -1; ) {
+      ++this.curLine;
+      pos = this.lineStart = nextBreak;
+    }
+  }
+  if (this.options.onComment) {
+    this.options.onComment(
+      true,
+      this.input.slice(start + 2, end),
+      start,
+      this.pos,
+      startLoc,
+      this.curPosition()
+    );
+  }
+};
+pp.skipLineComment = function(startSkip) {
+  var start = this.pos;
+  var startLoc = this.options.onComment && this.curPosition();
+  var ch = this.input.charCodeAt(this.pos += startSkip);
+  while (this.pos < this.input.length && !isNewLine(ch)) {
+    ch = this.input.charCodeAt(++this.pos);
+  }
+  if (this.options.onComment) {
+    this.options.onComment(
+      false,
+      this.input.slice(start + startSkip, this.pos),
+      start,
+      this.pos,
+      startLoc,
+      this.curPosition()
+    );
+  }
+};
+pp.skipSpace = function() {
+  loop: while (this.pos < this.input.length) {
+    var ch = this.input.charCodeAt(this.pos);
+    switch (ch) {
+      case 32:
+      case 160:
+        ++this.pos;
+        break;
+      case 13:
+        if (this.input.charCodeAt(this.pos + 1) === 10) {
+          ++this.pos;
+        }
+      case 10:
+      case 8232:
+      case 8233:
+        ++this.pos;
+        if (this.options.locations) {
+          ++this.curLine;
+          this.lineStart = this.pos;
+        }
+        break;
+      case 47:
+        switch (this.input.charCodeAt(this.pos + 1)) {
+          case 42:
+            this.skipBlockComment();
+            break;
+          case 47:
+            this.skipLineComment(2);
+            break;
+          default:
+            break loop;
+        }
+        break;
+      default:
+        if (ch > 8 && ch < 14 || ch >= 5760 && nonASCIIwhitespace.test(String.fromCharCode(ch))) {
+          ++this.pos;
+        } else {
+          break loop;
+        }
+    }
+  }
+};
+pp.finishToken = function(type, val) {
+  this.end = this.pos;
+  if (this.options.locations) {
+    this.endLoc = this.curPosition();
+  }
+  var prevType = this.type;
+  this.type = type;
+  this.value = val;
+  this.updateContext(prevType);
+};
+pp.readToken_dot = function() {
+  var next = this.input.charCodeAt(this.pos + 1);
+  if (next >= 48 && next <= 57) {
+    return this.readNumber(true);
+  }
+  var next2 = this.input.charCodeAt(this.pos + 2);
+  if (this.options.ecmaVersion >= 6 && next === 46 && next2 === 46) {
+    this.pos += 3;
+    return this.finishToken(types$1.ellipsis);
+  } else {
+    ++this.pos;
+    return this.finishToken(types$1.dot);
+  }
+};
+pp.readToken_slash = function() {
+  var next = this.input.charCodeAt(this.pos + 1);
+  if (this.exprAllowed) {
+    ++this.pos;
+    return this.readRegexp();
+  }
+  if (next === 61) {
+    return this.finishOp(types$1.assign, 2);
+  }
+  return this.finishOp(types$1.slash, 1);
+};
+pp.readToken_mult_modulo_exp = function(code) {
+  var next = this.input.charCodeAt(this.pos + 1);
+  var size = 1;
+  var tokentype = code === 42 ? types$1.star : types$1.modulo;
+  if (this.options.ecmaVersion >= 7 && code === 42 && next === 42) {
+    ++size;
+    tokentype = types$1.starstar;
+    next = this.input.charCodeAt(this.pos + 2);
+  }
+  if (next === 61) {
+    return this.finishOp(types$1.assign, size + 1);
+  }
+  return this.finishOp(tokentype, size);
+};
+pp.readToken_pipe_amp = function(code) {
+  var next = this.input.charCodeAt(this.pos + 1);
+  if (next === code) {
+    if (this.options.ecmaVersion >= 12) {
+      var next2 = this.input.charCodeAt(this.pos + 2);
+      if (next2 === 61) {
+        return this.finishOp(types$1.assign, 3);
+      }
+    }
+    return this.finishOp(code === 124 ? types$1.logicalOR : types$1.logicalAND, 2);
+  }
+  if (next === 61) {
+    return this.finishOp(types$1.assign, 2);
+  }
+  return this.finishOp(code === 124 ? types$1.bitwiseOR : types$1.bitwiseAND, 1);
+};
+pp.readToken_caret = function() {
+  var next = this.input.charCodeAt(this.pos + 1);
+  if (next === 61) {
+    return this.finishOp(types$1.assign, 2);
+  }
+  return this.finishOp(types$1.bitwiseXOR, 1);
+};
+pp.readToken_plus_min = function(code) {
+  var next = this.input.charCodeAt(this.pos + 1);
+  if (next === code) {
+    if (next === 45 && !this.inModule && this.input.charCodeAt(this.pos + 2) === 62 && (this.lastTokEnd === 0 || lineBreak.test(this.input.slice(this.lastTokEnd, this.pos)))) {
+      this.skipLineComment(3);
+      this.skipSpace();
+      return this.nextToken();
+    }
+    return this.finishOp(types$1.incDec, 2);
+  }
+  if (next === 61) {
+    return this.finishOp(types$1.assign, 2);
+  }
+  return this.finishOp(types$1.plusMin, 1);
+};
+pp.readToken_lt_gt = function(code) {
+  var next = this.input.charCodeAt(this.pos + 1);
+  var size = 1;
+  if (next === code) {
+    size = code === 62 && this.input.charCodeAt(this.pos + 2) === 62 ? 3 : 2;
+    if (this.input.charCodeAt(this.pos + size) === 61) {
+      return this.finishOp(types$1.assign, size + 1);
+    }
+    return this.finishOp(types$1.bitShift, size);
+  }
+  if (next === 33 && code === 60 && !this.inModule && this.input.charCodeAt(this.pos + 2) === 45 && this.input.charCodeAt(this.pos + 3) === 45) {
+    this.skipLineComment(4);
+    this.skipSpace();
+    return this.nextToken();
+  }
+  if (next === 61) {
+    size = 2;
+  }
+  return this.finishOp(types$1.relational, size);
+};
+pp.readToken_eq_excl = function(code) {
+  var next = this.input.charCodeAt(this.pos + 1);
+  if (next === 61) {
+    return this.finishOp(types$1.equality, this.input.charCodeAt(this.pos + 2) === 61 ? 3 : 2);
+  }
+  if (code === 61 && next === 62 && this.options.ecmaVersion >= 6) {
+    this.pos += 2;
+    return this.finishToken(types$1.arrow);
+  }
+  return this.finishOp(code === 61 ? types$1.eq : types$1.prefix, 1);
+};
+pp.readToken_question = function() {
+  var ecmaVersion2 = this.options.ecmaVersion;
+  if (ecmaVersion2 >= 11) {
+    var next = this.input.charCodeAt(this.pos + 1);
+    if (next === 46) {
+      var next2 = this.input.charCodeAt(this.pos + 2);
+      if (next2 < 48 || next2 > 57) {
+        return this.finishOp(types$1.questionDot, 2);
+      }
+    }
+    if (next === 63) {
+      if (ecmaVersion2 >= 12) {
+        var next2$1 = this.input.charCodeAt(this.pos + 2);
+        if (next2$1 === 61) {
+          return this.finishOp(types$1.assign, 3);
+        }
+      }
+      return this.finishOp(types$1.coalesce, 2);
+    }
+  }
+  return this.finishOp(types$1.question, 1);
+};
+pp.readToken_numberSign = function() {
+  var ecmaVersion2 = this.options.ecmaVersion;
+  var code = 35;
+  if (ecmaVersion2 >= 13) {
+    ++this.pos;
+    code = this.fullCharCodeAtPos();
+    if (isIdentifierStart(code, true) || code === 92) {
+      return this.finishToken(types$1.privateId, this.readWord1());
+    }
+  }
+  this.raise(this.pos, "Unexpected character '" + codePointToString(code) + "'");
+};
+pp.getTokenFromCode = function(code) {
+  switch (code) {
+    // The interpretation of a dot depends on whether it is followed
+    // by a digit or another two dots.
+    case 46:
+      return this.readToken_dot();
+    // Punctuation tokens.
+    case 40:
+      ++this.pos;
+      return this.finishToken(types$1.parenL);
+    case 41:
+      ++this.pos;
+      return this.finishToken(types$1.parenR);
+    case 59:
+      ++this.pos;
+      return this.finishToken(types$1.semi);
+    case 44:
+      ++this.pos;
+      return this.finishToken(types$1.comma);
+    case 91:
+      ++this.pos;
+      return this.finishToken(types$1.bracketL);
+    case 93:
+      ++this.pos;
+      return this.finishToken(types$1.bracketR);
+    case 123:
+      ++this.pos;
+      return this.finishToken(types$1.braceL);
+    case 125:
+      ++this.pos;
+      return this.finishToken(types$1.braceR);
+    case 58:
+      ++this.pos;
+      return this.finishToken(types$1.colon);
+    case 96:
+      if (this.options.ecmaVersion < 6) {
+        break;
+      }
+      ++this.pos;
+      return this.finishToken(types$1.backQuote);
+    case 48:
+      var next = this.input.charCodeAt(this.pos + 1);
+      if (next === 120 || next === 88) {
+        return this.readRadixNumber(16);
+      }
+      if (this.options.ecmaVersion >= 6) {
+        if (next === 111 || next === 79) {
+          return this.readRadixNumber(8);
+        }
+        if (next === 98 || next === 66) {
+          return this.readRadixNumber(2);
+        }
+      }
+    // Anything else beginning with a digit is an integer, octal
+    // number, or float.
+    case 49:
+    case 50:
+    case 51:
+    case 52:
+    case 53:
+    case 54:
+    case 55:
+    case 56:
+    case 57:
+      return this.readNumber(false);
+    // Quotes produce strings.
+    case 34:
+    case 39:
+      return this.readString(code);
+    // Operators are parsed inline in tiny state machines. '=' (61) is
+    // often referred to. `finishOp` simply skips the amount of
+    // characters it is given as second argument, and returns a token
+    // of the type given by its first argument.
+    case 47:
+      return this.readToken_slash();
+    case 37:
+    case 42:
+      return this.readToken_mult_modulo_exp(code);
+    case 124:
+    case 38:
+      return this.readToken_pipe_amp(code);
+    case 94:
+      return this.readToken_caret();
+    case 43:
+    case 45:
+      return this.readToken_plus_min(code);
+    case 60:
+    case 62:
+      return this.readToken_lt_gt(code);
+    case 61:
+    case 33:
+      return this.readToken_eq_excl(code);
+    case 63:
+      return this.readToken_question();
+    case 126:
+      return this.finishOp(types$1.prefix, 1);
+    case 35:
+      return this.readToken_numberSign();
+  }
+  this.raise(this.pos, "Unexpected character '" + codePointToString(code) + "'");
+};
+pp.finishOp = function(type, size) {
+  var str = this.input.slice(this.pos, this.pos + size);
+  this.pos += size;
+  return this.finishToken(type, str);
+};
+pp.readRegexp = function() {
+  var escaped, inClass, start = this.pos;
+  for (; ; ) {
+    if (this.pos >= this.input.length) {
+      this.raise(start, "Unterminated regular expression");
+    }
+    var ch = this.input.charAt(this.pos);
+    if (lineBreak.test(ch)) {
+      this.raise(start, "Unterminated regular expression");
+    }
+    if (!escaped) {
+      if (ch === "[") {
+        inClass = true;
+      } else if (ch === "]" && inClass) {
+        inClass = false;
+      } else if (ch === "/" && !inClass) {
+        break;
+      }
+      escaped = ch === "\\";
+    } else {
+      escaped = false;
+    }
+    ++this.pos;
+  }
+  var pattern = this.input.slice(start, this.pos);
+  ++this.pos;
+  var flagsStart = this.pos;
+  var flags = this.readWord1();
+  if (this.containsEsc) {
+    this.unexpected(flagsStart);
+  }
+  var state = this.regexpState || (this.regexpState = new RegExpValidationState(this));
+  state.reset(start, pattern, flags);
+  this.validateRegExpFlags(state);
+  this.validateRegExpPattern(state);
+  var value = null;
+  try {
+    value = new RegExp(pattern, flags);
+  } catch (e) {
+  }
+  return this.finishToken(types$1.regexp, { pattern, flags, value });
+};
+pp.readInt = function(radix, len2, maybeLegacyOctalNumericLiteral) {
+  var allowSeparators = this.options.ecmaVersion >= 12 && len2 === void 0;
+  var isLegacyOctalNumericLiteral = maybeLegacyOctalNumericLiteral && this.input.charCodeAt(this.pos) === 48;
+  var start = this.pos, total = 0, lastCode = 0;
+  for (var i2 = 0, e = len2 == null ? Infinity : len2; i2 < e; ++i2, ++this.pos) {
+    var code = this.input.charCodeAt(this.pos), val = void 0;
+    if (allowSeparators && code === 95) {
+      if (isLegacyOctalNumericLiteral) {
+        this.raiseRecoverable(this.pos, "Numeric separator is not allowed in legacy octal numeric literals");
+      }
+      if (lastCode === 95) {
+        this.raiseRecoverable(this.pos, "Numeric separator must be exactly one underscore");
+      }
+      if (i2 === 0) {
+        this.raiseRecoverable(this.pos, "Numeric separator is not allowed at the first of digits");
+      }
+      lastCode = code;
+      continue;
+    }
+    if (code >= 97) {
+      val = code - 97 + 10;
+    } else if (code >= 65) {
+      val = code - 65 + 10;
+    } else if (code >= 48 && code <= 57) {
+      val = code - 48;
+    } else {
+      val = Infinity;
+    }
+    if (val >= radix) {
+      break;
+    }
+    lastCode = code;
+    total = total * radix + val;
+  }
+  if (allowSeparators && lastCode === 95) {
+    this.raiseRecoverable(this.pos - 1, "Numeric separator is not allowed at the last of digits");
+  }
+  if (this.pos === start || len2 != null && this.pos - start !== len2) {
+    return null;
+  }
+  return total;
+};
+function stringToNumber(str, isLegacyOctalNumericLiteral) {
+  if (isLegacyOctalNumericLiteral) {
+    return parseInt(str, 8);
+  }
+  return parseFloat(str.replace(/_/g, ""));
+}
+function stringToBigInt(str) {
+  if (typeof BigInt !== "function") {
+    return null;
+  }
+  return BigInt(str.replace(/_/g, ""));
+}
+pp.readRadixNumber = function(radix) {
+  var start = this.pos;
+  this.pos += 2;
+  var val = this.readInt(radix);
+  if (val == null) {
+    this.raise(this.start + 2, "Expected number in radix " + radix);
+  }
+  if (this.options.ecmaVersion >= 11 && this.input.charCodeAt(this.pos) === 110) {
+    val = stringToBigInt(this.input.slice(start, this.pos));
+    ++this.pos;
+  } else if (isIdentifierStart(this.fullCharCodeAtPos())) {
+    this.raise(this.pos, "Identifier directly after number");
+  }
+  return this.finishToken(types$1.num, val);
+};
+pp.readNumber = function(startsWithDot) {
+  var start = this.pos;
+  if (!startsWithDot && this.readInt(10, void 0, true) === null) {
+    this.raise(start, "Invalid number");
+  }
+  var octal = this.pos - start >= 2 && this.input.charCodeAt(start) === 48;
+  if (octal && this.strict) {
+    this.raise(start, "Invalid number");
+  }
+  var next = this.input.charCodeAt(this.pos);
+  if (!octal && !startsWithDot && this.options.ecmaVersion >= 11 && next === 110) {
+    var val$1 = stringToBigInt(this.input.slice(start, this.pos));
+    ++this.pos;
+    if (isIdentifierStart(this.fullCharCodeAtPos())) {
+      this.raise(this.pos, "Identifier directly after number");
+    }
+    return this.finishToken(types$1.num, val$1);
+  }
+  if (octal && /[89]/.test(this.input.slice(start, this.pos))) {
+    octal = false;
+  }
+  if (next === 46 && !octal) {
+    ++this.pos;
+    this.readInt(10);
+    next = this.input.charCodeAt(this.pos);
+  }
+  if ((next === 69 || next === 101) && !octal) {
+    next = this.input.charCodeAt(++this.pos);
+    if (next === 43 || next === 45) {
+      ++this.pos;
+    }
+    if (this.readInt(10) === null) {
+      this.raise(start, "Invalid number");
+    }
+  }
+  if (isIdentifierStart(this.fullCharCodeAtPos())) {
+    this.raise(this.pos, "Identifier directly after number");
+  }
+  var val = stringToNumber(this.input.slice(start, this.pos), octal);
+  return this.finishToken(types$1.num, val);
+};
+pp.readCodePoint = function() {
+  var ch = this.input.charCodeAt(this.pos), code;
+  if (ch === 123) {
+    if (this.options.ecmaVersion < 6) {
+      this.unexpected();
+    }
+    var codePos = ++this.pos;
+    code = this.readHexChar(this.input.indexOf("}", this.pos) - this.pos);
+    ++this.pos;
+    if (code > 1114111) {
+      this.invalidStringToken(codePos, "Code point out of bounds");
+    }
+  } else {
+    code = this.readHexChar(4);
+  }
+  return code;
+};
+pp.readString = function(quote) {
+  var out = "", chunkStart = ++this.pos;
+  for (; ; ) {
+    if (this.pos >= this.input.length) {
+      this.raise(this.start, "Unterminated string constant");
+    }
+    var ch = this.input.charCodeAt(this.pos);
+    if (ch === quote) {
+      break;
+    }
+    if (ch === 92) {
+      out += this.input.slice(chunkStart, this.pos);
+      out += this.readEscapedChar(false);
+      chunkStart = this.pos;
+    } else if (ch === 8232 || ch === 8233) {
+      if (this.options.ecmaVersion < 10) {
+        this.raise(this.start, "Unterminated string constant");
+      }
+      ++this.pos;
+      if (this.options.locations) {
+        this.curLine++;
+        this.lineStart = this.pos;
+      }
+    } else {
+      if (isNewLine(ch)) {
+        this.raise(this.start, "Unterminated string constant");
+      }
+      ++this.pos;
+    }
+  }
+  out += this.input.slice(chunkStart, this.pos++);
+  return this.finishToken(types$1.string, out);
+};
+var INVALID_TEMPLATE_ESCAPE_ERROR = {};
+pp.tryReadTemplateToken = function() {
+  this.inTemplateElement = true;
+  try {
+    this.readTmplToken();
+  } catch (err) {
+    if (err === INVALID_TEMPLATE_ESCAPE_ERROR) {
+      this.readInvalidTemplateToken();
+    } else {
+      throw err;
+    }
+  }
+  this.inTemplateElement = false;
+};
+pp.invalidStringToken = function(position, message) {
+  if (this.inTemplateElement && this.options.ecmaVersion >= 9) {
+    throw INVALID_TEMPLATE_ESCAPE_ERROR;
+  } else {
+    this.raise(position, message);
+  }
+};
+pp.readTmplToken = function() {
+  var out = "", chunkStart = this.pos;
+  for (; ; ) {
+    if (this.pos >= this.input.length) {
+      this.raise(this.start, "Unterminated template");
+    }
+    var ch = this.input.charCodeAt(this.pos);
+    if (ch === 96 || ch === 36 && this.input.charCodeAt(this.pos + 1) === 123) {
+      if (this.pos === this.start && (this.type === types$1.template || this.type === types$1.invalidTemplate)) {
+        if (ch === 36) {
+          this.pos += 2;
+          return this.finishToken(types$1.dollarBraceL);
+        } else {
+          ++this.pos;
+          return this.finishToken(types$1.backQuote);
+        }
+      }
+      out += this.input.slice(chunkStart, this.pos);
+      return this.finishToken(types$1.template, out);
+    }
+    if (ch === 92) {
+      out += this.input.slice(chunkStart, this.pos);
+      out += this.readEscapedChar(true);
+      chunkStart = this.pos;
+    } else if (isNewLine(ch)) {
+      out += this.input.slice(chunkStart, this.pos);
+      ++this.pos;
+      switch (ch) {
+        case 13:
+          if (this.input.charCodeAt(this.pos) === 10) {
+            ++this.pos;
+          }
+        case 10:
+          out += "\n";
+          break;
+        default:
+          out += String.fromCharCode(ch);
+          break;
+      }
+      if (this.options.locations) {
+        ++this.curLine;
+        this.lineStart = this.pos;
+      }
+      chunkStart = this.pos;
+    } else {
+      ++this.pos;
+    }
+  }
+};
+pp.readInvalidTemplateToken = function() {
+  for (; this.pos < this.input.length; this.pos++) {
+    switch (this.input[this.pos]) {
+      case "\\":
+        ++this.pos;
+        break;
+      case "$":
+        if (this.input[this.pos + 1] !== "{") {
+          break;
+        }
+      // fall through
+      case "`":
+        return this.finishToken(types$1.invalidTemplate, this.input.slice(this.start, this.pos));
+      case "\r":
+        if (this.input[this.pos + 1] === "\n") {
+          ++this.pos;
+        }
+      // fall through
+      case "\n":
+      case "\u2028":
+      case "\u2029":
+        ++this.curLine;
+        this.lineStart = this.pos + 1;
+        break;
+    }
+  }
+  this.raise(this.start, "Unterminated template");
+};
+pp.readEscapedChar = function(inTemplate) {
+  var ch = this.input.charCodeAt(++this.pos);
+  ++this.pos;
+  switch (ch) {
+    case 110:
+      return "\n";
+    // 'n' -> '\n'
+    case 114:
+      return "\r";
+    // 'r' -> '\r'
+    case 120:
+      return String.fromCharCode(this.readHexChar(2));
+    // 'x'
+    case 117:
+      return codePointToString(this.readCodePoint());
+    // 'u'
+    case 116:
+      return "	";
+    // 't' -> '\t'
+    case 98:
+      return "\b";
+    // 'b' -> '\b'
+    case 118:
+      return "\v";
+    // 'v' -> '\u000b'
+    case 102:
+      return "\f";
+    // 'f' -> '\f'
+    case 13:
+      if (this.input.charCodeAt(this.pos) === 10) {
+        ++this.pos;
+      }
+    // '\r\n'
+    case 10:
+      if (this.options.locations) {
+        this.lineStart = this.pos;
+        ++this.curLine;
+      }
+      return "";
+    case 56:
+    case 57:
+      if (this.strict) {
+        this.invalidStringToken(
+          this.pos - 1,
+          "Invalid escape sequence"
+        );
+      }
+      if (inTemplate) {
+        var codePos = this.pos - 1;
+        this.invalidStringToken(
+          codePos,
+          "Invalid escape sequence in template string"
+        );
+      }
+    default:
+      if (ch >= 48 && ch <= 55) {
+        var octalStr = this.input.substr(this.pos - 1, 3).match(/^[0-7]+/)[0];
+        var octal = parseInt(octalStr, 8);
+        if (octal > 255) {
+          octalStr = octalStr.slice(0, -1);
+          octal = parseInt(octalStr, 8);
+        }
+        this.pos += octalStr.length - 1;
+        ch = this.input.charCodeAt(this.pos);
+        if ((octalStr !== "0" || ch === 56 || ch === 57) && (this.strict || inTemplate)) {
+          this.invalidStringToken(
+            this.pos - 1 - octalStr.length,
+            inTemplate ? "Octal literal in template string" : "Octal literal in strict mode"
+          );
+        }
+        return String.fromCharCode(octal);
+      }
+      if (isNewLine(ch)) {
+        if (this.options.locations) {
+          this.lineStart = this.pos;
+          ++this.curLine;
+        }
+        return "";
+      }
+      return String.fromCharCode(ch);
+  }
+};
+pp.readHexChar = function(len2) {
+  var codePos = this.pos;
+  var n = this.readInt(16, len2);
+  if (n === null) {
+    this.invalidStringToken(codePos, "Bad character escape sequence");
+  }
+  return n;
+};
+pp.readWord1 = function() {
+  this.containsEsc = false;
+  var word = "", first = true, chunkStart = this.pos;
+  var astral = this.options.ecmaVersion >= 6;
+  while (this.pos < this.input.length) {
+    var ch = this.fullCharCodeAtPos();
+    if (isIdentifierChar(ch, astral)) {
+      this.pos += ch <= 65535 ? 1 : 2;
+    } else if (ch === 92) {
+      this.containsEsc = true;
+      word += this.input.slice(chunkStart, this.pos);
+      var escStart = this.pos;
+      if (this.input.charCodeAt(++this.pos) !== 117) {
+        this.invalidStringToken(this.pos, "Expecting Unicode escape sequence \\uXXXX");
+      }
+      ++this.pos;
+      var esc4 = this.readCodePoint();
+      if (!(first ? isIdentifierStart : isIdentifierChar)(esc4, astral)) {
+        this.invalidStringToken(escStart, "Invalid Unicode escape");
+      }
+      word += codePointToString(esc4);
+      chunkStart = this.pos;
+    } else {
+      break;
+    }
+    first = false;
+  }
+  return word + this.input.slice(chunkStart, this.pos);
+};
+pp.readWord = function() {
+  var word = this.readWord1();
+  var type = types$1.name;
+  if (this.keywords.test(word)) {
+    type = keywords[word];
+  }
+  return this.finishToken(type, word);
+};
+var version = "8.19.0";
+Parser.acorn = {
+  Parser,
+  version,
+  defaultOptions,
+  Position,
+  SourceLocation,
+  getLineInfo,
+  Node,
+  TokenType,
+  tokTypes: types$1,
+  keywordTypes: keywords,
+  TokContext,
+  tokContexts: types,
+  isIdentifierChar,
+  isIdentifierStart,
+  Token,
+  isNewLine,
+  lineBreak,
+  lineBreakG,
+  nonASCIIwhitespace
+};
+function parse4(input, options) {
+  return Parser.parse(input, options);
+}
 
 // engine/playgrounds/index.js
 var playgrounds_exports = {};
@@ -5011,6 +10738,153 @@ pick(true);
   }
 };
 
+// engine/playgrounds/expression-runtime.js
+function expressionAst(expression) {
+  const source = String(expression || "0");
+  if (source.length > 4e3) throw Error("Formula is too long");
+  const program = parse4("(" + source + ")", { ecmaVersion: "latest" });
+  const ast = program.body[0]?.expression;
+  if (program.body.length !== 1 || !ast) throw Error("Expected one formula");
+  let count = 0;
+  function check(n, depth = 0) {
+    if (++count > 500 || depth > 40) throw Error("Formula is too complex");
+    const next = (x) => check(x, depth + 1);
+    switch (n.type) {
+      case "Literal":
+        if (n.regex || n.bigint) throw Error("Unsupported literal");
+        break;
+      case "Identifier":
+        if (["window", "globalThis", "document", "constructor", "__proto__", "prototype"].includes(n.name)) throw Error("Unsupported variable");
+        break;
+      case "UnaryExpression":
+        if (!["+", "-", "!", "~"].includes(n.operator)) throw Error("Unsupported operator");
+        next(n.argument);
+        break;
+      case "BinaryExpression":
+        if (!["+", "-", "*", "/", "%", "**", "<", "<=", ">", ">=", "==", "!=", "===", "!==", "&", "|", "^", "<<", ">>", ">>>"].includes(n.operator)) throw Error("Unsupported operator");
+        next(n.left);
+        next(n.right);
+        break;
+      case "LogicalExpression":
+        next(n.left);
+        next(n.right);
+        break;
+      case "ConditionalExpression":
+        next(n.test);
+        next(n.consequent);
+        next(n.alternate);
+        break;
+      case "MemberExpression":
+        if (n.computed || n.object.type !== "Identifier" || !["V", "Math"].includes(n.object.name) || ["constructor", "__proto__", "prototype"].includes(n.property.name)) throw Error("Only V.name and Math.name are supported");
+        break;
+      case "CallExpression":
+        if (n.callee.type !== "MemberExpression" || n.callee.object.name !== "Math") throw Error("Only Math functions are supported");
+        next(n.callee);
+        n.arguments.forEach(next);
+        break;
+      default:
+        throw Error("Unsupported formula syntax: " + n.type);
+    }
+  }
+  check(ast);
+  return ast;
+}
+function evaluateExpression(n, V = {}, t = 0) {
+  const ev = (x) => evaluateExpression(x, V, t);
+  switch (n.type) {
+    case "Literal":
+      return n.value;
+    case "Identifier":
+      return n.name === "t" ? t : n.name === "Infinity" ? Infinity : n.name === "NaN" ? NaN : Object.hasOwn(V, n.name) ? V[n.name] : 0;
+    case "MemberExpression":
+      return n.object.name === "V" ? Object.hasOwn(V, n.property.name) ? V[n.property.name] : 0 : Object.hasOwn(Math, n.property.name) ? Math[n.property.name] : void 0;
+    case "CallExpression": {
+      const fn = ev(n.callee);
+      if (typeof fn !== "function") throw Error("Unknown Math function");
+      return fn(...n.arguments.map(ev));
+    }
+    case "ConditionalExpression":
+      return ev(n.test) ? ev(n.consequent) : ev(n.alternate);
+    case "LogicalExpression": {
+      const a = ev(n.left);
+      return n.operator === "&&" ? a && ev(n.right) : n.operator === "||" ? a || ev(n.right) : a ?? ev(n.right);
+    }
+    case "UnaryExpression": {
+      const a = ev(n.argument);
+      switch (n.operator) {
+        case "+":
+          return +a;
+        case "-":
+          return -a;
+        case "!":
+          return !a;
+        case "~":
+          return ~a;
+      }
+      break;
+    }
+    case "BinaryExpression": {
+      const a = ev(n.left), b = ev(n.right);
+      switch (n.operator) {
+        case "+":
+          return a + b;
+        case "-":
+          return a - b;
+        case "*":
+          return a * b;
+        case "/":
+          return a / b;
+        case "%":
+          return a % b;
+        case "**":
+          return a ** b;
+        case "<":
+          return a < b;
+        case "<=":
+          return a <= b;
+        case ">":
+          return a > b;
+        case ">=":
+          return a >= b;
+        case "==":
+          return a == b;
+        case "!=":
+          return a != b;
+        case "===":
+          return a === b;
+        case "!==":
+          return a !== b;
+        case "&":
+          return a & b;
+        case "|":
+          return a | b;
+        case "^":
+          return a ^ b;
+        case "<<":
+          return a << b;
+        case ">>":
+          return a >> b;
+        case ">>>":
+          return a >>> b;
+      }
+      break;
+    }
+  }
+  throw Error("Unsupported formula");
+}
+function expressionRuntime(expressions) {
+  const asts = {};
+  for (const expr of expressions) {
+    try {
+      asts[String(expr)] = expressionAst(expr);
+    } catch {
+      asts[String(expr)] = null;
+    }
+  }
+  const json = JSON.stringify(asts, (k, v) => ["start", "end", "raw"].includes(k) ? void 0 : v).replace(/</g, "\\u003c");
+  return "var FORMULAS=" + json + ";\n" + evaluateExpression.toString() + "\nfunction compileMathExpression(expr){var tree=FORMULAS[String(expr)];return tree?function(V,t){return evaluateExpression(tree,V,t);}:null;}";
+}
+
 // engine/playgrounds/function-explorer.js
 var sliderSchema = {
   type: "object",
@@ -5110,10 +10984,11 @@ var function_explorer_default = {
       `@media(max-width:620px){#${domId} .pg-fx-grid{grid-template-columns:1fr}}`
     ].join("\n");
     const jsBody = `
+${expressionRuntime([params.curve && params.curve.yExpr || "t", params.curve && params.curve.markerExpr || "0", params.output.expr])}
 var inputs=$$('input[type=range]'),out=$('[data-role=out]'),verdict=$('[data-role=verdict]'),path=$('[data-role=curve]'),dot=$('[data-role=dot]');
 if(!inputs.length)return;
 var KEYS=(CONFIG.sliders||[]).map(function(s){return s.key;}).filter(function(k){return /^[A-Za-z_$][\\w$]*$/.test(k);});
-function mk(expr,args){try{var pre=KEYS.map(function(k){return 'var '+k+'=V['+JSON.stringify(k)+'];';}).join('');return new Function(args.join(','),'Math',pre+'return ('+(expr||'0')+');');}catch(e){return function(){return 0;};}}
+function mk(expr,args){return compileMathExpression(expr)||function(){return 0;};}
 var fnY=mk((CONFIG.curve&&CONFIG.curve.yExpr)||'t',['V','t']);
 var fnM=mk((CONFIG.curve&&CONFIG.curve.markerExpr)||'0',['V']);
 var fnO=mk(CONFIG.output.expr,['V']);
@@ -5487,7 +11362,7 @@ var tappable_meter_default = {
     const hasSkip = !!params.skipLabel;
     const skipBtn = hasSkip ? `<button type="button" data-role="skip" class="pg-tm-btn">${esc(params.skipLabel)}</button>` : "";
     const rows = items.map(
-      (it, i) => `<label class="pg-tm-item" for="${domId}-it${i}"><input id="${domId}-it${i}" data-role="item" data-idx="${i}" data-weight="${Number(it.weight) || 0}" type="checkbox"><span>${esc(it.label)}</span></label>`
+      (it, i2) => `<label class="pg-tm-item" for="${domId}-it${i2}"><input id="${domId}-it${i2}" data-role="item" data-idx="${i2}" data-weight="${Number(it.weight) || 0}" type="checkbox"><span>${esc(it.label)}</span></label>`
     ).join("");
     const gauge = `<svg viewBox="0 0 220 130" role="img" aria-label="${esc(meterLabel || "meter")}" class="pg-tm-gauge"><path d="M20 120 A100 100 0 0 1 200 120" fill="none" stroke="#23304a" stroke-width="16" stroke-linecap="round"/><path data-role="arc" d="M20 120 A100 100 0 0 1 200 120" fill="none" stroke="#22d3ee" stroke-width="16" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/><text data-role="pct" x="110" y="100" fill="#fff" font-size="34" font-weight="700" text-anchor="middle">0%</text></svg>`;
     const html2 = `<div class="pg-stage">${title}<div class="pg-tm-grid"><div class="pg-tm-meter">${gauge}<div class="pg-readout" data-role="verdict" aria-live="polite"></div>` + (meterLabel ? `<div class="pg-tm-caption">${esc(meterLabel)}</div>` : "") + `</div><div class="pg-tm-list" role="group" aria-label="Checklist items">${rows}</div></div><div class="pg-controls pg-tm-controls"><button type="button" data-role="run" class="pg-tm-btn">${esc(runLabel)}</button><button type="button" data-role="reset" class="pg-tm-btn">${esc(resetLabel)}</button>` + skipBtn + `</div></div>`;
@@ -5653,11 +11528,12 @@ var mixer_default = {
       `@media(max-width:620px){#${domId} .pg-mx-grid{grid-template-columns:1fr}}`
     ].join("\n");
     const jsBody = `
+${expressionRuntime([params.expr || "0", params.swatchExpr ? "(" + params.swatchExpr + ")" : "'#000'"])}
 var inputs=$$('input[type=range]'),out=$('[data-role=out]'),swatch=$('[data-role=swatch]'),verdict=$('[data-role=verdict]');
 if(!inputs.length)return;
 var mode=CONFIG.mode==='colour'?'colour':'number';
 var MKEYS=(CONFIG.inputs||[]).map(function(s){return s.key;}).filter(function(k){return /^[A-Za-z_$][\\w$]*$/.test(k);});
-function mk(expr){try{var pre=MKEYS.map(function(k){return 'var '+k+'=V['+JSON.stringify(k)+'];';}).join('');return new Function('V','Math',pre+'return ('+(expr||'0')+');');}catch(e){return function(){return 0;};}}
+function mk(expr){return compileMathExpression(expr)||function(){return 0;};}
 var fnN=mk(CONFIG.expr||'0');
 var fnC=mk(CONFIG.swatchExpr?('('+CONFIG.swatchExpr+')'):"'#000'");
 function vars(){var V={};inputs.forEach(function(i){var k=i.getAttribute('data-key');V[k]=parseFloat(i.value);var b=$('[data-val="'+k+'"]');if(b)b.textContent=i.value+(i.getAttribute('data-unit')||'');});return V;}
@@ -5802,7 +11678,7 @@ var stopwatch_default = {
     const compare = params.compareLine ? `<div class="pg-sw-compare">${esc(params.compareLine)}</div>` : "";
     const resetLabel = params.resetLabel || "Reset";
     const buttons = runs.map(
-      (r, i) => `<button type="button" data-role="run" data-idx="${i}" class="pg-sw-btn">${esc(r.label)}</button>`
+      (r, i2) => `<button type="button" data-role="run" data-idx="${i2}" class="pg-sw-btn">${esc(r.label)}</button>`
     ).join("");
     const dial = `<svg viewBox="0 0 200 200" role="img" aria-label="Stopwatch dial with a sweeping hand and progress ring" class="pg-sw-dial"><circle cx="100" cy="100" r="84" fill="none" stroke="#23304a" stroke-width="3"/><circle data-role="ring" cx="100" cy="100" r="70" fill="none" stroke="#22d3ee" stroke-width="6" stroke-linecap="round" transform="rotate(-90 100 100)" stroke-dasharray="439.82" stroke-dashoffset="439.82"/><g data-role="marks"></g><line data-role="hand" x1="100" y1="100" x2="100" y2="30" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="100" cy="100" r="6" fill="#fff"/><text data-role="time" x="100" y="150" fill="#fff" font-size="22" font-family="monospace" text-anchor="middle">0:00</text></svg>`;
     const html2 = `<div class="pg-stage">${title}<div class="pg-sw-grid">${dial}<div class="pg-sw-side"><div class="pg-readout"><b data-role="status">Ready</b></div><div class="pg-sw-log" data-role="log" aria-live="polite"></div></div></div>${compare}<div class="pg-controls pg-sw-controls" role="group" aria-label="Run the stopwatch">` + buttons + `<button type="button" data-role="reset" class="pg-sw-btn pg-sw-reset">${esc(resetLabel)}</button></div></div>`;
@@ -6099,7 +11975,7 @@ var sortable_priority_default = {
     const title = params.title ? `<div class="pg-sp-title">${esc(params.title)}</div>` : "";
     const prompt = params.prompt ? `<div class="pg-sp-prompt">${esc(params.prompt)}</div>` : "";
     const rows = items.map(
-      (it, i) => `<li class="pg-sp-row" draggable="true" tabindex="0" data-role="row" data-idx="${i}" aria-label="${esc(it.label)}, position ${i + 1} of ${items.length}. Use arrow keys to move."><span class="pg-sp-rank" data-role="rank">${i + 1}</span><span class="pg-sp-body"><span class="pg-sp-label">${esc(it.label)}</span>` + (it.note ? `<span class="pg-sp-note">${esc(it.note)}</span>` : "") + `</span><span class="pg-sp-moves"><button type="button" class="pg-sp-mv" data-role="up" aria-label="Move ${esc(it.label)} up">\u25B2</button><button type="button" class="pg-sp-mv" data-role="down" aria-label="Move ${esc(it.label)} down">\u25BC</button></span></li>`
+      (it, i2) => `<li class="pg-sp-row" draggable="true" tabindex="0" data-role="row" data-idx="${i2}" aria-label="${esc(it.label)}, position ${i2 + 1} of ${items.length}. Use arrow keys to move."><span class="pg-sp-rank" data-role="rank">${i2 + 1}</span><span class="pg-sp-body"><span class="pg-sp-label">${esc(it.label)}</span>` + (it.note ? `<span class="pg-sp-note">${esc(it.note)}</span>` : "") + `</span><span class="pg-sp-moves"><button type="button" class="pg-sp-mv" data-role="up" aria-label="Move ${esc(it.label)} up">\u25B2</button><button type="button" class="pg-sp-mv" data-role="down" aria-label="Move ${esc(it.label)} down">\u25BC</button></span></li>`
     ).join("");
     const html2 = `<div class="pg-stage">${title}${prompt}<ol class="pg-sp-list" data-role="list" aria-label="Reorderable priority list">${rows}</ol><div class="pg-readout pg-sp-readout" data-role="readout" aria-live="polite"></div></div>`;
     const css = [
@@ -6974,7 +12850,7 @@ var flip_cards_default = {
     const columns = Math.max(1, Math.min(4, Math.round(params.columns || 2)));
     const accent = /^#[0-9a-fA-F]{3,8}$/.test(params.accent || "") ? params.accent : "#22d3ee";
     const title = params.title ? `<div class="pg-fc-title">${esc(params.title)}</div>` : "";
-    const cardsHtml = cards.map((c, i) => `<button type="button" class="pg-fc-card" data-role="card" aria-pressed="false"><span class="pg-fc-face pg-fc-front">${esc(c.front)}<span class="pg-fc-hint">tap to reveal</span></span><span class="pg-fc-face pg-fc-back">${c.tag ? `<span class="pg-fc-tag">${esc(c.tag)}</span>` : ""}<span>${esc(c.back)}</span></span></button>`).join("");
+    const cardsHtml = cards.map((c, i2) => `<button type="button" class="pg-fc-card" data-role="card" aria-pressed="false"><span class="pg-fc-face pg-fc-front">${esc(c.front)}<span class="pg-fc-hint">tap to reveal</span></span><span class="pg-fc-face pg-fc-back">${c.tag ? `<span class="pg-fc-tag">${esc(c.tag)}</span>` : ""}<span>${esc(c.back)}</span></span></button>`).join("");
     const html2 = `<div class="pg-stage">${title}<div class="pg-fc-grid" data-role="grid">${cardsHtml}</div></div>`;
     const css = [
       `#${domId} .pg-fc-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .8rem}`,
@@ -8010,8 +13886,8 @@ var star_rating_default = {
     const labels = Array.isArray(params.labels) ? params.labels.slice(0, max).map((l) => esc(l)) : [];
     const title = params.title ? `<div class="pg-sr-title">${esc(params.title)}</div>` : "";
     let stars = "";
-    for (let i = 1; i <= max; i++) {
-      stars += `<button type="button" class="pg-sr-star" data-role="star" data-value="${i}" aria-label="Rate ${i} of ${max}" aria-pressed="false">\u2605</button>`;
+    for (let i2 = 1; i2 <= max; i2++) {
+      stars += `<button type="button" class="pg-sr-star" data-role="star" data-value="${i2}" aria-label="Rate ${i2} of ${max}" aria-pressed="false">\u2605</button>`;
     }
     const html2 = `<div class="pg-stage">${title}<div class="pg-sr-row" data-role="stars" role="radiogroup" aria-label="Star rating">${stars}</div><div class="pg-readout pg-sr-readout" data-role="readout" aria-live="polite">Tap to rate</div></div>`;
     const css = [
@@ -8437,7 +14313,7 @@ var colour_palette_default = {
     const swatches = (Array.isArray(params.swatches) ? params.swatches : []).filter((s) => s && HEX.test(s.hex || "")).slice(0, 8);
     const title = params.title ? `<div class="pg-cp-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-cp-caption">${esc(params.caption)}</div>` : "";
-    const swatchesHtml = swatches.map((s, i) => `<button type="button" class="pg-cp-swatch" data-role="swatch" data-hex="${esc(s.hex)}" data-name="${esc(s.name)}" style="background:${esc(s.hex)}" aria-pressed="${i === 0 ? "true" : "false"}"><span class="pg-cp-sr">${esc(s.name)}</span></button>`).join("");
+    const swatchesHtml = swatches.map((s, i2) => `<button type="button" class="pg-cp-swatch" data-role="swatch" data-hex="${esc(s.hex)}" data-name="${esc(s.name)}" style="background:${esc(s.hex)}" aria-pressed="${i2 === 0 ? "true" : "false"}"><span class="pg-cp-sr">${esc(s.name)}</span></button>`).join("");
     const html2 = `<div class="pg-stage">${title}<div class="pg-cp-row" role="group">${swatchesHtml}</div><div class="pg-readout pg-cp-readout" data-role="readout" aria-live="polite"></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-cp-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.7rem}`,
@@ -8625,14 +14501,14 @@ var book_shelf_default = {
   ],
   build(params, domId) {
     const raw = Array.isArray(params.books) ? params.books.slice(0, 10) : [];
-    const books = raw.map((b, i) => {
-      const colour = /^#[0-9a-fA-F]{3,8}$/.test(b && b.colour || "") ? b.colour : PALETTE2[i % PALETTE2.length];
+    const books = raw.map((b, i2) => {
+      const colour = /^#[0-9a-fA-F]{3,8}$/.test(b && b.colour || "") ? b.colour : PALETTE2[i2 % PALETTE2.length];
       return { title: String(b && b.title || ""), author: String(b && b.author || ""), note: String(b && b.note || ""), colour };
     });
     const title = params.title ? `<div class="pg-bs-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-bs-caption">${esc(params.caption)}</div>` : "";
     const spines = books.map(
-      (b, i) => `<button type="button" class="pg-bs-spine" data-role="spine" data-i="${i}" aria-pressed="false" style="--spine:${esc(b.colour)}"><span class="pg-bs-spine-text">${esc(b.title)}</span></button>`
+      (b, i2) => `<button type="button" class="pg-bs-spine" data-role="spine" data-i="${i2}" aria-pressed="false" style="--spine:${esc(b.colour)}"><span class="pg-bs-spine-text">${esc(b.title)}</span></button>`
     ).join("");
     const html2 = `<div class="pg-stage">${title}<div class="pg-bs-shelf" role="group" aria-label="Bookshelf"><div class="pg-bs-row">${spines}</div><div class="pg-bs-board" aria-hidden="true"></div></div><div class="pg-bs-detail" data-role="detail" aria-live="polite"><span class="pg-bs-prompt">Pick a book.</span></div>${caption}</div>`;
     const css = [
@@ -9334,8 +15210,8 @@ var bracket_default = {
     while (names.length < target) names.push("TBD " + (names.length + 1));
     const title = params.title ? `<div class="pg-bk-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-bk-caption">${esc(params.caption)}</div>` : "";
-    const data = JSON.stringify(names);
-    const html2 = `<div class="pg-stage">${title}<div class="pg-bk-board" data-role="board" data-names='${esc(data)}'></div><div class="pg-bk-champ" data-role="champ" hidden></div><div class="pg-controls"><button type="button" class="pg-bk-reset" data-role="reset">Reset</button></div>${caption}</div>`;
+    const data2 = JSON.stringify(names);
+    const html2 = `<div class="pg-stage">${title}<div class="pg-bk-board" data-role="board" data-names='${esc(data2)}'></div><div class="pg-bk-champ" data-role="champ" hidden></div><div class="pg-controls"><button type="button" class="pg-bk-reset" data-role="reset">Reset</button></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-bk-title{font-weight:700;font-size:1.1rem;margin-bottom:.3rem;color:#e9eef8}`,
       `#${domId} .pg-bk-caption{margin-top:.7rem;font-size:.85rem;color:#9fb0c8}`,
@@ -9529,7 +15405,7 @@ var chord_diagram_default = {
     const title = params.title ? `<div class="pg-cd-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-cd-caption">${esc(params.caption)}</div>` : "";
     const btns = chords.map(
-      (c, i) => `<button type="button" class="pg-cd-btn" data-role="chord" data-i="${i}" aria-pressed="${i === 0 ? "true" : "false"}">${esc(c.name)}</button>`
+      (c, i2) => `<button type="button" class="pg-cd-btn" data-role="chord" data-i="${i2}" aria-pressed="${i2 === 0 ? "true" : "false"}">${esc(c.name)}</button>`
     ).join("");
     const html2 = `<div class="pg-stage">` + title + `<div class="pg-controls"><div class="pg-row pg-cd-btns">${btns}</div></div><div class="pg-cd-board"><svg data-role="svg" viewBox="0 0 200 240" role="img" aria-label="Guitar chord diagram"></svg></div><div class="pg-readout" data-role="readout"></div>` + caption + `</div>`;
     const css = [
@@ -9671,16 +15547,16 @@ var budget_donut_default = {
     } }
   ],
   build(params, domId) {
-    const cats = (Array.isArray(params.categories) ? params.categories : []).slice(0, 6).map((c, i) => {
-      const colour = /^#[0-9a-fA-F]{3,8}$/.test(c && c.colour || "") ? c.colour : PALETTE3[i % PALETTE3.length];
+    const cats = (Array.isArray(params.categories) ? params.categories : []).slice(0, 6).map((c, i2) => {
+      const colour = /^#[0-9a-fA-F]{3,8}$/.test(c && c.colour || "") ? c.colour : PALETTE3[i2 % PALETTE3.length];
       const pct = Math.max(0, Math.min(100, Math.round(Number(c && c.pct) || 0)));
-      return { name: String(c && c.name != null ? c.name : `Category ${i + 1}`), pct, colour };
+      return { name: String(c && c.name != null ? c.name : `Category ${i2 + 1}`), pct, colour };
     });
     const income = Math.max(0, Number(params.income) || 0);
     const currency = typeof params.currency === "string" && params.currency ? params.currency : "\xA3";
     const title = params.title ? `<div class="pg-bd-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-bd-cap">${esc(params.caption)}</div>` : "";
-    const rows = cats.map((c, i) => `<div class="pg-field pg-bd-row" data-role="row" data-i="${i}" data-colour="${esc(c.colour)}"><label><b><span class="pg-bd-swatch" style="background:${esc(c.colour)}"></span>${esc(c.name)}</b><span class="pg-readout"><span data-role="pct">${c.pct}</span>% \xB7 <span data-role="cash">${currency}0</span></span></label><input type="range" min="0" max="100" step="1" value="${c.pct}" data-role="slider" aria-label="${esc(c.name)} percentage"></div>`).join("");
+    const rows = cats.map((c, i2) => `<div class="pg-field pg-bd-row" data-role="row" data-i="${i2}" data-colour="${esc(c.colour)}"><label><b><span class="pg-bd-swatch" style="background:${esc(c.colour)}"></span>${esc(c.name)}</b><span class="pg-readout"><span data-role="pct">${c.pct}</span>% \xB7 <span data-role="cash">${currency}0</span></span></label><input type="range" min="0" max="100" step="1" value="${c.pct}" data-role="slider" aria-label="${esc(c.name)} percentage"></div>`).join("");
     const svg3 = `<svg class="pg-bd-svg" viewBox="0 0 120 120" role="img" aria-label="Budget donut chart"><circle cx="60" cy="60" r="42" class="pg-bd-track"></circle><g data-role="arcs" transform="rotate(-90 60 60)"></g><text x="60" y="56" text-anchor="middle" class="pg-bd-cx" data-role="centre-pct">100%</text><text x="60" y="72" text-anchor="middle" class="pg-bd-cs">allocated</text></svg>`;
     const html2 = `<div class="pg-stage">` + title + `<div class="pg-bd-wrap"><div class="pg-bd-chart">${svg3}</div><div class="pg-controls pg-bd-controls">${rows}</div></div><div class="pg-bd-foot"><span class="pg-readout">Income <b data-role="income">${currency}0</b></span><span class="pg-bd-note" data-role="note"></span></div>` + caption + `</div>`;
     const css = [
@@ -10023,9 +15899,9 @@ var timeline_scrubber_default = {
     const span = max - min || 1;
     const title = params.title ? `<div class="pg-tl-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-tl-caption">${esc(params.caption)}</div>` : "";
-    const dots = events.map((e, i) => {
+    const dots = events.map((e, i2) => {
       const pos = (e.year - min) / span * 100;
-      return `<button type="button" class="pg-tl-dot" data-role="dot" data-index="${i}" data-year="${e.year}" style="left:${pos}%" aria-label="${esc(e.year + ": " + e.label)}"><span class="pg-tl-dot-year">${esc(String(e.year))}</span></button>`;
+      return `<button type="button" class="pg-tl-dot" data-role="dot" data-index="${i2}" data-year="${e.year}" style="left:${pos}%" aria-label="${esc(e.year + ": " + e.label)}"><span class="pg-tl-dot-year">${esc(String(e.year))}</span></button>`;
     }).join("");
     const html2 = `<div class="pg-stage">${title}<div class="pg-tl-track"><div class="pg-tl-axis"></div><div class="pg-tl-marker" data-role="marker"></div>` + dots + `</div><div class="pg-controls"><div class="pg-row pg-field"><label><b>Year</b> <span class="pg-readout" data-role="yearout">${esc(String(min))}</span></label><input type="range" data-role="slider" min="${min}" max="${max}" step="1" value="${min}"></div></div><div class="pg-readout pg-tl-readout" data-role="readout" aria-live="polite"></div>` + caption + `</div>`;
     const css = [
@@ -10411,7 +16287,7 @@ var forecast_strip_default = {
     });
     const title = params.title ? `<div class="pg-fs-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-fs-caption">${esc(params.caption)}</div>` : "";
-    const cardsHtml = days.map((d, i) => `<button type="button" class="pg-fs-card" data-role="card" data-i="${i}" aria-pressed="false"><span class="pg-fs-day">${esc(d.day)}</span><span class="pg-fs-glyph" aria-hidden="true">${GLYPHS[d.condition]}</span><span class="pg-fs-temps"><b class="pg-fs-high">${esc(String(d.high))}${esc(unit)}</b><span class="pg-fs-low">${esc(String(d.low))}${esc(unit)}</span></span></button>`).join("");
+    const cardsHtml = days.map((d, i2) => `<button type="button" class="pg-fs-card" data-role="card" data-i="${i2}" aria-pressed="false"><span class="pg-fs-day">${esc(d.day)}</span><span class="pg-fs-glyph" aria-hidden="true">${GLYPHS[d.condition]}</span><span class="pg-fs-temps"><b class="pg-fs-high">${esc(String(d.high))}${esc(unit)}</b><span class="pg-fs-low">${esc(String(d.low))}${esc(unit)}</span></span></button>`).join("");
     const html2 = `<div class="pg-stage">${title}<div class="pg-fs-strip" data-role="strip" role="list">${cardsHtml}</div><div class="pg-readout pg-fs-detail" data-role="detail" aria-live="polite"><span class="pg-fs-hint">Tap a day for the detail.</span></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-fs-title{font-weight:700;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
@@ -10641,7 +16517,7 @@ var checklist_default = {
     const total = items.length;
     const title = params.title ? `<div class="pg-ck-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-ck-caption">${esc(params.caption)}</div>` : "";
-    const rows = items.map((label2, i) => `<button type="button" class="pg-ck-row" data-role="row" role="checkbox" aria-checked="false" data-i="${i}"><span class="pg-ck-box" aria-hidden="true"><svg viewBox="0 0 16 16" class="pg-ck-tick"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="pg-ck-label">${esc(label2)}</span></button>`).join("");
+    const rows = items.map((label2, i2) => `<button type="button" class="pg-ck-row" data-role="row" role="checkbox" aria-checked="false" data-i="${i2}"><span class="pg-ck-box" aria-hidden="true"><svg viewBox="0 0 16 16" class="pg-ck-tick"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="pg-ck-label">${esc(label2)}</span></button>`).join("");
     const html2 = `<div class="pg-stage">` + title + `<div class="pg-ck-list" data-role="list">${rows}</div><div class="pg-ck-bar"><span class="pg-ck-fill" data-role="fill"></span></div><div class="pg-ck-foot"><span class="pg-readout" data-role="count">0 of ${total} done</span><button type="button" class="pg-ck-reset" data-role="reset">Reset</button></div><div class="pg-ck-done" data-role="done" hidden></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-ck-title{font-weight:700;font-size:1.05rem;color:var(--ink,#e9eef8);margin-bottom:.7rem}`,
@@ -10759,7 +16635,7 @@ var toggle_switches_default = {
     const summary = typeof params.summary === "string" && params.summary.trim() ? params.summary : "";
     const title = params.title ? `<div class="pg-ts-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-ts-caption">${esc(params.caption)}</div>` : "";
-    const rows = sw.map((s, i) => `<button type="button" class="pg-ts-row${s.on ? " on" : ""}" data-role="switch" role="switch" aria-checked="${s.on ? "true" : "false"}" data-i="${i}"><span class="pg-ts-label">${esc(s.label)}</span><span class="pg-ts-track" aria-hidden="true"><span class="pg-ts-knob"></span></span></button>`).join("");
+    const rows = sw.map((s, i2) => `<button type="button" class="pg-ts-row${s.on ? " on" : ""}" data-role="switch" role="switch" aria-checked="${s.on ? "true" : "false"}" data-i="${i2}"><span class="pg-ts-label">${esc(s.label)}</span><span class="pg-ts-track" aria-hidden="true"><span class="pg-ts-knob"></span></span></button>`).join("");
     const html2 = `<div class="pg-stage">` + title + `<div class="pg-ts-list" data-role="list">${rows}</div><div class="pg-ts-foot"><span class="pg-readout" data-role="count">0 of ${total} on</span></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-ts-title{font-weight:700;font-size:1.05rem;color:var(--ink,#e9eef8);margin-bottom:.7rem}`,
@@ -10853,10 +16729,10 @@ var tabs_panel_default = {
     const title = params.title ? `<div class="pg-tp-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-tp-caption">${esc(params.caption)}</div>` : "";
     const tabsHtml = tabs.map(
-      (t, i) => `<button type="button" class="pg-tp-tab${i === 0 ? " active" : ""}" data-role="tab" data-index="${i}" role="tab" aria-selected="${i === 0 ? "true" : "false"}">${esc(t.label)}</button>`
+      (t, i2) => `<button type="button" class="pg-tp-tab${i2 === 0 ? " active" : ""}" data-role="tab" data-index="${i2}" role="tab" aria-selected="${i2 === 0 ? "true" : "false"}">${esc(t.label)}</button>`
     ).join("");
     const panelsHtml = tabs.map(
-      (t, i) => `<div class="pg-tp-panel${i === 0 ? " active" : ""}" data-role="panel" data-index="${i}" role="tabpanel"${i === 0 ? "" : " hidden"}>${esc(t.body)}</div>`
+      (t, i2) => `<div class="pg-tp-panel${i2 === 0 ? " active" : ""}" data-role="panel" data-index="${i2}" role="tabpanel"${i2 === 0 ? "" : " hidden"}>${esc(t.body)}</div>`
     ).join("");
     const html2 = `<div class="pg-stage">${title}<div class="pg-tp-bar" role="tablist">${tabsHtml}</div><div class="pg-tp-body">${panelsHtml}</div>${caption}</div>`;
     const css = [
@@ -11902,7 +17778,7 @@ var weather_scene_default = {
     scenes = scenes.slice(0, 5);
     const title = params.title ? `<div class="pg-ws-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-ws-caption">${esc(params.caption)}</div>` : "";
-    const buttons = scenes.map((s, i) => `<button type="button" class="pg-ws-btn" data-role="btn" data-cond="${esc(s)}" aria-pressed="${i === 0 ? "true" : "false"}">${esc(LABELS[s])}</button>`).join("");
+    const buttons = scenes.map((s, i2) => `<button type="button" class="pg-ws-btn" data-role="btn" data-cond="${esc(s)}" aria-pressed="${i2 === 0 ? "true" : "false"}">${esc(LABELS[s])}</button>`).join("");
     const html2 = `<div class="pg-stage">` + title + `<div class="pg-ws-scene" data-role="scene" aria-live="polite"><svg viewBox="0 0 200 140" width="100%" height="100%" role="img" data-role="svg" aria-label="Weather scene"></svg></div><div class="pg-controls pg-ws-controls" role="group" aria-label="Choose the weather">${buttons}</div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-ws-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.6rem}`,
@@ -12067,9 +17943,9 @@ var pros_cons_default = {
     const title = params.title ? `<div class="pg-pc-title">${esc(params.title)}</div>` : "";
     const subject2 = params.subject ? `<div class="pg-pc-subject">${esc(params.subject)}</div>` : "";
     const caption = params.caption ? `<div class="pg-pc-caption">${esc(params.caption)}</div>` : "";
-    const point = (side, label2, i) => `<button type="button" class="pg-pc-point" data-role="point" data-side="${side}" data-i="${i}" aria-pressed="false"><span class="pg-pc-tick" aria-hidden="true"></span><span class="pg-pc-label">${esc(label2)}</span></button>`;
-    const prosHtml = pros.map((p, i) => point("pro", p, i)).join("");
-    const consHtml = cons.map((c, i) => point("con", c, i)).join("");
+    const point = (side, label2, i2) => `<button type="button" class="pg-pc-point" data-role="point" data-side="${side}" data-i="${i2}" aria-pressed="false"><span class="pg-pc-tick" aria-hidden="true"></span><span class="pg-pc-label">${esc(label2)}</span></button>`;
+    const prosHtml = pros.map((p, i2) => point("pro", p, i2)).join("");
+    const consHtml = cons.map((c, i2) => point("con", c, i2)).join("");
     const html2 = `<div class="pg-stage">` + title + subject2 + `<div class="pg-pc-cols"><div class="pg-pc-col pg-pc-col-pro"><div class="pg-pc-head">Pros</div><div class="pg-pc-list">${prosHtml}</div></div><div class="pg-pc-col pg-pc-col-con"><div class="pg-pc-head">Cons</div><div class="pg-pc-list">${consHtml}</div></div></div><div class="pg-pc-balance" role="img" aria-label="Balance of ticked points"><span class="pg-pc-bar pg-pc-bar-pro" data-role="bar-pro" style="width:50%"></span><span class="pg-pc-bar pg-pc-bar-con" data-role="bar-con" style="width:50%"></span></div><div class="pg-pc-foot"><span class="pg-readout pg-pc-tally" data-role="tally">0 pros &middot; 0 cons</span><span class="pg-pc-verdict" data-role="verdict">Too close to call</span></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-pc-title{font-weight:700;font-size:1.05rem;color:var(--ink,#e9eef8);margin-bottom:.2rem}`,
@@ -12453,8 +18329,8 @@ var poll_default = {
     const question = params.question ? `<div class="pg-poll-q" id="${domId}-q">${esc(params.question)}</div>` : "";
     const note = params.note ? `<div class="pg-poll-note">${esc(params.note)}</div>` : "";
     let rows = "";
-    opts.forEach((o, i) => {
-      rows += `<button type="button" class="pg-poll-opt" role="radio" aria-checked="false" data-role="opt" data-idx="${i}"><span class="pg-poll-bar" data-role="bar" aria-hidden="true"></span><span class="pg-poll-mark" aria-hidden="true"></span><span class="pg-poll-label">${esc(o.label)}</span>` + (showBars ? `<span class="pg-poll-pct" data-role="pct" aria-hidden="true"></span>` : "") + `</button>`;
+    opts.forEach((o, i2) => {
+      rows += `<button type="button" class="pg-poll-opt" role="radio" aria-checked="false" data-role="opt" data-idx="${i2}"><span class="pg-poll-bar" data-role="bar" aria-hidden="true"></span><span class="pg-poll-mark" aria-hidden="true"></span><span class="pg-poll-label">${esc(o.label)}</span>` + (showBars ? `<span class="pg-poll-pct" data-role="pct" aria-hidden="true"></span>` : "") + `</button>`;
     });
     const html2 = `<div class="pg-stage">${question}<div class="pg-poll-list" role="radiogroup"${params.question ? ` aria-labelledby="${domId}-q"` : ' aria-label="Poll"'} data-role="list">${rows}</div><div class="pg-readout pg-poll-readout" data-role="readout" aria-live="polite">Tap an option to choose.</div>` + note + `</div>`;
     const css = [
@@ -12731,15 +18607,15 @@ var swipe_carousel_default = {
     const loop = !!params.loop;
     const title = params.title ? `<div class="pg-car-title">${esc(params.title)}</div>` : "";
     let cards = "";
-    slides.forEach((s, i) => {
+    slides.forEach((s, i2) => {
       const emoji = s && s.emoji ? `<div class="pg-car-emoji" aria-hidden="true">${esc(s.emoji)}</div>` : "";
       const head = s && s.title ? `<div class="pg-car-h">${esc(s.title)}</div>` : "";
       const body = s && s.text ? `<div class="pg-car-t">${esc(s.text)}</div>` : "";
-      cards += `<div class="pg-car-card" data-role="card" role="group" aria-roledescription="slide" aria-label="Slide ${i + 1} of ${n}">${emoji}${head}${body}</div>`;
+      cards += `<div class="pg-car-card" data-role="card" role="group" aria-roledescription="slide" aria-label="Slide ${i2 + 1} of ${n}">${emoji}${head}${body}</div>`;
     });
     let dots = "";
-    for (let i = 0; i < n; i++) {
-      dots += `<button type="button" class="pg-car-dot" data-role="dot" data-idx="${i}" aria-label="Go to slide ${i + 1}"></button>`;
+    for (let i2 = 0; i2 < n; i2++) {
+      dots += `<button type="button" class="pg-car-dot" data-role="dot" data-idx="${i2}" aria-label="Go to slide ${i2 + 1}"></button>`;
     }
     const html2 = `<div class="pg-stage">${title}<div class="pg-car-viewport" data-role="viewport" aria-roledescription="carousel" tabindex="0" aria-label="Swipeable carousel; use the arrow keys"><div class="pg-car-track" data-role="track">${cards}</div></div><div class="pg-controls pg-car-controls"><button type="button" class="pg-car-nav" data-role="prev" aria-label="Previous slide">\u2039</button><div class="pg-car-dots" data-role="dots" role="tablist" aria-label="Slides">${dots}</div><button type="button" class="pg-car-nav" data-role="next" aria-label="Next slide">\u203A</button></div><div class="pg-readout pg-car-readout" data-role="readout" aria-live="polite">Slide <b data-role="idx">1</b> of <b>${n}</b></div></div>`;
     const css = [
@@ -13034,7 +18910,7 @@ var key_change_default = {
   build(params, domId) {
     const title = params.title ? `<div class="kc-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="kc-cap">${esc(params.caption)}</div>` : "";
-    const pips = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => `<span class="kc-pip" data-role="pip" data-i="${i}"></span>`).join("");
+    const pips = [0, 1, 2, 3, 4, 5, 6, 7].map((i2) => `<span class="kc-pip" data-role="pip" data-i="${i2}"></span>`).join("");
     const html2 = `<div class="pg-stage">` + title + `<div class="kc-status" data-role="status" aria-live="polite">Pick a version and press play.</div><div class="kc-pips" role="img" aria-label="Eight chords; the current chord lights as it plays">${pips}</div><div class="kc-row" role="group" aria-label="Play options"><button type="button" class="kc-btn" data-role="play" data-mode="plain">Play the loop (same key)</button><button type="button" class="kc-btn kc-lift" data-role="play" data-mode="lift">Play with the key change</button><button type="button" class="kc-btn kc-stop" data-role="stop">Stop</button></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-stage{display:grid;gap:.85rem}`,
@@ -13302,8 +19178,8 @@ var image_annotator_default = {
     })).filter((p) => p.label !== "");
     const img = params.image ? `<img class="pg-anno-img" src="${esc(params.image)}" alt="${esc(params.alt || "")}" loading="lazy">` : "";
     let pinHtml = "";
-    pins.forEach((p, i) => {
-      pinHtml += `<button type="button" class="pg-anno-pin" data-role="pin" data-idx="${i}" style="left:${p.x}%;top:${p.y}%" aria-label="${esc(p.label)}">${i + 1}</button>`;
+    pins.forEach((p, i2) => {
+      pinHtml += `<button type="button" class="pg-anno-pin" data-role="pin" data-idx="${i2}" style="left:${p.x}%;top:${p.y}%" aria-label="${esc(p.label)}">${i2 + 1}</button>`;
     });
     const html2 = `<div class="pg-stage"><div class="pg-anno-stage${params.image ? "" : " is-blank"}" data-role="stage">${img}${pinHtml}</div><div class="pg-anno-panel" data-role="panel" aria-live="polite">${esc(params.prompt || "Tap a pin to explore.")}</div><div class="pg-readout pg-anno-tally" data-role="tally"></div></div>`;
     const css = [
@@ -13406,8 +19282,8 @@ var step_explainer_default = {
   build(params, domId) {
     const steps = (Array.isArray(params.steps) ? params.steps : []).slice(0, 12).map((s) => ({ heading: String(s && s.heading || ""), body: String(s && s.body || "") })).filter((s) => s.heading !== "");
     let dots = "";
-    steps.forEach((s, i) => {
-      dots += `<button type="button" class="pg-sx-dot" data-role="dot" data-idx="${i}" aria-label="Step ${i + 1}: ${esc(s.heading)}"></button>`;
+    steps.forEach((s, i2) => {
+      dots += `<button type="button" class="pg-sx-dot" data-role="dot" data-idx="${i2}" aria-label="Step ${i2 + 1}: ${esc(s.heading)}"></button>`;
     });
     const html2 = `<div class="pg-stage"><div class="pg-sx-card" data-role="card" aria-live="polite"><div class="pg-sx-h" data-role="h"></div><div class="pg-sx-b" data-role="b"></div></div><div class="pg-row pg-sx-nav"><button type="button" class="pg-sx-btn" data-role="prev">\u2039 Back</button><div class="pg-sx-dots" data-role="dots">${dots}</div><button type="button" class="pg-sx-btn" data-role="next">${esc(params.startLabel || "Start")}</button></div><div class="pg-readout pg-sx-count" data-role="count"></div></div>`;
     const css = [
@@ -13664,12 +19540,12 @@ var sortable_table_default = {
     const rows = (Array.isArray(params.rows) ? params.rows : []).slice(0, 30).map((r) => (Array.isArray(r) ? r : []).slice(0, cols.length).map((c) => String(c == null ? "" : c)));
     const filter = params.filterable !== false ? `<input class="pg-st-filter" data-role="filter" type="search" placeholder="Filter rows\u2026" aria-label="Filter rows">` : "";
     let thead = "";
-    cols.forEach((c, i) => {
-      thead += `<th scope="col" aria-sort="none" data-role="th" data-idx="${i}"><button type="button" class="pg-st-sort">${esc(c)}<span class="pg-st-arrow" aria-hidden="true"></span></button></th>`;
+    cols.forEach((c, i2) => {
+      thead += `<th scope="col" aria-sort="none" data-role="th" data-idx="${i2}"><button type="button" class="pg-st-sort">${esc(c)}<span class="pg-st-arrow" aria-hidden="true"></span></button></th>`;
     });
     let tbody = "";
     rows.forEach((r) => {
-      tbody += "<tr>" + cols.map((_, i) => `<td>${esc(r[i] == null ? "" : r[i])}</td>`).join("") + "</tr>";
+      tbody += "<tr>" + cols.map((_, i2) => `<td>${esc(r[i2] == null ? "" : r[i2])}</td>`).join("") + "</tr>";
     });
     const html2 = `<div class="pg-stage">${filter}<div class="pg-st-scroll"><table class="pg-st" data-role="table"><thead><tr>${thead}</tr></thead><tbody data-role="tbody">${tbody}</tbody></table></div><div class="pg-readout pg-st-count" data-role="count" aria-live="polite"></div></div>`;
     const css = [
@@ -13952,12 +19828,12 @@ var formula_calculator_default = {
     const inputs = (Array.isArray(params.inputs) ? params.inputs : []).slice(0, 5);
     const outputs = (Array.isArray(params.outputs) ? params.outputs : []).slice(0, 4);
     const prompt = params.prompt ? `<div class="pg-fc-prompt">${esc(params.prompt)}</div>` : "";
-    const controls = inputs.map((it, i) => {
-      const key = String(it.key || `v${i}`).replace(/[^\w$]/g, "_");
+    const controls = inputs.map((it, i2) => {
+      const key = String(it.key || `v${i2}`).replace(/[^\w$]/g, "_");
       return `<div class="pg-fc-field"><label for="${domId}-${key}-num">${esc(it.label || key)}</label><div class="pg-fc-inputs"><input type="range" data-role="range" data-key="${esc(key)}" min="${Number(it.min) || 0}" max="${Number(it.max) || 100}" step="${Number(it.step) || 1}" value="${Number(it.value) || 0}"><span class="pg-fc-numwrap"><input id="${domId}-${key}-num" type="number" data-role="number" data-key="${esc(key)}" min="${Number(it.min) || 0}" max="${Number(it.max) || 100}" step="${Number(it.step) || 1}" value="${Number(it.value) || 0}" inputmode="decimal"><span>${esc(it.unit || "")}</span></span></div></div>`;
     }).join("");
     const cards = outputs.map(
-      (o, i) => `<div class="pg-fc-out"><span>${esc(o.label || `Output ${i + 1}`)}</span><strong data-role="out" data-idx="${i}">\u2013</strong></div>`
+      (o, i2) => `<div class="pg-fc-out"><span>${esc(o.label || `Output ${i2 + 1}`)}</span><strong data-role="out" data-idx="${i2}">\u2013</strong></div>`
     ).join("");
     const note = params.note ? `<div class="pg-fc-note">${esc(params.note)}</div>` : "";
     const html2 = `<div class="pg-stage">${prompt}<div class="pg-fc-grid"><div class="pg-fc-controls">${controls}</div><div class="pg-fc-results">${cards}</div></div>${note}<div class="pg-fc-status" data-role="status" aria-live="polite"></div></div>`;
@@ -13980,10 +19856,11 @@ var formula_calculator_default = {
       `@media(max-width:620px){#${domId} .pg-fc-grid{grid-template-columns:1fr}#${domId} .pg-fc-inputs{align-items:flex-start;flex-direction:column}#${domId} .pg-fc-numwrap input{width:7rem}}`
     ].join("\n");
     const jsBody = `
+${expressionRuntime((params.outputs || []).map((o) => o.expr))}
 var INS=(CONFIG.inputs||[]).slice(0,5),OUTS=(CONFIG.outputs||[]).slice(0,4);
 var ranges=$$('[data-role=range]'),nums=$$('[data-role=number]'),cards=$$('[data-role=out]'),status=$('[data-role=status]');
 var KEYS=INS.map(function(it,i){return String((it&&it.key)||('v'+i)).replace(/[^\\w$]/g,'_');}).filter(function(k){return /^[A-Za-z_$][\\w$]*$/.test(k);});
-function compile(expr){try{var pre=KEYS.map(function(k){return 'var '+k+'=V['+JSON.stringify(k)+'];';}).join('');return new Function('V','Math',pre+'return ('+(expr||'0')+');');}catch(e){return null;}}
+function compile(expr){return compileMathExpression(expr);}
 var fns=OUTS.map(function(o){return compile(o&&o.expr);});
 function clamp(v,el){var lo=parseFloat(el.min),hi=parseFloat(el.max);if(isNaN(v))v=lo||0;return Math.max(lo,Math.min(hi,v));}
 function values(){var V={};nums.forEach(function(n){V[n.getAttribute('data-key')]=parseFloat(n.value)||0;});return V;}
@@ -14182,8 +20059,8 @@ var dataset_explorer_default = {
     const rows = (Array.isArray(params.rows) ? params.rows : []).slice(0, 100).map(
       (r) => (Array.isArray(r) ? r : []).slice(0, cols.length).map((x) => String(x == null ? "" : x))
     );
-    const heads = cols.map((c, i) => `<th scope="col" aria-sort="none" data-role="th" data-idx="${i}"><button type="button">${esc(c)}<span aria-hidden="true"></span></button></th>`).join("");
-    const body = rows.map((r) => `<tr>${cols.map((_, i) => `<td>${esc(r[i] || "")}</td>`).join("")}</tr>`).join("");
+    const heads = cols.map((c, i2) => `<th scope="col" aria-sort="none" data-role="th" data-idx="${i2}"><button type="button">${esc(c)}<span aria-hidden="true"></span></button></th>`).join("");
+    const body = rows.map((r) => `<tr>${cols.map((_, i2) => `<td>${esc(r[i2] || "")}</td>`).join("")}</tr>`).join("");
     const html2 = `<div class="pg-stage"><div class="pg-de-tools"><input type="search" data-role="search" placeholder="Search rows\u2026" aria-label="Search dataset"><select data-role="category" aria-label="Filter category"><option value="">All categories</option></select><div class="pg-de-tabs" role="group" aria-label="Dataset view"><button type="button" data-view="table">Table</button><button type="button" data-view="bars">Bars</button></div></div><div class="pg-de-tablewrap" data-role="tableview"><table><thead><tr>${heads}</tr></thead><tbody data-role="tbody">${body}</tbody></table></div><div class="pg-de-bars" data-role="bars" hidden></div><div class="pg-readout pg-de-count" data-role="count" aria-live="polite"></div></div>`;
     const css = [
       `#${domId} .pg-de-tools{display:grid;grid-template-columns:minmax(9rem,1fr) minmax(9rem,.7fr) auto;gap:.5rem;margin-bottom:.65rem}`,
@@ -14301,9 +20178,9 @@ var drag_to_label_default = {
     }).filter((t) => t.label);
     const image = params.image ? `<img src="${esc(params.image)}" alt="${esc(params.alt || "")}" loading="lazy">` : "";
     const spots = targets.map(
-      (t, i) => `<button type="button" class="pg-dl-target" data-role="target" data-answer="${i}" style="left:${t.x}%;top:${t.y}%" aria-label="Target ${i + 1}, empty"><span>${i + 1}</span><b data-role="placed"></b></button>`
+      (t, i2) => `<button type="button" class="pg-dl-target" data-role="target" data-answer="${i2}" style="left:${t.x}%;top:${t.y}%" aria-label="Target ${i2 + 1}, empty"><span>${i2 + 1}</span><b data-role="placed"></b></button>`
     ).join("");
-    const labels = targets.map((t, i) => ({ ...t, i })).reverse().map(
+    const labels = targets.map((t, i2) => ({ ...t, i: i2 })).reverse().map(
       (t) => `<button type="button" class="pg-dl-label" data-role="label" data-idx="${t.i}" draggable="true" aria-pressed="false">${esc(t.label)}</button>`
     ).join("");
     const html2 = `<div class="pg-stage"><div class="pg-dl-prompt">${esc(params.prompt || "Place each label on its target.")}</div><div class="pg-dl-layout"><div class="pg-dl-palette" data-role="palette" aria-label="Labels">${labels}</div><div class="pg-dl-board${params.image ? "" : " is-blank"}" data-role="board">${image}${spots}</div></div><div class="pg-dl-actions"><button type="button" data-role="check">Check labels</button><button type="button" data-role="hint">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-dl-status" data-role="status" aria-live="polite"></div></div>`;
@@ -14403,15 +20280,15 @@ var algorithm_builder_default = {
     }
   ],
   build(params, domId) {
-    const steps = (Array.isArray(params.steps) ? params.steps : []).slice(0, 12).map((s, i) => ({
-      id: String(s && s.id || `step-${i}`),
+    const steps = (Array.isArray(params.steps) ? params.steps : []).slice(0, 12).map((s, i2) => ({
+      id: String(s && s.id || `step-${i2}`),
       label: String(s && s.label || ""),
       shape: SHAPES.includes(String(s && s.shape)) ? String(s.shape) : "process",
       note: String(s && s.note || "")
     })).filter((s) => s.label);
     const shifted = steps.length > 2 ? steps.slice(2).concat(steps.slice(0, 2)) : steps;
     const rows = shifted.map(
-      (s, i) => `<li class="pg-ab-node" data-role="node" data-id="${esc(s.id)}" draggable="true" tabindex="0" aria-label="${esc(s.label)}, position ${i + 1} of ${steps.length}. Use arrow keys to move."><span class="pg-ab-shape is-${s.shape}" aria-hidden="true"></span><span class="pg-ab-label">${esc(s.label)}</span><span class="pg-ab-moves"><button type="button" data-role="up" aria-label="Move ${esc(s.label)} up">\u25B2</button><button type="button" data-role="down" aria-label="Move ${esc(s.label)} down">\u25BC</button></span></li>`
+      (s, i2) => `<li class="pg-ab-node" data-role="node" data-id="${esc(s.id)}" draggable="true" tabindex="0" aria-label="${esc(s.label)}, position ${i2 + 1} of ${steps.length}. Use arrow keys to move."><span class="pg-ab-shape is-${s.shape}" aria-hidden="true"></span><span class="pg-ab-label">${esc(s.label)}</span><span class="pg-ab-moves"><button type="button" data-role="up" aria-label="Move ${esc(s.label)} up">\u25B2</button><button type="button" data-role="down" aria-label="Move ${esc(s.label)} down">\u25BC</button></span></li>`
     ).join("");
     const html2 = `<div class="pg-stage"><div class="pg-ab-prompt">${esc(params.prompt || "Arrange the flowchart into the correct order.")}</div><ol class="pg-ab-flow" data-role="flow" aria-label="Flowchart workspace">${rows}</ol><div class="pg-ab-actions"><button type="button" data-role="check">Check flow</button><button type="button" data-role="hint">Hint</button><button type="button" data-role="solution">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-ab-status" data-role="status" aria-live="polite"></div></div>`;
     const css = [
@@ -14529,14 +20406,14 @@ var relationship_network_default = {
     const nodes = (Array.isArray(params.nodes) ? params.nodes : []).slice(0, 12).map((n) => ({ id: String(n && n.id || ""), label: String(n && n.label || ""), group: String(n && n.group || ""), note: String(n && n.note || "") })).filter((n) => n.id && n.label);
     const links = (Array.isArray(params.links) ? params.links : []).slice(0, 30).map((l) => ({ from: String(l && l.from || ""), to: String(l && l.to || ""), label: String(l && l.label || "") })).filter((l) => l.from && l.to);
     const positions = {};
-    nodes.forEach((n, i) => {
-      const a = -Math.PI / 2 + Math.PI * 2 * i / nodes.length;
+    nodes.forEach((n, i2) => {
+      const a = -Math.PI / 2 + Math.PI * 2 * i2 / nodes.length;
       positions[n.id] = { x: 50 + Math.cos(a) * 34, y: 50 + Math.sin(a) * 34 };
     });
-    const lines = links.map((l, i) => {
+    const lines = links.map((l, i2) => {
       const a = positions[l.from], b = positions[l.to];
       if (!a || !b) return "";
-      return `<line data-role="link" data-idx="${i}" data-from="${esc(l.from)}" data-to="${esc(l.to)}" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"/>`;
+      return `<line data-role="link" data-idx="${i2}" data-from="${esc(l.from)}" data-to="${esc(l.to)}" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"/>`;
     }).join("");
     const buttons = nodes.map((n) => {
       const p = positions[n.id];
@@ -14844,7 +20721,7 @@ function buildInstance(familyId, params = {}, domId) {
 }
 function idHash(s) {
   let h = 0;
-  for (let i = 0; i < String(s).length; i++) h = (h * 31 + s.charCodeAt(i)) % 1e9;
+  for (let i2 = 0; i2 < String(s).length; i2++) h = (h * 31 + s.charCodeAt(i2)) % 1e9;
   return h.toString(36);
 }
 var esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -15038,18 +20915,18 @@ function build2(params = {}, opts = { animate: "draw" }) {
   const { orientation = "h", steps = [] } = params || {};
   const animate = opts && opts.animate || "draw";
   const horizontal = orientation !== "v";
-  const list = Array.isArray(steps) ? steps : [];
-  const n = Math.max(list.length, 1);
+  const list2 = Array.isArray(steps) ? steps : [];
+  const n = Math.max(list2.length, 1);
   const parts = [];
   const pos = [];
-  for (let i = 0; i < list.length; i++) {
-    const x = horizontal ? PAD + i * (NODE_W + GAP) : PAD;
-    const y = horizontal ? PAD : PAD + i * (NODE_H + GAP);
+  for (let i2 = 0; i2 < list2.length; i2++) {
+    const x = horizontal ? PAD + i2 * (NODE_W + GAP) : PAD;
+    const y = horizontal ? PAD : PAD + i2 * (NODE_H + GAP);
     pos.push([x, y]);
-    parts.push(stepNode(i, list[i], x, y));
+    parts.push(stepNode(i2, list2[i2], x, y));
   }
-  for (let i = 0; i < pos.length - 1; i++) {
-    const [x, y] = pos[i];
+  for (let i2 = 0; i2 < pos.length - 1; i2++) {
+    const [x, y] = pos[i2];
     if (horizontal) {
       const y1 = y + NODE_H / 2;
       parts.push(arrow({ x1: x + NODE_W, y1, x2: x + NODE_W + GAP, y2: y1, width: 2, class: "fig-stroke" }));
@@ -15058,7 +20935,7 @@ function build2(params = {}, opts = { animate: "draw" }) {
       parts.push(arrow({ x1, y1: y + NODE_H, x2: x1, y2: y + NODE_H + GAP, width: 2, class: "fig-stroke" }));
     }
   }
-  const noteRoom = list.some((s) => s && s.note) ? 20 : 0;
+  const noteRoom = list2.some((s) => s && s.note) ? 20 : 0;
   const W4 = horizontal ? PAD * 2 + n * NODE_W + (n - 1) * GAP : PAD * 2 + NODE_W + 70;
   const H5 = horizontal ? PAD * 2 + NODE_H + noteRoom + 8 : PAD * 2 + n * NODE_H + (n - 1) * GAP + noteRoom;
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
@@ -15151,8 +21028,8 @@ function build3(params = {}, opts = { animate: "draw" }) {
   const { orientation = "v", layers = [] } = params || {};
   const animate = opts && opts.animate || "draw";
   const vertical = orientation !== "h";
-  const list = Array.isArray(layers) ? layers.filter(Boolean) : [];
-  const weights = list.map((l) => typeof l.thickness === "number" && l.thickness > 0 ? l.thickness : 1);
+  const list2 = Array.isArray(layers) ? layers.filter(Boolean) : [];
+  const weights = list2.map((l) => typeof l.thickness === "number" && l.thickness > 0 ? l.thickness : 1);
   const total = weights.reduce((a, b) => a + b, 0) || 1;
   const stackX = PAD2;
   const stackY = PAD2;
@@ -15160,9 +21037,9 @@ function build3(params = {}, opts = { animate: "draw" }) {
   const stackH = vertical ? VB_H2 - PAD2 * 2 : VB_H2 - PAD2 * 2 - 60;
   const parts = [];
   let cursor = 0;
-  for (let i = 0; i < list.length; i++) {
-    const layer = list[i];
-    const frac = weights[i] / total;
+  for (let i2 = 0; i2 < list2.length; i2++) {
+    const layer = list2[i2];
+    const frac = weights[i2] / total;
     let x;
     let y;
     let w;
@@ -15328,10 +21205,10 @@ function build4(params = {}, opts = { animate: "draw" }) {
   const { viewBox: vb, frame: frame2 = false, arrows = [] } = params || {};
   const animate = opts && opts.animate || "draw";
   const [W4, H5] = Array.isArray(vb) && vb.length === 2 ? vb : [400, 300];
-  const list = Array.isArray(arrows) ? arrows.filter(Boolean) : [];
+  const list2 = Array.isArray(arrows) ? arrows.filter(Boolean) : [];
   const parts = [];
   if (frame2) parts.push(panel({ x: 1, y: 1, w: W4 - 2, h: H5 - 2, rx: 4 }));
-  for (const a of list) parts.push(annotated(a));
+  for (const a of list2) parts.push(annotated(a));
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
   const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
   return { svg: svg3, supportsDraw: true, motion: null };
@@ -15389,8 +21266,8 @@ var meta5 = {
 function build5(params = {}, opts = { animate: "draw" }) {
   const { events = [], showAxis = true } = params || {};
   const animate = opts && opts.animate || "draw";
-  const list = Array.isArray(events) ? events.filter(Boolean) : [];
-  const n = list.length;
+  const list2 = Array.isArray(events) ? events.filter(Boolean) : [];
+  const n = list2.length;
   const axisX1 = PAD3;
   const axisX2 = VB_W3 - PAD3;
   const span = axisX2 - axisX1;
@@ -15405,9 +21282,9 @@ function build5(params = {}, opts = { animate: "draw" }) {
       width: 2
     }));
   }
-  for (let i = 0; i < n; i++) {
-    const ev = list[i];
-    const frac = typeof ev.at === "number" && ev.at >= 0 && ev.at <= 1 ? ev.at : n === 1 ? 0.5 : i / (n - 1);
+  for (let i2 = 0; i2 < n; i2++) {
+    const ev = list2[i2];
+    const frac = typeof ev.at === "number" && ev.at >= 0 && ev.at <= 1 ? ev.at : n === 1 ? 0.5 : i2 / (n - 1);
     const x = round2(axisX1 + frac * span);
     parts.push(line({
       x1: x,
@@ -15426,7 +21303,7 @@ function build5(params = {}, opts = { animate: "draw" }) {
       fill: "none",
       class: "fig-stroke"
     }));
-    const above = i % 2 === 0;
+    const above = i2 % 2 === 0;
     const leaderY = above ? AXIS_Y - 22 : AXIS_Y + 22;
     parts.push(line({
       x1: x,
@@ -15492,26 +21369,26 @@ var meta6 = {
     }
   ]
 };
-function angleAt(i, n) {
-  return -Math.PI / 2 + i / n * Math.PI * 2;
+function angleAt(i2, n) {
+  return -Math.PI / 2 + i2 / n * Math.PI * 2;
 }
 function build6(params = {}, opts = { animate: "draw" }) {
   const { steps = [] } = params || {};
   const animate = opts && opts.animate || "draw";
-  const list = Array.isArray(steps) ? steps.filter(Boolean) : [];
-  const n = list.length;
+  const list2 = Array.isArray(steps) ? steps.filter(Boolean) : [];
+  const n = list2.length;
   const parts = [];
   const pos = [];
-  for (let i = 0; i < n; i++) {
-    const a = angleAt(i, n);
+  for (let i2 = 0; i2 < n; i2++) {
+    const a = angleAt(i2, n);
     const cx = round3(CX2 + RING * Math.cos(a));
     const cy = round3(CY2 + RING * Math.sin(a));
     pos.push([cx, cy, a]);
   }
   if (n >= 2) {
-    for (let i = 0; i < n; i++) {
-      const a0 = angleAt(i, n);
-      const a1 = angleAt(i + 1, n);
+    for (let i2 = 0; i2 < n; i2++) {
+      const a0 = angleAt(i2, n);
+      const a1 = angleAt(i2 + 1, n);
       const gap = (NODE_R + 6) / RING;
       const s = a0 + gap;
       const e = a1 - gap;
@@ -15541,8 +21418,8 @@ function build6(params = {}, opts = { animate: "draw" }) {
       }));
     }
   }
-  for (let i = 0; i < n; i++) {
-    const [cx, cy, a] = pos[i];
+  for (let i2 = 0; i2 < n; i2++) {
+    const [cx, cy, a] = pos[i2];
     parts.push(circle({
       cx,
       cy,
@@ -15552,7 +21429,7 @@ function build6(params = {}, opts = { animate: "draw" }) {
       fill: "none",
       class: "fig-stroke"
     }));
-    parts.push(label(String(i + 1), cx, cy + 4, {
+    parts.push(label(String(i2 + 1), cx, cy + 4, {
       anchor: "middle",
       size: 12,
       fill: "var(--ink-dim)"
@@ -15561,7 +21438,7 @@ function build6(params = {}, opts = { animate: "draw" }) {
     const ly = round3(CY2 + LABEL_R * Math.sin(a));
     const cos = Math.cos(a);
     const anchor = cos > 0.2 ? "start" : cos < -0.2 ? "end" : "middle";
-    parts.push(label(list[i].title ?? "", lx, ly + 4, { anchor, size: 13 }));
+    parts.push(label(list2[i2].title ?? "", lx, ly + 4, { anchor, size: 13 }));
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
   const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB, VB), styleCss));
@@ -15741,10 +21618,10 @@ function build7(params = {}, opts = { animate: "draw" }) {
     const colCount = group.length;
     const rowW = colCount * NODE_W2 + (colCount - 1) * COL_GAP;
     const fullW2 = maxCols * NODE_W2 + (maxCols - 1) * COL_GAP;
-    const offset = (fullW2 - rowW) / 2;
+    const offset2 = (fullW2 - rowW) / 2;
     group.forEach((nd, colIdx) => {
       const [cx0, cy] = nodeCentre(rowIdx, colIdx, colCount);
-      centre2.set(nd.id, [round4(cx0 + offset), round4(cy)]);
+      centre2.set(nd.id, [round4(cx0 + offset2), round4(cy)]);
     });
   });
   const parts = [];
@@ -15837,13 +21714,13 @@ var meta8 = {
 function build8(params = {}, opts = { animate: "draw" }) {
   const { panels = [], divider = "arrow" } = params || {};
   const animate = opts && opts.animate || "draw";
-  const list = Array.isArray(panels) ? panels.filter(Boolean) : [];
-  const n = Math.max(list.length, 1);
+  const list2 = Array.isArray(panels) ? panels.filter(Boolean) : [];
+  const n = Math.max(list2.length, 1);
   const top = PAD5 + LABEL_H;
   const parts = [];
-  for (let i = 0; i < list.length; i++) {
-    const p = list[i];
-    const x = PAD5 + i * (PANEL_W + DIVIDER);
+  for (let i2 = 0; i2 < list2.length; i2++) {
+    const p = list2[i2];
+    const x = PAD5 + i2 * (PANEL_W + DIVIDER);
     const y = top;
     parts.push(panel({ x, y, w: PANEL_W, h: PANEL_H }));
     parts.push(label(p.label ?? "", round5(x + PANEL_W / 2), y - 8, { anchor: "middle", size: 13 }));
@@ -15854,7 +21731,7 @@ function build8(params = {}, opts = { animate: "draw" }) {
         fill: "var(--ink-dim)"
       }));
     }
-    if (i < list.length - 1) {
+    if (i2 < list2.length - 1) {
       const cy = y + PANEL_H / 2;
       const gx1 = x + PANEL_W;
       const gx2 = gx1 + DIVIDER;
@@ -16118,20 +21995,20 @@ function build10(params = {}, opts = { animate: "draw" }) {
   const vennCx = cs.reduce((a, c) => a + c[0], 0) / n;
   const vennCy = cs.reduce((a, c) => a + c[1], 0) / n;
   const parts = [];
-  for (let i = 0; i < n; i++) {
+  for (let i2 = 0; i2 < n; i2++) {
     parts.push(circle({
-      cx: round7(cs[i][0]),
-      cy: round7(cs[i][1]),
+      cx: round7(cs[i2][0]),
+      cy: round7(cs[i2][1]),
       r: R,
-      stroke: ACCENTS2[i % ACCENTS2.length],
+      stroke: ACCENTS2[i2 % ACCENTS2.length],
       width: 2,
       fill: "none",
       class: "fig-stroke"
     }));
   }
-  for (let i = 0; i < n; i++) {
-    const [lx, ly] = outwardLabel(cs[i], vennCx, vennCy);
-    parts.push(label(setList[i].label ?? "", lx, round7(ly + 4), { anchor: "middle", size: 13 }));
+  for (let i2 = 0; i2 < n; i2++) {
+    const [lx, ly] = outwardLabel(cs[i2], vennCx, vennCy);
+    parts.push(label(setList[i2].label ?? "", lx, round7(ly + 4), { anchor: "middle", size: 13 }));
   }
   for (const o of ov) {
     const between = Array.isArray(o.between) ? o.between.filter((k) => k >= 0 && k < n) : [];
@@ -16355,20 +22232,20 @@ function build12(params = {}, opts = { animate: "draw" }) {
   } = params || {};
   const animate = opts && opts.animate || "draw";
   const horizontal = orientation !== "v";
-  const list = Array.isArray(bars) ? bars.filter(Boolean) : [];
-  const n = Math.max(list.length, 1);
-  const values = list.map((b) => Number(b.value) || 0);
+  const list2 = Array.isArray(bars) ? bars.filter(Boolean) : [];
+  const n = Math.max(list2.length, 1);
+  const values = list2.map((b) => Number(b.value) || 0);
   const scaleMax = typeof max === "number" && max > 0 ? max : Math.max(1, ...values);
   const parts = [];
   const hasNote = note != null && note !== "";
   if (horizontal) {
     const ox2 = PAD8 + H_LABEL_W;
     const oy = PAD8;
-    for (let i = 0; i < list.length; i++) {
-      const b = list[i];
+    for (let i2 = 0; i2 < list2.length; i2++) {
+      const b = list2[i2];
       const v = Number(b.value) || 0;
       const w = round9(Math.max(0, v / scaleMax * H_TRACK));
-      const y = oy + i * (H_BAR_H + H_GAP);
+      const y = oy + i2 * (H_BAR_H + H_GAP);
       const midY = round9(y + H_BAR_H / 2 + 4);
       parts.push(label(b.label ?? "", PAD8, midY, { size: 12, fill: "var(--ink-dim)" }));
       parts.push(rect({
@@ -16393,11 +22270,11 @@ function build12(params = {}, opts = { animate: "draw" }) {
   }
   const ox = PAD8;
   const baselineY = PAD8 + V_VALUE_H + V_TRACK;
-  for (let i = 0; i < list.length; i++) {
-    const b = list[i];
+  for (let i2 = 0; i2 < list2.length; i2++) {
+    const b = list2[i2];
     const v = Number(b.value) || 0;
     const h = round9(Math.max(1, v / scaleMax * V_TRACK));
-    const x = ox + i * (V_BAR_W + V_GAP);
+    const x = ox + i2 * (V_BAR_W + V_GAP);
     const y = round9(baselineY - h);
     const cx = round9(x + V_BAR_W / 2);
     parts.push(label(String(v), cx, round9(y - 6), { size: 12, anchor: "middle" }));
@@ -16443,7 +22320,7 @@ __export(part_to_whole_exports, {
 });
 var round10 = (n) => Math.round(n * 100) / 100;
 var COLOURS = ["var(--teal)", "var(--cyan)", "var(--violet)", "var(--ink)"];
-var colourAt = (i) => COLOURS[i % COLOURS.length];
+var colourAt = (i2) => COLOURS[i2 % COLOURS.length];
 var VB_W5 = 420;
 var VB_H5 = 300;
 var meta13 = {
@@ -16493,13 +22370,13 @@ var meta13 = {
   ]
 };
 function normalise(segments) {
-  const list = (Array.isArray(segments) ? segments : []).filter(Boolean).map((s) => ({ label: s.label ?? "", value: Math.max(0, Number(s.value) || 0) }));
-  const total = list.reduce((acc, s) => acc + s.value, 0) || 1;
-  return list.map((s, i) => ({
+  const list2 = (Array.isArray(segments) ? segments : []).filter(Boolean).map((s) => ({ label: s.label ?? "", value: Math.max(0, Number(s.value) || 0) }));
+  const total = list2.reduce((acc, s) => acc + s.value, 0) || 1;
+  return list2.map((s, i2) => ({
     ...s,
     frac: s.value / total,
     pct: Math.round(s.value / total * 100),
-    colour: colourAt(i)
+    colour: colourAt(i2)
   }));
 }
 function ringPoint(cx, cy, r, angle) {
@@ -16508,9 +22385,9 @@ function ringPoint(cx, cy, r, angle) {
 function legend(segs, x, y) {
   const out = [];
   const lineH = 22;
-  for (let i = 0; i < segs.length; i++) {
-    const s = segs[i];
-    const ly = y + i * lineH;
+  for (let i2 = 0; i2 < segs.length; i2++) {
+    const s = segs[i2];
+    const ly = y + i2 * lineH;
     out.push(line({
       x1: x,
       y1: ly,
@@ -16537,8 +22414,8 @@ function buildDonut(segs) {
     width: 12
   }));
   let start = -Math.PI / 2;
-  for (let i = 0; i < segs.length; i++) {
-    const s = segs[i];
+  for (let i2 = 0; i2 < segs.length; i2++) {
+    const s = segs[i2];
     const sweep = s.frac * Math.PI * 2;
     const end = start + sweep;
     const [x1, y1] = ringPoint(cx, cy, r, start);
@@ -16572,8 +22449,8 @@ function buildStacked(segs) {
     width: 2
   }));
   let cx = x0;
-  for (let i = 0; i < segs.length; i++) {
-    const s = segs[i];
+  for (let i2 = 0; i2 < segs.length; i2++) {
+    const s = segs[i2];
     const w = round10(s.frac * barW);
     parts.push(line({
       x1: round10(cx),
@@ -16584,7 +22461,7 @@ function buildStacked(segs) {
       width: 4,
       class: "fig-stroke"
     }));
-    if (i < segs.length - 1) {
+    if (i2 < segs.length - 1) {
       parts.push(line({
         x1: round10(cx + w),
         y1: y0,
@@ -16609,7 +22486,7 @@ function buildWaffle(segs) {
   const parts = [];
   const counts = segs.map((s) => Math.floor(s.frac * total));
   let assigned = counts.reduce((a, b) => a + b, 0);
-  const rema = segs.map((s, i) => ({ i, rem: s.frac * total - counts[i] })).sort((a, b) => b.rem - a.rem);
+  const rema = segs.map((s, i2) => ({ i: i2, rem: s.frac * total - counts[i2] })).sort((a, b) => b.rem - a.rem);
   let k = 0;
   while (assigned < total && segs.length > 0) {
     counts[rema[k % rema.length].i] += 1;
@@ -16617,8 +22494,8 @@ function buildWaffle(segs) {
     k += 1;
   }
   const cellColour = [];
-  for (let i = 0; i < segs.length; i++) {
-    for (let c = 0; c < counts[i]; c++) cellColour.push(segs[i].colour);
+  for (let i2 = 0; i2 < segs.length; i2++) {
+    for (let c = 0; c < counts[i2]; c++) cellColour.push(segs[i2].colour);
   }
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -16756,8 +22633,8 @@ function build14(params = {}, opts = { animate: "draw" }) {
     width: 2
   }));
   const TICKS = 4;
-  for (let i = 0; i <= TICKS; i++) {
-    const v = lo + span * i / TICKS;
+  for (let i2 = 0; i2 <= TICKS; i2++) {
+    const v = lo + span * i2 / TICKS;
     const tx = xOf(v);
     parts.push(line({
       x1: tx,
@@ -16839,9 +22716,9 @@ function glyph(variant, cx, cy) {
   const r = 5;
   const step = 16;
   const startX = cx - (v - 1) * step / 2;
-  for (let i = 0; i < v; i++) {
+  for (let i2 = 0; i2 < v; i2++) {
     out.push(circle({
-      cx: round12(startX + i * step),
+      cx: round12(startX + i2 * step),
       cy,
       r,
       stroke: "var(--teal)",
@@ -16854,15 +22731,15 @@ function glyph(variant, cx, cy) {
 function build15(params = {}, opts = { animate: "draw" }) {
   const { cols = 3, items = [] } = params || {};
   const animate = opts && opts.animate || "draw";
-  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  const list2 = Array.isArray(items) ? items.filter(Boolean) : [];
   const nCols = Math.max(1, Math.round(Number(cols) || 3));
-  const n = Math.max(list.length, 1);
-  const nRows = Math.max(1, Math.ceil(list.length / nCols) || 1);
+  const n = Math.max(list2.length, 1);
+  const nRows = Math.max(1, Math.ceil(list2.length / nCols) || 1);
   const parts = [];
-  for (let i = 0; i < list.length; i++) {
-    const it = list[i];
-    const col = i % nCols;
-    const row = Math.floor(i / nCols);
+  for (let i2 = 0; i2 < list2.length; i2++) {
+    const it = list2[i2];
+    const col = i2 % nCols;
+    const row = Math.floor(i2 / nCols);
     const x = PAD9 + col * (CELL_W2 + GAP2);
     const y = PAD9 + row * (CELL_H2 + GAP2);
     const cx = round12(x + CELL_W2 / 2);
@@ -16954,8 +22831,8 @@ function gear() {
   const rOuter = 52;
   const rInner = 36;
   const teeth = 12;
-  for (let i = 0; i < teeth; i++) {
-    const a = i / teeth * Math.PI * 2;
+  for (let i2 = 0; i2 < teeth; i2++) {
+    const a = i2 / teeth * Math.PI * 2;
     const x1 = CX3 + rInner * Math.cos(a);
     const y1 = CY3 + rInner * Math.sin(a);
     const x2 = CX3 + rOuter * Math.cos(a);
@@ -16971,8 +22848,8 @@ function ring() {
   const r = 52;
   parts.push(circle({ cx: CX3, cy: CY3, r, stroke: "var(--cyan)", width: 3, fill: "none" }));
   const ticks = 8;
-  for (let i = 0; i < ticks; i++) {
-    const a = i / ticks * Math.PI * 2;
+  for (let i2 = 0; i2 < ticks; i2++) {
+    const a = i2 / ticks * Math.PI * 2;
     const x1 = CX3 + (r - 10) * Math.cos(a);
     const y1 = CY3 + (r - 10) * Math.sin(a);
     const x2 = CX3 + r * Math.cos(a);
@@ -17426,8 +23303,8 @@ function build23(params = {}, opts = { animate: "motion" }) {
   const total = n * period;
   const iter = loop ? "infinite" : "1";
   const els = [];
-  stages.forEach((stage, i) => {
-    const cx = PAD10 + i * CELL + CELL / 2;
+  stages.forEach((stage, i2) => {
+    const cx = PAD10 + i2 * CELL + CELL / 2;
     const px = cx - PANEL_W2 / 2;
     const panel2 = rect({
       x: px,
@@ -17453,8 +23330,8 @@ function build23(params = {}, opts = { animate: "motion" }) {
       fill: "var(--ink)"
     });
     const connectors = [];
-    if (i < n - 1) {
-      const nx = PAD10 + (i + 1) * CELL + CELL / 2;
+    if (i2 < n - 1) {
+      const nx = PAD10 + (i2 + 1) * CELL + CELL / 2;
       connectors.push(line({
         x1: px + PANEL_W2,
         y1: PANEL_Y + PANEL_H2 / 2,
@@ -17464,7 +23341,7 @@ function build23(params = {}, opts = { animate: "motion" }) {
         width: 1.5
       }));
     }
-    const cls = animate !== "none" ? `fig-stage fig-stage-${i}` : "fig-stage";
+    const cls = animate !== "none" ? `fig-stage fig-stage-${i2}` : "fig-stage";
     els.push(el("g", { class: cls }, [panel2, marker, text3, ...connectors]));
   });
   const inner = els.join("");
@@ -17475,9 +23352,9 @@ function build23(params = {}, opts = { animate: "motion" }) {
     const frames = `0%{opacity:0.18} ${on}%,${slot}%{opacity:1} ${(Number(slot) + 1e-3).toFixed(4)}%,100%{opacity:0.18}`;
     const rules = [".fig-stage { opacity: 0.18; }"];
     rules.push(`.fig-stage { animation: stages-in ${total}s steps(1,end) ${iter}; }`);
-    stages.forEach((_, i) => {
-      const delay = (i * period).toFixed(4);
-      rules.push(`.fig-stage-${i} { animation-delay: ${delay}s; }`);
+    stages.forEach((_, i2) => {
+      const delay = (i2 * period).toFixed(4);
+      rules.push(`.fig-stage-${i2} { animation-delay: ${delay}s; }`);
     });
     styleCss = `${motionCss("stages-in", frames)}
 ${rules.join("\n")}`;
@@ -17637,10 +23514,10 @@ var LENGTHS = { short: "40\u201380 words.", medium: "80\u2013150 words.", long: 
 var tone = (t) => TONES[t] || TONES.professional;
 var len = (l) => LENGTHS[l] || LENGTHS.medium;
 function voiceExamplesBlock(voicePosts = []) {
-  const list = (Array.isArray(voicePosts) ? voicePosts : []).filter((p) => p && (p.body || p.title)).slice(0, 2);
-  if (!list.length) return "";
-  const ex = list.map(
-    (p, i) => `--- VOICE EXAMPLE ${i + 1}${p.title ? `: "${String(p.title)}"` : ""} ---
+  const list2 = (Array.isArray(voicePosts) ? voicePosts : []).filter((p) => p && (p.body || p.title)).slice(0, 2);
+  if (!list2.length) return "";
+  const ex = list2.map(
+    (p, i2) => `--- VOICE EXAMPLE ${i2 + 1}${p.title ? `: "${String(p.title)}"` : ""} ---
 ${String(p.body || "").slice(0, 1400)}`
   ).join("\n\n");
   return `Here is how they actually write \u2014 match this cadence and texture, but do NOT copy phrasings; write fresh on the new topic:
@@ -17767,7 +23644,7 @@ Make all 5 genuinely DIFFERENT from each other \u2014 different shapes (a contra
 
 (chaos seed: ${spice} \u2014 let it send you somewhere new.)`;
   const { json } = await ai.generateText({ provider, system: buildGoblinSystem(profile), prompt: user, maxTokens: 1100, json: schema, temperature: 1 });
-  const ideas = (Array.isArray(json && json.ideas) ? json.ideas : []).map((i) => ({ hook: String(i && i.hook || "").trim(), angle: String(i && i.angle || "").trim() })).filter((i) => i.hook || i.angle).slice(0, 6);
+  const ideas = (Array.isArray(json && json.ideas) ? json.ideas : []).map((i2) => ({ hook: String(i2 && i2.hook || "").trim(), angle: String(i2 && i2.angle || "").trim() })).filter((i2) => i2.hook || i2.angle).slice(0, 6);
   if (!ideas.length) throw Object.assign(new Error("The goblin came up empty \u2014 give it a poke (try again)."), { code: "AI_REFUSAL", status: 422 });
   return { ideas };
 }
@@ -17899,8 +23776,8 @@ Notes:
 """${notes}"""`;
   const { json } = await ai.generateText({ provider, system: styleFor(profile), prompt: user, maxTokens: 2500, json: schema, effort: "medium" });
   const src = Array.isArray(json?.blocks) ? json.blocks : [];
-  const blocks = src.map((b, i) => {
-    const id = `gen-${Date.now()}-${i}`;
+  const blocks = src.map((b, i2) => {
+    const id = `gen-${Date.now()}-${i2}`;
     if (b.type === "heading") return { id, type: "heading", level: b.level === 3 ? 3 : 2, text: String(b.text || "") };
     if (b.type === "quote") return { id, type: "quote", html: String(b.text || "") };
     return { id, type: "text", html: String(b.text || "") };
@@ -18020,9 +23897,9 @@ async function importDocument({ fileBase64, mimeType, provider } = {}, ai) {
     provider
   });
   const src = Array.isArray(json?.blocks) ? json.blocks : [];
-  let i = 0;
+  let i2 = 0;
   const blocks = src.map((b) => {
-    const id = `imp-${i++}`;
+    const id = `imp-${i2++}`;
     if (b.type === "heading") return { id, type: "heading", level: b.level === 3 ? 3 : 2, text: String(b.text || "") };
     if (b.type === "quote") return { id, type: "quote", html: String(b.text || "") };
     if (b.type === "table") return {
@@ -18219,7 +24096,7 @@ Apply this change: "${desc.slice(0, 800)}". Return the complete updated widget.`
   const out = r && r.json || {};
   let jsError = null;
   try {
-    if (String(out.js || "").trim()) new Function(String(out.js));
+    if (String(out.js || "").trim()) parse4(String(out.js), { ecmaVersion: "latest", allowReturnOutsideFunction: true });
   } catch (e) {
     jsError = e.message;
   }
@@ -18395,7 +24272,7 @@ function jsSyntaxError(js) {
   const src = String(js || "").trim();
   if (!src) return null;
   try {
-    new Function(src);
+    parse4(src, { ecmaVersion: "latest", allowReturnOutsideFunction: true });
     return null;
   } catch (e) {
     return e.message;
@@ -18415,7 +24292,7 @@ function rawHtmlRisks(content) {
   const text3 = String(content || "");
   if (!/<\w/.test(text3)) return out;
   const lines = text3.split("\n");
-  if (lines.some((ln, i) => i > 0 && i < lines.length - 1 && ln.trim() === ""))
+  if (lines.some((ln, i2) => i2 > 0 && i2 < lines.length - 1 && ln.trim() === ""))
     out.push("contains a blank line \u2014 markdown cuts the HTML block off there, so the rest of the post renders as escaped text");
   if (lines.some((ln) => ln.trim() && leadingWidth(ln) >= 4))
     out.push("has a line indented 4+ spaces \u2014 markdown turns it into a code block");
@@ -18638,62 +24515,62 @@ function checkDoc({ doc, meta: meta24 = {}, slug = "post", knownSlugs = null } =
   if (!topics.length) warnings.push({ message: "No topic selected \u2014 the post won\u2019t appear under any topic on the Writing page." });
   if (!blocks.length) errors.push({ message: "The post has no content blocks." });
   let hasText = false;
-  blocks.forEach((b, i) => {
+  blocks.forEach((b, i2) => {
     switch (b.type) {
       case "text":
         if (String(b.html || "").replace(/<[^>]*>/g, "").trim()) hasText = true;
         break;
       case "image":
-        if (!b.file && !b.base64 && !b.src) errors.push({ message: "Image block has no image.", blockIndex: i });
-        else if (!String(b.alt || "").trim()) warnings.push({ message: "Image has no alt text (hurts accessibility and SEO).", blockIndex: i });
+        if (!b.file && !b.base64 && !b.src) errors.push({ message: "Image block has no image.", blockIndex: i2 });
+        else if (!String(b.alt || "").trim()) warnings.push({ message: "Image has no alt text (hurts accessibility and SEO).", blockIndex: i2 });
         break;
       case "gallery":
         if ((b.images || []).some((im) => im && !String(im.alt || "").trim()))
-          warnings.push({ message: "A gallery image has no alt text.", blockIndex: i });
+          warnings.push({ message: "A gallery image has no alt text.", blockIndex: i2 });
         break;
       case "playground": {
         const err = jsSyntaxError(b.js);
-        if (err) errors.push({ message: `Playground script won\u2019t run \u2014 syntax error: ${err}`, blockIndex: i });
+        if (err) errors.push({ message: `Playground script won\u2019t run \u2014 syntax error: ${err}`, blockIndex: i2 });
         if (!String(b.html || "").trim() && !String(b.js || "").trim() && !String(b.css || "").trim())
-          warnings.push({ message: "Playground is empty.", blockIndex: i });
+          warnings.push({ message: "Playground is empty.", blockIndex: i2 });
         if (b.domId && !/^[a-zA-Z][\w-]*$/.test(b.domId))
-          warnings.push({ message: `Playground id \u201C${b.domId}\u201D is invalid and will be ignored.`, blockIndex: i });
+          warnings.push({ message: `Playground id \u201C${b.domId}\u201D is invalid and will be ignored.`, blockIndex: i2 });
         break;
       }
       case "figure": {
         const svg3 = String(b.svg || "");
         if (!svg3.trim()) {
-          errors.push({ message: "Figure block has no SVG.", blockIndex: i });
+          errors.push({ message: "Figure block has no SVG.", blockIndex: i2 });
           break;
         }
         const risk = figureSvgRisk(svg3);
-        if (risk) errors.push({ message: `Figure SVG is unsafe \u2014 it contains ${risk}.`, blockIndex: i });
+        if (risk) errors.push({ message: `Figure SVG is unsafe \u2014 it contains ${risk}.`, blockIndex: i2 });
         if (!/<svg[\s>]/i.test(svg3) || !/<\/svg\s*>/i.test(svg3))
-          errors.push({ message: "Figure SVG looks malformed (missing an <svg> \u2026 </svg> wrapper).", blockIndex: i });
+          errors.push({ message: "Figure SVG looks malformed (missing an <svg> \u2026 </svg> wrapper).", blockIndex: i2 });
         if (!String(b.alt || "").trim())
-          warnings.push({ message: "Figure has no alt text (hurts accessibility and SEO).", blockIndex: i });
+          warnings.push({ message: "Figure has no alt text (hurts accessibility and SEO).", blockIndex: i2 });
         if (/#[0-9a-f]{3,8}\b/i.test(svg3))
-          warnings.push({ message: "Figure SVG uses a # hex colour \u2014 it won\u2019t follow the site theme. Use CSS variables (e.g. var(--ink)) instead.", blockIndex: i });
+          warnings.push({ message: "Figure SVG uses a # hex colour \u2014 it won\u2019t follow the site theme. Use CSS variables (e.g. var(--ink)) instead.", blockIndex: i2 });
         break;
       }
       case "raw": {
         const c = String(b.content || "");
         const unsafe = rawHtmlUnsafe(c);
-        if (unsafe) errors.push({ message: `Raw HTML block is unsafe \u2014 it contains ${unsafe}. This would run on the live site. Remove it (or use a Playground block, which sanitises for you).`, blockIndex: i });
+        if (unsafe) errors.push({ message: `Raw HTML block is unsafe \u2014 it contains ${unsafe}. This would run on the live site. Remove it (or use a Playground block, which sanitises for you).`, blockIndex: i2 });
         for (const r of rawHtmlRisks(c))
-          warnings.push({ message: `Raw HTML block ${r}. Tip: a Playground block sanitises this for you.`, blockIndex: i });
+          warnings.push({ message: `Raw HTML block ${r}. Tip: a Playground block sanitises this for you.`, blockIndex: i2 });
         const scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
         let sm;
         while (sm = scriptRe.exec(c)) {
           const err = jsSyntaxError(sm[1]);
-          if (err) errors.push({ message: `Script in raw block won\u2019t run \u2014 syntax error: ${err}`, blockIndex: i });
+          if (err) errors.push({ message: `Script in raw block won\u2019t run \u2014 syntax error: ${err}`, blockIndex: i2 });
         }
         break;
       }
     }
     const html2 = b.html != null ? String(b.html) : b.type === "raw" ? String(b.content || "") : "";
     if (html2 && PLACEHOLDER_HREF.test(html2))
-      warnings.push({ message: "A link has an empty or placeholder (#) href.", blockIndex: i });
+      warnings.push({ message: "A link has an empty or placeholder (#) href.", blockIndex: i2 });
   });
   if (blocks.length && !hasText) warnings.push({ message: "The post has no body text." });
   try {
@@ -18714,11 +24591,11 @@ function checkDoc({ doc, meta: meta24 = {}, slug = "post", knownSlugs = null } =
     items: headingIssues.length ? headingIssues : ["Headings are well-nested (H2 \u2192 H3 \u2192 H4, no skips)."]
   });
   const altGaps = [];
-  blocks.forEach((b, i) => {
-    if (b.type === "image" && (b.file || b.base64 || b.src) && !String(b.alt || "").trim()) altGaps.push(`Image (block ${i + 1}) has no alt text.`);
-    if (b.type === "figure" && String(b.svg || "").trim() && !String(b.alt || "").trim()) altGaps.push(`Figure (block ${i + 1}) has no alt text.`);
+  blocks.forEach((b, i2) => {
+    if (b.type === "image" && (b.file || b.base64 || b.src) && !String(b.alt || "").trim()) altGaps.push(`Image (block ${i2 + 1}) has no alt text.`);
+    if (b.type === "figure" && String(b.svg || "").trim() && !String(b.alt || "").trim()) altGaps.push(`Figure (block ${i2 + 1}) has no alt text.`);
     if (b.type === "gallery") (b.images || []).forEach((im, j) => {
-      if (im && !String(im.alt || "").trim()) altGaps.push(`Gallery image ${j + 1} (block ${i + 1}) has no alt text.`);
+      if (im && !String(im.alt || "").trim()) altGaps.push(`Gallery image ${j + 1} (block ${i2 + 1}) has no alt text.`);
     });
   });
   polish.push({
@@ -18845,22 +24722,22 @@ function createSession() {
   return { sessionId: rid(), history: [], doc: { version: 0, blocks: [] }, meta: {}, versions: [], updatedAt: null };
 }
 function appendVersion(session, doc, meta24) {
-  const version = session.versions.length + 1;
-  const entry = { version, doc: { ...doc, version }, meta: { ...meta24 } };
+  const version2 = session.versions.length + 1;
+  const entry = { version: version2, doc: { ...doc, version: version2 }, meta: { ...meta24 } };
   session.versions.push(entry);
   session.doc = entry.doc;
   session.meta = entry.meta;
   return session;
 }
-function revertSession(session, version) {
-  const entry = (session.versions || []).find((v) => v.version === version);
+function revertSession(session, version2) {
+  const entry = (session.versions || []).find((v) => v.version === version2);
   if (!entry) throw Object.assign(new Error("version not found"), { status: 404 });
   session.doc = { ...entry.doc };
   session.meta = { ...entry.meta };
   return session;
 }
 function assembleContext({ style, voicePosts = [], index = [], factGuard }) {
-  const exemplars = voicePosts.map((p, i) => `--- VOICE EXAMPLE ${i + 1}: "${p.title}" ---
+  const exemplars = voicePosts.map((p, i2) => `--- VOICE EXAMPLE ${i2 + 1}: "${p.title}" ---
 ${(p.body || "").slice(0, 1800)}`).join("\n\n");
   const catalogue = index.map((p) => `- "${p.title}" [${(p.tags || []).join(", ")}] ${p.date || ""}`).join("\n");
   const guard = factGuard || factGuardLine();
@@ -18993,21 +24870,21 @@ var PATH = "src/data/site.json";
 async function getSiteConfig(gh) {
   const f = await gh.getFile(PATH);
   if (!f) return { data: {}, sha: null };
-  const data = JSON.parse(f.content);
-  if (!Array.isArray(data.nav)) data.nav = [];
-  if (typeof data.core !== "string") data.core = "";
-  return { data, sha: f.sha };
+  const data2 = JSON.parse(f.content);
+  if (!Array.isArray(data2.nav)) data2.nav = [];
+  if (typeof data2.core !== "string") data2.core = "";
+  return { data: data2, sha: f.sha };
 }
-async function putSiteConfig(gh, data, sha) {
-  return gh.putFile(PATH, JSON.stringify(data, null, 2) + "\n", "studio: update site settings", sha || void 0);
+async function putSiteConfig(gh, data2, sha) {
+  return gh.putFile(PATH, JSON.stringify(data2, null, 2) + "\n", "studio: update site settings", sha || void 0);
 }
 
 // src/core/themesConfig.js
 var PATH2 = "src/data/themes.json";
 function normaliseThemes(raw) {
   if (!raw) return [];
-  const list = Array.isArray(raw) ? raw : Array.isArray(raw.themes) ? raw.themes : [];
-  return list.map((t) => typeof t === "string" ? { id: t } : t).filter((t) => t && typeof t.id === "string" && t.id).map((t) => ({
+  const list2 = Array.isArray(raw) ? raw : Array.isArray(raw.themes) ? raw.themes : [];
+  return list2.map((t) => typeof t === "string" ? { id: t } : t).filter((t) => t && typeof t.id === "string" && t.id).map((t) => ({
     id: t.id,
     name: t.name || t.id.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
     category: t.category || ""
@@ -19043,8 +24920,8 @@ async function getTopicsConfig(gh) {
   if (!f) return { data: [], sha: null };
   return { data: JSON.parse(f.content), sha: f.sha };
 }
-async function putTopicsConfig(gh, data, sha) {
-  return gh.putFile(PATH3, JSON.stringify(data, null, 2) + "\n", "studio: update topics", sha || void 0);
+async function putTopicsConfig(gh, data2, sha) {
+  return gh.putFile(PATH3, JSON.stringify(data2, null, 2) + "\n", "studio: update topics", sha || void 0);
 }
 
 // src/core/thread.js
@@ -19113,9 +24990,9 @@ function addScratch(thread, text3, now) {
 }
 function removeScratch(thread, id) {
   if (!Array.isArray(thread.scratch)) return null;
-  const i = thread.scratch.findIndex((s) => s && s.id === id);
-  if (i < 0) return null;
-  return thread.scratch.splice(i, 1)[0];
+  const i2 = thread.scratch.findIndex((s) => s && s.id === id);
+  if (i2 < 0) return null;
+  return thread.scratch.splice(i2, 1)[0];
 }
 function serializeThread(thread) {
   return JSON.stringify(thread);
@@ -19218,12 +25095,12 @@ function makeRouter(deps) {
     throw Object.assign(new Error("not found: " + p), { status: 404 });
   };
   const qp = (path3) => {
-    const i = path3.indexOf("?");
-    return i < 0 ? {} : Object.fromEntries(new URLSearchParams(path3.slice(i + 1)));
+    const i2 = path3.indexOf("?");
+    return i2 < 0 ? {} : Object.fromEntries(new URLSearchParams(path3.slice(i2 + 1)));
   };
   const clean = (path3) => {
-    const i = path3.indexOf("?");
-    return i < 0 ? path3 : path3.slice(0, i);
+    const i2 = path3.indexOf("?");
+    return i2 < 0 ? path3 : path3.slice(0, i2);
   };
   async function api(rawPath, opts = {}) {
     const method = (opts.method || "GET").toUpperCase();
@@ -19336,7 +25213,7 @@ function makeRouter(deps) {
       await storage2.del("blockdrafts", b);
       return r;
     }
-    const sortVersions = (list) => list.slice().sort((x, y) => (y.seq || 0) - (x.seq || 0) || (y.ts || "").localeCompare(x.ts || ""));
+    const sortVersions = (list2) => list2.slice().sort((x, y) => (y.seq || 0) - (x.seq || 0) || (y.ts || "").localeCompare(x.ts || ""));
     if (a === "posts" && c === "versions" && method === "GET") {
       return { versions: sortVersions((await storage2.all("versions")).filter((v) => v.slug === b)) };
     }
@@ -19514,8 +25391,8 @@ function ring2(points) {
 }
 function arc(cx, cy, rx, ry, a0, a1, n = 18) {
   const out = [];
-  for (let i = 0; i <= n; i++) {
-    const t = a0 + (a1 - a0) * i / n;
+  for (let i2 = 0; i2 <= n; i2++) {
+    const t = a0 + (a1 - a0) * i2 / n;
     out.push([round13(cx + rx * Math.cos(t)), round13(cy + ry * Math.sin(t))]);
   }
   return out;
@@ -19523,9 +25400,9 @@ function arc(cx, cy, rx, ry, a0, a1, n = 18) {
 var TAU = Math.PI * 2;
 function star(cx, cy, rOuter, rInner, points = 5, rot = -Math.PI / 2) {
   const pts = [];
-  for (let i = 0; i < points * 2; i++) {
-    const r = i % 2 === 0 ? rOuter : rInner;
-    const a = rot + i * Math.PI / points;
+  for (let i2 = 0; i2 < points * 2; i2++) {
+    const r = i2 % 2 === 0 ? rOuter : rInner;
+    const a = rot + i2 * Math.PI / points;
     pts.push([round13(cx + r * Math.cos(a)), round13(cy + r * Math.sin(a))]);
   }
   if (pts.length) pts.push([pts[0][0], pts[0][1]]);
@@ -19769,9 +25646,9 @@ function disc(cx, cy, r, fill) {
 function scallop(cx, cy, r, n) {
   const pts = [];
   const steps = n * 2;
-  for (let i = 0; i <= steps; i++) {
-    const a = i / steps * Math.PI * 2 - Math.PI / 2;
-    const rad = i % 2 === 0 ? r : r - 9;
+  for (let i2 = 0; i2 <= steps; i2++) {
+    const a = i2 / steps * Math.PI * 2 - Math.PI / 2;
+    const rad = i2 % 2 === 0 ? r : r - 9;
     pts.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
   }
   const round14 = (n2) => Math.round(n2 * 10) / 10;
@@ -20312,7 +26189,7 @@ var flora_fauna_default = {
     mkSticker("sunflower", "Sunflower", [
       `<line x1="60" y1="74" x2="60" y2="114" stroke="${RETRO.green}" stroke-width="${OUT}" stroke-linecap="round"/>`,
       `<path d="M60 96 q-22 -2 -28 -18 q22 -4 28 12 Z" fill="${RETRO.green}" stroke="${RETRO.ink}" stroke-width="2" stroke-linejoin="round"/>`,
-      ...Array.from({ length: 12 }, (_, i) => i * 30).map((a) => `<ellipse cx="60" cy="20" rx="9" ry="18" fill="${RETRO.gold}" stroke="${RETRO.ink}" stroke-width="2" transform="rotate(${a} 60 50)"/>`),
+      ...Array.from({ length: 12 }, (_, i2) => i2 * 30).map((a) => `<ellipse cx="60" cy="20" rx="9" ry="18" fill="${RETRO.gold}" stroke="${RETRO.ink}" stroke-width="2" transform="rotate(${a} 60 50)"/>`),
       `<circle cx="60" cy="50" r="18" fill="${RETRO.brown}" stroke="${RETRO.ink}" stroke-width="${LINE}"/>`,
       `<path d="M52 44 l4 4 M62 44 l4 4 M54 54 l4 4 M64 54 l4 4" fill="none" stroke="${RETRO.ink}" stroke-width="2" stroke-linecap="round"/>`
     ].join(""), { viewBox: [120, 120] }),
@@ -20383,14 +26260,14 @@ var general_default = {
       `<path d="M62 24 L44 56 L60 56" fill="none" stroke="${RETRO.orange}" stroke-width="${LINE}" stroke-linejoin="round"/>`
     ].join(""), { viewBox: [120, 120] }),
     mkSticker("smiley-sun", "Smiley sun", [
-      ...Array.from({ length: 12 }, (_, i) => i * 30).map((a) => `<path d="M60 6 L66 22 L54 22 Z" fill="${RETRO.gold}" stroke="${RETRO.ink}" stroke-width="2" stroke-linejoin="round" transform="rotate(${a} 60 60)"/>`),
+      ...Array.from({ length: 12 }, (_, i2) => i2 * 30).map((a) => `<path d="M60 6 L66 22 L54 22 Z" fill="${RETRO.gold}" stroke="${RETRO.ink}" stroke-width="2" stroke-linejoin="round" transform="rotate(${a} 60 60)"/>`),
       `<circle cx="60" cy="60" r="34" fill="${RETRO.gold}" stroke="${RETRO.ink}" stroke-width="${OUT}"/>`,
       `<circle cx="48" cy="54" r="4.5" fill="${RETRO.ink}"/>`,
       `<circle cx="72" cy="54" r="4.5" fill="${RETRO.ink}"/>`,
       `<path d="M44 70 q16 16 32 0" fill="none" stroke="${RETRO.ink}" stroke-width="${LINE}" stroke-linecap="round"/>`
     ].join(""), { viewBox: [120, 120] }),
     mkSticker("rosette", "Award rosette", [
-      ...Array.from({ length: 12 }, (_, i) => i * 30).map((a) => `<ellipse cx="60" cy="20" rx="10" ry="16" fill="${RETRO.red}" stroke="${RETRO.ink}" stroke-width="2" transform="rotate(${a} 60 48)"/>`),
+      ...Array.from({ length: 12 }, (_, i2) => i2 * 30).map((a) => `<ellipse cx="60" cy="20" rx="10" ry="16" fill="${RETRO.red}" stroke="${RETRO.ink}" stroke-width="2" transform="rotate(${a} 60 48)"/>`),
       `<path d="M44 60 L34 110 L48 100 L54 112 L62 76 Z" fill="${RETRO.blue}" stroke="${RETRO.ink}" stroke-width="${LINE}" stroke-linejoin="round"/>`,
       `<path d="M76 60 L86 110 L72 100 L66 112 L58 76 Z" fill="${RETRO.blue}" stroke="${RETRO.ink}" stroke-width="${LINE}" stroke-linejoin="round"/>`,
       `<circle cx="60" cy="48" r="22" fill="${RETRO.gold}" stroke="${RETRO.ink}" stroke-width="${OUT}"/>`,
@@ -21691,8 +27568,8 @@ function listStickers() {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const mod of MODULES) {
-    const list = Array.isArray(mod && mod.stickers) ? mod.stickers : [];
-    for (const s of list) {
+    const list2 = Array.isArray(mod && mod.stickers) ? mod.stickers : [];
+    for (const s of list2) {
       if (!s || !s.id || seen.has(s.id)) continue;
       seen.add(s.id);
       out.push({
@@ -22040,17 +27917,17 @@ var S = (store) => store || browserStore;
 function tourStepCount() {
   return TOUR_STEPS.length;
 }
-function clampStep(i) {
-  i = Number(i);
-  if (!Number.isFinite(i) || i < 0) return 0;
+function clampStep(i2) {
+  i2 = Number(i2);
+  if (!Number.isFinite(i2) || i2 < 0) return 0;
   const max = TOUR_STEPS.length - 1;
-  return i > max ? max : Math.floor(i);
+  return i2 > max ? max : Math.floor(i2);
 }
-function tourStepAt(i) {
-  return TOUR_STEPS[clampStep(i)] || null;
+function tourStepAt(i2) {
+  return TOUR_STEPS[clampStep(i2)] || null;
 }
-function isLastStep(i) {
-  return clampStep(i) === TOUR_STEPS.length - 1;
+function isLastStep(i2) {
+  return clampStep(i2) === TOUR_STEPS.length - 1;
 }
 function markPending(store) {
   const s = S(store);
@@ -22496,8 +28373,8 @@ var quotes_default = {
 
 // src/core/quotes.js
 var QUOTES = Object.freeze(
-  (Array.isArray(quotes_default?.quotes) ? quotes_default.quotes : []).map((q2, i) => Object.freeze({
-    id: "q" + i,
+  (Array.isArray(quotes_default?.quotes) ? quotes_default.quotes : []).map((q2, i2) => Object.freeze({
+    id: "q" + i2,
     text: String(q2.text || "").trim(),
     author: String(q2.author || "Unknown").trim() || "Unknown",
     themes: Array.isArray(q2.themes) ? q2.themes.map(String) : [],
@@ -22514,16 +28391,16 @@ function tally(pairs) {
 function byCountThenName(a, b) {
   return b.count - a.count || a.value.localeCompare(b.value);
 }
-function themeFacets(list = QUOTES) {
-  const m = tally(list.flatMap((q2) => q2.themes));
+function themeFacets(list2 = QUOTES) {
+  const m = tally(list2.flatMap((q2) => q2.themes));
   return [...m].map(([value, count]) => ({ value, count })).sort(byCountThenName);
 }
-function toneFacets(list = QUOTES) {
-  const m = tally(list.map((q2) => q2.tone).filter(Boolean));
+function toneFacets(list2 = QUOTES) {
+  const m = tally(list2.map((q2) => q2.tone).filter(Boolean));
   return TONES2.filter((t) => m.has(t)).map((t) => ({ value: t, count: m.get(t) }));
 }
-function authorFacets(list = QUOTES) {
-  const m = tally(list.map((q2) => q2.author));
+function authorFacets(list2 = QUOTES) {
+  const m = tally(list2.map((q2) => q2.author));
   return [...m].map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value));
 }
 function norm(s) {
@@ -22534,12 +28411,12 @@ function matchesQuery(q2, terms) {
   const hay = norm(q2.text + " " + q2.author + " " + q2.source);
   return terms.every((t) => hay.includes(t));
 }
-function filterQuotes(facets = {}, list = QUOTES) {
+function filterQuotes(facets = {}, list2 = QUOTES) {
   const themes = (facets.themes || []).filter(Boolean);
   const authors = (facets.authors || []).filter(Boolean);
   const tones = (facets.tones || []).filter(Boolean);
   const terms = norm(facets.query).split(/\s+/).filter(Boolean);
-  return list.filter(
+  return list2.filter(
     (q2) => (!themes.length || q2.themes.some((t) => themes.includes(t))) && (!authors.length || authors.includes(q2.author)) && (!tones.length || tones.includes(q2.tone)) && matchesQuery(q2, terms)
   );
 }
@@ -22628,8 +28505,8 @@ function buildMonthGrid(year, month, todayISO2 = toISODate(/* @__PURE__ */ new D
   const lead = (first.getDay() + 6) % 7;
   const start = new Date(year, month, 1 - lead);
   const cells = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+  for (let i2 = 0; i2 < 42; i2++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i2);
     const iso = toISODate(d);
     cells.push({
       iso,
@@ -22759,24 +28636,24 @@ function postLiveUrl(slug, origin) {
   if (!s) return "";
   return normaliseOrigin(origin) + "/blog/" + s + "/";
 }
-function absoluteImageUrl(ref, origin) {
-  const r = String(ref || "").trim();
+function absoluteImageUrl(ref2, origin) {
+  const r = String(ref2 || "").trim();
   if (!r) return "";
   if (/^data:/i.test(r) || /^https?:\/\//i.test(r)) return r;
   if (r.startsWith("/")) return normaliseOrigin(origin) + r;
   return "";
 }
-function postImageUrls(doc, data, { slug = "", origin } = {}) {
+function postImageUrls(doc, data2, { slug = "", origin } = {}) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  const push = (ref, label2) => {
-    const url = absoluteImageUrl(ref, origin);
+  const push = (ref2, label2) => {
+    const url = absoluteImageUrl(ref2, origin);
     if (!url || seen.has(url)) return;
     seen.add(url);
     out.push({ url, label: label2 });
   };
   const fileUrl = (file) => slug && file ? "/images/posts/" + slug + "/" + file : "";
-  if (data && data.image) push(data.image, "Cover");
+  if (data2 && data2.image) push(data2.image, "Cover");
   for (const b of doc && Array.isArray(doc.blocks) ? doc.blocks : []) {
     if (!b || typeof b !== "object") continue;
     if (b.type === "image") {
@@ -22899,6 +28776,10 @@ var BAKED_CATALOGUE = {
   "$schema-note": "Blog theme registry. `id` matches src/styles/themes/<id>.css and the data-blog-theme value on <html>. `hero` names the homepage ARCHETYPE \u2014 index.astro renders src/components/home/Home<Archetype>.astro so every theme has a STRUCTURALLY distinct first screen (a front page, a start screen, a pinboard\u2026), not just a recolour. The rings/torus WebGL hero (archetype `rings`) is reserved for `observatory`. `vocabulary` gives each theme its own words: postsTitle (the writing archive's name), topicsLabel (the noun for the topic set, replacing 'constellations'), aboutLabel, an optional demo tagline, and topicNames \u2014 a DISPLAY-NAME override map over the seed topic SLUGS in src/data/topics.json (slugs/URLs never change; unknown/user topics pass through). Chrome labels fall back to observatory's defaults when a key is absent. The Chapbook composer reads this list for its theme picker; preview{bg,ink,accent} are swatches only.",
   "categories": [
     {
+      "id": "professional",
+      "name": "Personal & business"
+    },
+    {
       "id": "clean",
       "name": "Clean & Simple"
     },
@@ -22920,6 +28801,150 @@ var BAKED_CATALOGUE = {
     }
   ],
   "themes": [
+    {
+      "id": "folio",
+      "name": "Folio",
+      "category": "professional",
+      "hero": "folio",
+      "description": "A personal practice with an editorial introduction, a compact background column, services and a writing index.",
+      "preview": {
+        "bg": "#f8f6f0",
+        "ink": "#202a30",
+        "accent": "#315b71"
+      },
+      "vocabulary": {
+        "postsTitle": "Writing",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "practice",
+      "name": "Practice",
+      "category": "professional",
+      "hero": "practice",
+      "description": "A calm consulting-room layout with areas of practice, clear credentials, contact details and an optional appointment link.",
+      "preview": {
+        "bg": "#f3f4ec",
+        "ink": "#203b35",
+        "accent": "#315b47"
+      },
+      "vocabulary": {
+        "postsTitle": "Writing",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "petal",
+      "name": "Petal",
+      "category": "professional",
+      "hero": "petal",
+      "description": "An intimate beauty studio: a framed introduction, a treatment menu and a quiet appointment invitation.",
+      "preview": {
+        "bg": "#f8eeea",
+        "ink": "#412c35",
+        "accent": "#86475f"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "contour",
+      "name": "Contour",
+      "category": "professional",
+      "hero": "contour",
+      "description": "A precise aesthetics practice with a consultation panel, numbered treatments and clear practitioner information.",
+      "preview": {
+        "bg": "#f4f3f0",
+        "ink": "#222c32",
+        "accent": "#335c68"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "cut",
+      "name": "Cut",
+      "category": "professional",
+      "hero": "cut",
+      "description": "A bold salon front page with a typographic masthead, compact price list and an appointment rail.",
+      "preview": {
+        "bg": "#f5f1e7",
+        "ink": "#251f20",
+        "accent": "#842c31"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "still",
+      "name": "Still",
+      "category": "professional",
+      "hero": "still",
+      "description": "A spacious wellness practice with a centred opening, session cards and a quiet reading list.",
+      "preview": {
+        "bg": "#eeefe7",
+        "ink": "#303d32",
+        "accent": "#4d6552"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "office",
+      "name": "Office",
+      "category": "professional",
+      "hero": "office",
+      "description": "A consulting desk with a two-column introduction, structured service index and recent writing.",
+      "preview": {
+        "bg": "#eef2f5",
+        "ink": "#202d40",
+        "accent": "#315b89"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "portrait",
+      "name": "Portrait",
+      "category": "professional",
+      "hero": "portrait",
+      "description": "A personal calling card with a large nameplate, short biography, selected work and a compact journal.",
+      "preview": {
+        "bg": "#f9f5ed",
+        "ink": "#342c29",
+        "accent": "#775747"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
     {
       "id": "observatory",
       "name": "Observatory",
@@ -23079,7 +29104,7 @@ var BAKED_CATALOGUE = {
       "name": "Kiosk",
       "category": "editorial",
       "hero": "news-wall",
-      "description": "Newsstand energy: a wall of paper cards with accent ticks, condensed caps headlines and a hot tabloid red.",
+      "description": "A working newsstand: one lead story, smaller illustrated headlines, article summaries and instant search.",
       "preview": {
         "bg": "#faf7f0",
         "ink": "#111111",
@@ -23187,7 +29212,7 @@ var BAKED_CATALOGUE = {
       "name": "Scrapbook",
       "category": "creative",
       "hero": "pinboard",
-      "description": "Warm craft paper, taped-down cards and a friendly rounded hand. Everything looks lovingly stuck in.",
+      "description": "A warm pinboard of real photos, excerpts and topic annotations. Paper details without invented endorsements.",
       "preview": {
         "bg": "#f3ead8",
         "ink": "#3a2f26",
@@ -23376,7 +29401,7 @@ var BAKED_CATALOGUE = {
       "name": "Darkroom",
       "category": "photo",
       "hero": "lightbox",
-      "description": "Near-black walls and silver labels so photographs glow. Minimal chrome, maximum image.",
+      "description": "A photography exhibition: real uploaded photographs on a quiet lightbox, followed by a compact index of text-only notes.",
       "preview": {
         "bg": "#0b0b0d",
         "ink": "#ededf0",
@@ -23403,7 +29428,7 @@ var BAKED_CATALOGUE = {
       "name": "Contact Sheet",
       "category": "photo",
       "hero": "contact-sheet",
-      "description": "A film contact sheet: charcoal base, framed thumbnails with numbered edges and monospace grease-pencil labels.",
+      "description": "A dense photographic proof sheet with real post images, frame numbers and a separate caption log. Text-only entries use numbered plates.",
       "preview": {
         "bg": "#161514",
         "ink": "#eae8e3",
@@ -23427,20 +29452,20 @@ var BAKED_CATALOGUE = {
     },
     {
       "id": "polaroid",
-      "name": "Polaroid",
+      "name": "Postcards",
       "category": "photo",
       "hero": "photo-pile",
-      "description": "Instant-photo charm: soft grey desk, white photo frames with a caption lip and a casual retro-blue accent.",
+      "description": "An illustrated correspondence: alternating photograph-and-letter spreads, postmarked dates and a readable archive. Replaces the old scattered photo pile.",
       "preview": {
         "bg": "#e9e6df",
         "ink": "#26241f",
         "accent": "#3a7ca5"
       },
       "vocabulary": {
-        "postsTitle": "Snapshots",
-        "topicsLabel": "The Pile",
+        "postsTitle": "Postcards",
+        "topicsLabel": "Places & subjects",
         "aboutLabel": "About",
-        "tagline": "Shake it and see.",
+        "tagline": "Notes from here and there.",
         "topicNames": {
           "marrow": "Moments",
           "forge": "Tinkering",
@@ -23543,8 +29568,8 @@ function themeCardHTML(theme, checked) {
 function pickerBodyHTML(catalogue, selectedId) {
   const groups = groupByCategory(catalogue);
   const themes = catalogue && catalogue.themes || BAKED_CATALOGUE.themes;
-  const sel = themes.some((t) => t.id === selectedId) ? selectedId : themes[0] && themes[0].id;
-  return groups.map((g) => `<div class="cbtp-cat"><div class="cbtp-cat-h">${esc3(g.name)}</div><div class="cbtp-grid">${g.themes.map((t) => themeCardHTML(t, t.id === sel)).join("")}</div></div>`).join("");
+  const sel = themes.some((t) => t.id === selectedId) ? selectedId : themes.some((t) => t.id === DEFAULT_THEME) ? DEFAULT_THEME : themes[0] && themes[0].id;
+  return '<p><a href="https://chapbook.rqai.co.uk/themes/" target="_blank" rel="noopener">Preview the full theme gallery \u2197</a></p>' + groups.map((g) => `<div class="cbtp-cat"><div class="cbtp-cat-h">${esc3(g.name)}</div><div class="cbtp-grid">${g.themes.map((t) => themeCardHTML(t, t.id === sel)).join("")}</div></div>`).join("");
 }
 function ensurePickerStyles(doc) {
   if (!doc || doc.getElementById(PICKER_STYLE_ID)) return;
@@ -23558,16 +29583,16 @@ function mountThemePicker(container, opts = {}) {
   const catalogue = opts.catalogue && Array.isArray(opts.catalogue.themes) && opts.catalogue.themes.length ? opts.catalogue : BAKED_CATALOGUE;
   const onSelect = typeof opts.onSelect === "function" ? opts.onSelect : null;
   const ids = catalogue.themes.map((t) => t.id);
-  let current = ids.includes(opts.selected) ? opts.selected : ids.includes(DEFAULT_THEME) ? DEFAULT_THEME : ids[0];
+  let current2 = ids.includes(opts.selected) ? opts.selected : ids.includes(DEFAULT_THEME) ? DEFAULT_THEME : ids[0];
   ensurePickerStyles(container.ownerDocument || document);
   container.classList.add("cbtp");
   container.setAttribute("role", "radiogroup");
   if (!container.getAttribute("aria-label")) container.setAttribute("aria-label", "Blog theme");
-  container.innerHTML = pickerBodyHTML(catalogue, current);
+  container.innerHTML = pickerBodyHTML(catalogue, current2);
   const cards = () => Array.from(container.querySelectorAll(".cbtp-card"));
   const select = (id, focus) => {
     if (!ids.includes(id)) return;
-    current = id;
+    current2 = id;
     for (const el2 of cards()) {
       const isOn = el2.dataset.theme === id;
       el2.classList.toggle("sel", isOn);
@@ -23587,25 +29612,25 @@ function mountThemePicker(container, opts = {}) {
   container.addEventListener("keydown", (e) => {
     const card = e.target.closest && e.target.closest(".cbtp-card[data-theme]");
     if (!card) return;
-    const list = cards();
-    const i = list.indexOf(card);
-    if (i < 0) return;
+    const list2 = cards();
+    const i2 = list2.indexOf(card);
+    if (i2 < 0) return;
     let next = -1;
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % list.length;
-    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i - 1 + list.length) % list.length;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i2 + 1) % list2.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i2 - 1 + list2.length) % list2.length;
     else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = list.length - 1;
+    else if (e.key === "End") next = list2.length - 1;
     else if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
       select(card.dataset.theme, false);
       return;
     } else return;
     e.preventDefault();
-    select(list[next].dataset.theme, true);
+    select(list2[next].dataset.theme, true);
   });
-  if (onSelect) onSelect(current);
+  if (onSelect) onSelect(current2);
   return { get value() {
-    return current;
+    return current2;
   }, set: (id) => select(id, false) };
 }
 
@@ -23923,8 +29948,8 @@ function renderOnboarding() {
         }
         set("Creating your blog\u2026");
         let repo = null;
-        for (let i = 0; i < 5; i++) {
-          const tryName = i ? `${slug}-${i + 1}` : slug;
+        for (let i2 = 0; i2 < 5; i2++) {
+          const tryName = i2 ? `${slug}-${i2 + 1}` : slug;
           try {
             repo = await gh.generateFromTemplate({ templateOwner: "inayatpanda", templateRepo: "blog-template", owner, name: tryName, description: name });
             slug = tryName;
@@ -23942,7 +29967,7 @@ function renderOnboarding() {
         set("Setting it up\u2026");
         const ghRepo = makeGithub({ token, owner, repo: slug, branch });
         let site = null, sha = null;
-        for (let i = 0; i < 6; i++) {
+        for (let i2 = 0; i2 < 6; i2++) {
           try {
             const f = await ghRepo.getFile("src/data/site.json");
             if (f && f.content) {

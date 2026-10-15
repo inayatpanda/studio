@@ -3623,6 +3623,11 @@
     <p class="sub" style="margin-top:0">Choose which tabs appear, rename them, set the order.</p>
     <div id="ss-nav" class="nav-editor"></div>
 
+    <details class="card" style="margin-top:1.4rem;padding:1rem"><summary style="cursor:pointer;font-weight:600">Practice or business details</summary>
+      <p class="sub">Used by the personal and business themes. Add only the details you want visitors to see.</p>
+      <div id="ss-professional"></div>
+    </details>
+
     <label style="margin-top:1.4rem">Socials</label>
     <input type="url" id="ss-linkedin" placeholder="LinkedIn URL" style="margin-bottom:.5rem" />
     <input type="url" id="ss-instagram" placeholder="Instagram URL" style="margin-bottom:.5rem" />
@@ -7715,6 +7720,7 @@ const NAV_CATALOGUE = [
   { href: '/writing/',     label: 'Posts' },
   { href: '/about/',       label: 'About' },
   { href: '/contact/',     label: 'Contact' },
+  { href: '/appointments/', label: 'Appointments' },
   { href: '/apps/',        label: 'Apps' },
   { href: '/darkroom/',    label: 'Darkroom' },
 ];
@@ -7850,6 +7856,7 @@ async function loadSiteSettings() {
     $('ss-github').value = d.socials?.github || '';
     $('ss-newsletter').value = d.newsletter?.endpoint || '';
     $('ss-contact').value = d.contact?.endpoint || '';
+  window.__studioProfessional?.renderForm($('ss-professional'),d.professional||{});
     _navRows = navRowsFromConfig(d.nav);
     renderNavEditor();
     try { renderDnsPreview(); } catch {}   // refresh the default-address hint for the real repo
@@ -7890,6 +7897,7 @@ async function saveSiteSettings() {
     data.socials = { linkedin: $('ss-linkedin').value.trim(), instagram: $('ss-instagram').value.trim(), github: $('ss-github').value.trim() };
     data.newsletter = { endpoint: $('ss-newsletter').value.trim() };
     data.contact = { endpoint: $('ss-contact').value.trim() };
+    data.professional = window.__studioProfessional?.readForm($('ss-professional'),current?.professional||{}) || current?.professional || {};
     data.nav = navFromRows();
     await api('/settings/site', { method: 'PUT', body: JSON.stringify({ data, sha }) });
     await loadSiteSettings();          // refresh the sha + re-render rows from the saved order
@@ -13219,6 +13227,8 @@ function cssEscape(s){ return String(s == null ? '' : s).replace(/(["\\])/g, '\\
 function _hdOpen({ title, text, value, placeholder, okText, danger, input }){
   return new Promise(resolve => {
     const dlg = $('helmDlg'), inp = $('hdInput'), txt = $('hdText'), ok = $('hdOk');
+    // Shared confirmations must remain visible when opened outside the editor (e.g. backups).
+    if(dlg.parentElement !== document.body) document.body.appendChild(dlg);
     $('hdTitle').textContent = title || '';
     txt.style.display = text ? 'block' : 'none'; txt.textContent = text || '';
     inp.style.display = input ? 'block' : 'none'; inp.value = value || ''; inp.placeholder = placeholder || '';

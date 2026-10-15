@@ -4,6 +4,118 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/core/professionalForm.js
+var professionalForm_exports = {};
+__export(professionalForm_exports, {
+  readForm: () => readForm,
+  renderForm: () => renderForm
+});
+var fields = [
+  ["eyebrow", "Short label", "text", "Independent consultant"],
+  ["heading", "Homepage heading", "text", "Your main introduction"],
+  ["intro", "Introduction", "textarea", "What you do, who you help, and how you work."],
+  ["location", "Location", "text", "City, area or practice address"],
+  ["hours", "Hours / availability note", "textarea", "By appointment"],
+  ["email", "Public email", "email", "hello@example.com"],
+  ["phone", "Public phone", "tel", ""],
+  ["bookingUrl", "Booking page", "url", "https://\u2026"],
+  ["bookingLabel", "Booking button text", "text", "Book an appointment"],
+  ["credentials", "Qualifications or useful details \u2014 one per line", "textarea", ""]
+];
+function field(key, label, type, value, placeholder) {
+  const wrap = document.createElement("div"), lab = document.createElement("label"), input = document.createElement(type === "textarea" ? "textarea" : "input");
+  input.id = "pro-" + key;
+  input.dataset.field = key;
+  lab.htmlFor = input.id;
+  lab.textContent = label;
+  if (type !== "textarea") input.type = type;
+  else input.rows = key === "intro" ? 3 : 2;
+  input.value = value || "";
+  input.placeholder = placeholder || "";
+  input.style.width = "100%";
+  input.style.marginBottom = ".7rem";
+  wrap.append(lab, input);
+  return wrap;
+}
+var serviceSequence = 0;
+function serviceRow(host, service = {}) {
+  const rowId = ++serviceSequence;
+  const row = document.createElement("div");
+  row.className = "pro-service-editor";
+  row.style.cssText = "border-top:1px solid var(--line);padding:1rem 0";
+  for (const [key, label] of [["name", "Service name"], ["description", "Description"], ["price", "Price or price note (optional)"], ["duration", "Duration (optional)"], ["bookingUrl", "Service booking link (optional)"]]) {
+    const wrap = field("service-" + rowId + "-" + key, label, key === "description" ? "textarea" : key === "bookingUrl" ? "url" : "text", service[key], "");
+    wrap.querySelector("input,textarea").dataset.service = key;
+    row.append(wrap);
+  }
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "btn ghost";
+  remove.textContent = "Remove service";
+  remove.onclick = () => row.remove();
+  row.append(remove);
+  host.append(row);
+}
+function renderForm(root, value = {}) {
+  if (!root) return;
+  const p = value && typeof value === "object" ? value : {};
+  root.replaceChildren();
+  root.dataset.loaded = "true";
+  for (const [key, label, type, placeholder] of fields) root.append(field(key, label, type, key === "credentials" ? (p.credentials || []).join("\n") : p[key], placeholder));
+  const hint = document.createElement("p");
+  hint.className = "sub";
+  hint.textContent = "Paste your Cal.com event link to offer an on-site calendar, or link to another booking service. Your provider saves appointments and handles confirmation emails. Connect your calendar and, for paid appointments, Stripe in your provider account. Prices below are display text; set the actual charge in the booking service.";
+  root.append(hint);
+  const title = document.createElement("h3");
+  title.textContent = "Services";
+  root.append(title);
+  const rows = document.createElement("div");
+  rows.dataset.services = "";
+  root.append(rows);
+  for (const service of Array.isArray(p.services) ? p.services : []) serviceRow(rows, service);
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "btn ghost";
+  add.textContent = "Add a service";
+  add.onclick = () => {
+    if (rows.children.length < 8) serviceRow(rows);
+  };
+  root.append(add);
+}
+function readForm(root, current = {}) {
+  if (!root || root.dataset.loaded !== "true") return current;
+  const result = { ...current };
+  for (const [key] of fields) {
+    const input = root.querySelector('[data-field="' + key + '"]');
+    if (!input.checkValidity()) {
+      input.reportValidity();
+      throw Error("Please check " + key.replace(/([A-Z])/g, " $1").toLowerCase() + ".");
+    }
+    result[key] = input.value.trim();
+  }
+  if (result.bookingUrl) {
+    let u;
+    try {
+      u = new URL(result.bookingUrl);
+    } catch {
+    }
+    if (!u || u.protocol !== "https:" || u.username || u.password) throw Error("Use a complete HTTPS booking link without a username or password.");
+  }
+  for (const input of root.querySelectorAll("[data-service=bookingUrl]")) {
+    if (input.value.trim()) {
+      let u;
+      try {
+        u = new URL(input.value.trim());
+      } catch {
+      }
+      if (!u || u.protocol !== "https:" || u.username || u.password) throw Error("Use a complete HTTPS link for each service booking.");
+    }
+  }
+  result.credentials = result.credentials.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 8);
+  result.services = [...root.querySelectorAll(".pro-service-editor")].map((row) => Object.fromEntries([...row.querySelectorAll("[data-service]")].map((input) => [input.dataset.service, input.value.trim()]))).filter((s) => s.name).slice(0, 8);
+  return result;
+}
+
 // engine/figures/svg.js
 var PALETTE = {
   ink: "var(--ink)",
@@ -2697,14 +2809,14 @@ var FIELD_NOTES = {
   text: " The author is in a body paragraph: respond with encouragement, a conversational reaction, or one small suggestion. Never rewrite their text; rewriting only happens when they explicitly ask to tighten or continue."
 };
 var TITLE_FORMAT = "Reply with exactly three options, one per line - no numbering, no bullets, no quotes, nothing else.";
-function buildAskPrompt({ ask, text: text2 = "", field = null, block = null, title = "", prevBlock = null, nextBlock = null, profile = null, recentReactions = null }) {
+function buildAskPrompt({ ask, text: text2 = "", field: field2 = null, block = null, title = "", prevBlock = null, nextBlock = null, profile = null, recentReactions = null }) {
   const wantsInsertable = INSERTABLE_ASKS.has(ask);
   const voice = profile && profile.voice ? `
 Author voice notes: ${String(profile.voice).slice(0, 500)}` : "";
   const steer = recentReactions ? `
 The author reacted to some of your earlier guidance - lean toward what the author liked and away from what they disliked:
 ${String(recentReactions).slice(0, 1200)}` : "";
-  const system = wantsInsertable ? `You help an author write a blog post. Reply ONLY with the requested text, ready to drop into the post. No preamble, no quotes around it.${voice}${steer}` : `You are a writing guide inside the author's composer. Respond with a short question, nudge, or piece of feedback that moves their thinking forward.${FIELD_NOTES[field] || ""} Do not write or draft post text for them; guide, do not ghostwrite.${voice}${steer}`;
+  const system = wantsInsertable ? `You help an author write a blog post. Reply ONLY with the requested text, ready to drop into the post. No preamble, no quotes around it.${voice}${steer}` : `You are a writing guide inside the author's composer. Respond with a short question, nudge, or piece of feedback that moves their thinking forward.${FIELD_NOTES[field2] || ""} Do not write or draft post text for them; guide, do not ghostwrite.${voice}${steer}`;
   const ctx = [];
   if (title) ctx.push(`Post title: ${title}`);
   if (prevBlock) ctx.push(`Previous block: ${blockText(prevBlock)}`);
@@ -2764,6 +2876,10 @@ var BAKED_CATALOGUE = {
   "$schema-note": "Blog theme registry. `id` matches src/styles/themes/<id>.css and the data-blog-theme value on <html>. `hero` names the homepage ARCHETYPE \u2014 index.astro renders src/components/home/Home<Archetype>.astro so every theme has a STRUCTURALLY distinct first screen (a front page, a start screen, a pinboard\u2026), not just a recolour. The rings/torus WebGL hero (archetype `rings`) is reserved for `observatory`. `vocabulary` gives each theme its own words: postsTitle (the writing archive's name), topicsLabel (the noun for the topic set, replacing 'constellations'), aboutLabel, an optional demo tagline, and topicNames \u2014 a DISPLAY-NAME override map over the seed topic SLUGS in src/data/topics.json (slugs/URLs never change; unknown/user topics pass through). Chrome labels fall back to observatory's defaults when a key is absent. The Chapbook composer reads this list for its theme picker; preview{bg,ink,accent} are swatches only.",
   "categories": [
     {
+      "id": "professional",
+      "name": "Personal & business"
+    },
+    {
       "id": "clean",
       "name": "Clean & Simple"
     },
@@ -2785,6 +2901,150 @@ var BAKED_CATALOGUE = {
     }
   ],
   "themes": [
+    {
+      "id": "folio",
+      "name": "Folio",
+      "category": "professional",
+      "hero": "folio",
+      "description": "A personal practice with an editorial introduction, a compact background column, services and a writing index.",
+      "preview": {
+        "bg": "#f8f6f0",
+        "ink": "#202a30",
+        "accent": "#315b71"
+      },
+      "vocabulary": {
+        "postsTitle": "Writing",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "practice",
+      "name": "Practice",
+      "category": "professional",
+      "hero": "practice",
+      "description": "A calm consulting-room layout with areas of practice, clear credentials, contact details and an optional appointment link.",
+      "preview": {
+        "bg": "#f3f4ec",
+        "ink": "#203b35",
+        "accent": "#315b47"
+      },
+      "vocabulary": {
+        "postsTitle": "Writing",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "petal",
+      "name": "Petal",
+      "category": "professional",
+      "hero": "petal",
+      "description": "An intimate beauty studio: a framed introduction, a treatment menu and a quiet appointment invitation.",
+      "preview": {
+        "bg": "#f8eeea",
+        "ink": "#412c35",
+        "accent": "#86475f"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "contour",
+      "name": "Contour",
+      "category": "professional",
+      "hero": "contour",
+      "description": "A precise aesthetics practice with a consultation panel, numbered treatments and clear practitioner information.",
+      "preview": {
+        "bg": "#f4f3f0",
+        "ink": "#222c32",
+        "accent": "#335c68"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "cut",
+      "name": "Cut",
+      "category": "professional",
+      "hero": "cut",
+      "description": "A bold salon front page with a typographic masthead, compact price list and an appointment rail.",
+      "preview": {
+        "bg": "#f5f1e7",
+        "ink": "#251f20",
+        "accent": "#842c31"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "still",
+      "name": "Still",
+      "category": "professional",
+      "hero": "still",
+      "description": "A spacious wellness practice with a centred opening, session cards and a quiet reading list.",
+      "preview": {
+        "bg": "#eeefe7",
+        "ink": "#303d32",
+        "accent": "#4d6552"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "office",
+      "name": "Office",
+      "category": "professional",
+      "hero": "office",
+      "description": "A consulting desk with a two-column introduction, structured service index and recent writing.",
+      "preview": {
+        "bg": "#eef2f5",
+        "ink": "#202d40",
+        "accent": "#315b89"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "portrait",
+      "name": "Portrait",
+      "category": "professional",
+      "hero": "portrait",
+      "description": "A personal calling card with a large nameplate, short biography, selected work and a compact journal.",
+      "preview": {
+        "bg": "#f9f5ed",
+        "ink": "#342c29",
+        "accent": "#775747"
+      },
+      "vocabulary": {
+        "postsTitle": "Journal",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "topicNames": {}
+      }
+    },
     {
       "id": "observatory",
       "name": "Observatory",
@@ -2944,7 +3204,7 @@ var BAKED_CATALOGUE = {
       "name": "Kiosk",
       "category": "editorial",
       "hero": "news-wall",
-      "description": "Newsstand energy: a wall of paper cards with accent ticks, condensed caps headlines and a hot tabloid red.",
+      "description": "A working newsstand: one lead story, smaller illustrated headlines, article summaries and instant search.",
       "preview": {
         "bg": "#faf7f0",
         "ink": "#111111",
@@ -3052,7 +3312,7 @@ var BAKED_CATALOGUE = {
       "name": "Scrapbook",
       "category": "creative",
       "hero": "pinboard",
-      "description": "Warm craft paper, taped-down cards and a friendly rounded hand. Everything looks lovingly stuck in.",
+      "description": "A warm pinboard of real photos, excerpts and topic annotations. Paper details without invented endorsements.",
       "preview": {
         "bg": "#f3ead8",
         "ink": "#3a2f26",
@@ -3241,7 +3501,7 @@ var BAKED_CATALOGUE = {
       "name": "Darkroom",
       "category": "photo",
       "hero": "lightbox",
-      "description": "Near-black walls and silver labels so photographs glow. Minimal chrome, maximum image.",
+      "description": "A photography exhibition: real uploaded photographs on a quiet lightbox, followed by a compact index of text-only notes.",
       "preview": {
         "bg": "#0b0b0d",
         "ink": "#ededf0",
@@ -3268,7 +3528,7 @@ var BAKED_CATALOGUE = {
       "name": "Contact Sheet",
       "category": "photo",
       "hero": "contact-sheet",
-      "description": "A film contact sheet: charcoal base, framed thumbnails with numbered edges and monospace grease-pencil labels.",
+      "description": "A dense photographic proof sheet with real post images, frame numbers and a separate caption log. Text-only entries use numbered plates.",
       "preview": {
         "bg": "#161514",
         "ink": "#eae8e3",
@@ -3292,20 +3552,20 @@ var BAKED_CATALOGUE = {
     },
     {
       "id": "polaroid",
-      "name": "Polaroid",
+      "name": "Postcards",
       "category": "photo",
       "hero": "photo-pile",
-      "description": "Instant-photo charm: soft grey desk, white photo frames with a caption lip and a casual retro-blue accent.",
+      "description": "An illustrated correspondence: alternating photograph-and-letter spreads, postmarked dates and a readable archive. Replaces the old scattered photo pile.",
       "preview": {
         "bg": "#e9e6df",
         "ink": "#26241f",
         "accent": "#3a7ca5"
       },
       "vocabulary": {
-        "postsTitle": "Snapshots",
-        "topicsLabel": "The Pile",
+        "postsTitle": "Postcards",
+        "topicsLabel": "Places & subjects",
         "aboutLabel": "About",
-        "tagline": "Shake it and see.",
+        "tagline": "Notes from here and there.",
         "topicNames": {
           "marrow": "Moments",
           "forge": "Tinkering",
@@ -3408,8 +3668,8 @@ function themeCardHTML(theme, checked) {
 function pickerBodyHTML(catalogue, selectedId) {
   const groups = groupByCategory(catalogue);
   const themes = catalogue && catalogue.themes || BAKED_CATALOGUE.themes;
-  const sel = themes.some((t) => t.id === selectedId) ? selectedId : themes[0] && themes[0].id;
-  return groups.map((g) => `<div class="cbtp-cat"><div class="cbtp-cat-h">${esc(g.name)}</div><div class="cbtp-grid">${g.themes.map((t) => themeCardHTML(t, t.id === sel)).join("")}</div></div>`).join("");
+  const sel = themes.some((t) => t.id === selectedId) ? selectedId : themes.some((t) => t.id === DEFAULT_THEME) ? DEFAULT_THEME : themes[0] && themes[0].id;
+  return '<p><a href="https://chapbook.rqai.co.uk/themes/" target="_blank" rel="noopener">Preview the full theme gallery \u2197</a></p>' + groups.map((g) => `<div class="cbtp-cat"><div class="cbtp-cat-h">${esc(g.name)}</div><div class="cbtp-grid">${g.themes.map((t) => themeCardHTML(t, t.id === sel)).join("")}</div></div>`).join("");
 }
 function ensurePickerStyles(doc) {
   if (!doc || doc.getElementById(PICKER_STYLE_ID)) return;
@@ -3475,6 +3735,7 @@ function mountThemePicker(container, opts = {}) {
 }
 
 // src/lib-entry.js
+if (typeof window !== "undefined") window.__studioProfessional = professionalForm_exports;
 window.__studioDomain ??= domain_exports;
 window.__studioTour ??= tour_exports;
 window.__studioQuotes ??= quotes_exports;
