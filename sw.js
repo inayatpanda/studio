@@ -1,7 +1,6 @@
-// Minimal service worker — enables "Add to Home Screen" / installable PWA.
-// Network-first; we never want stale drafts, so we don't aggressively cache.
-const CACHE = 'studio-v81';
-const SHELL = ['/', '/index.html', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/resize.js', '/preview.css'];
+// Network-first app shell. Drafts live in IndexedDB; API responses are never cached.
+const CACHE = 'studio-v82';
+const SHELL = ['/', '/index.html', '/studio.js', '/studio-lib.js', '/premium.css', '/darkroom-upload.js', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/resize.js', '/preview.css'];
 
 // Cache the shell per-entry, NOT with addAll(): addAll() rejects the whole install if a
 // SINGLE url 404s, which silently un-registers the worker and costs offline + installability.
@@ -17,9 +16,25 @@ self.addEventListener('activate', (e) => {
 });
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // never cache API calls
-  if (url.pathname.includes('/api/')) return;
+  // Never store credentials, third-party responses, mutations, or backend API data.
+  if (e.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.includes('/api/')) return;
   e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request).then((r) => r || caches.match('/')))
+    fetch(e.request).then(async (response) => {
+      if (response.ok) {
+        try {
+          const cache = await caches.open(CACHE);
+          await cache.put(e.request, response.clone());
+        } catch { /* A full cache must not discard a successful network response. */ }
+      }
+      return response;
+    }).catch(async () => {
+      const cached = await caches.match(e.request);
+      if (cached) return cached;
+      if (e.request.mode === 'navigate') {
+        const shell = await caches.match('/');
+        if (shell) return shell;
+      }
+      return Response.error();
+    })
   );
 });

@@ -592,7 +592,7 @@ html[data-product="atelier"] .cam-fab svg{stroke:#fff!important;stroke-width:2.4
 html[data-product="atelier"] .subnav-inner{
   display:flex!important;
   align-items:center!important;
-  width:min(1460px,calc(100vw - 2rem))!important;
+  width:min(1460px,calc(100% - 2rem))!important;
   max-width:1460px!important;
   margin:0 auto!important;
   padding:.45rem 0!important;
@@ -641,10 +641,15 @@ html[data-product="atelier"] .helm-status>span{
 }
 
 @media(max-width:560px){
-  html[data-product="atelier"] .subnav-inner{width:calc(100vw - 1rem)!important;gap:.28rem!important}
+  html[data-product="atelier"] .subnav-inner{width:calc(100% - 1rem)!important;gap:.28rem!important}
   html[data-product="atelier"] .subnav-inner>.brand{font-size:.98rem!important}
   html[data-product="atelier"] .subnav button{padding:.38rem .52rem!important;font-size:.72rem!important}
   html[data-product="atelier"] .subnav-inner>.bar-actions{gap:.25rem!important}
   html[data-product="atelier"] .subnav-inner .themeBtn{min-width:42px!important;width:42px!important;padding:0!important}
   html[data-product="atelier"] .subnav-inner .install{padding:.45rem .58rem!important;font-size:.7rem!important}
+}
+
+/* Keep library tabs reachable without widening the phone canvas. */
+@media(max-width:560px){
+  html[data-product="atelier"] #v-library #libSeg{flex-wrap:wrap;min-width:0}
 }

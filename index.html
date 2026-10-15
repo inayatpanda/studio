@@ -2978,7 +2978,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20260812-a2efdc1";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -3027,6 +3027,7 @@
        clicks "＋ Start a new post" (openNewPost). The Goblin idea-spark and the
        Partner CTA keep the other ways into a post reachable from here. -->
   <section class="view" id="v-newpost">
+    <div id="untitledRecovery" class="card" hidden><strong>Unfinished untitled draft</strong><p>Your writing was kept on this device.</p><button class="btn" onclick="openUntitledDraft()">Continue writing</button></div>
     <div class="bar"><h1>New post</h1></div>
     <p class="sub" style="margin:-.2rem 0 1rem">Pick a template to start, or go blank — then write and publish straight to your repo.</p>
     <div class="btn-row" style="margin-bottom:1.25rem">
@@ -3411,6 +3412,14 @@
       <button class="btn ghost" type="button" onclick="goSetup()">Open</button>
     </div>
 
+    <div class="card" id="draftBackupCard" style="margin-top:1rem">
+      <strong>Draft backup</strong>
+      <p class="sub">Export local drafts, ideas, conversations and history to a portable file. API keys are never included. When connected to Helm, use Helm's backup for server drafts.</p>
+      <button class="btn ghost" type="button" onclick="exportDrafts()">⤓ Export drafts</button>
+      <button class="btn ghost" type="button" onclick="document.getElementById('draftsImportInput').click()">⤒ Import drafts</button>
+      <input id="draftsImportInput" type="file" accept="application/json,.json" hidden />
+      <div id="draftsMsg" class="msg" role="status"></div>
+    </div>
     <label style="margin-top:1.1rem">AI providers</label>
     <div id="aiActiveLine" class="ai-active-line"></div>
     <div id="aiProviders"><p class="sub">Loading…</p></div>
@@ -3666,7 +3675,7 @@
 
   <!-- ===== HOME (launchpad + owner apps dashboard) =====
        Home is a LAUNCHPAD for everyone: friendly, tappable action cards → the main
-       tabs (each just calls goSection()). When the Studio is backed by a Helm
+       tabs (each just calls goSection()). When Atelier is backed by a Helm
        (videoHelmReachable()) it ALSO shows "Your apps" — status + quick access, no
        data browser. Onboarding no longer lives here; it moved to #v-setup below. -->
   <section class="view" id="v-getting-started">
@@ -3729,7 +3738,7 @@
   </section>
 
   <!-- ===== GETTING STARTED (onboarding — reordered: write first) =====
-       Auto-opens ONCE for a new BYOK user (no Helm backs the Studio); NEVER in
+       Auto-opens ONCE for a new BYOK user (no Helm backs Atelier); NEVER in
        local-Helm (owner) mode. Reachable any time from Home + Settings + ⌘K. Leads
        with "Write your first post"; the set-up steps sit at the bottom. Keeps the
        first-post tour hook + the localStorage-dismissal flag. -->
@@ -3943,7 +3952,7 @@
   <!-- ===== VIDEO LIBRARY (Media › Video) ===== -->
   <!-- Browse videos uploaded via the editor's Video block. Videos are uploaded,
        transcoded and published by the LOCAL Helm (npm start) — the hosted BYOK
-       Studio has no video backend, so this shows a tasteful explainer there.
+       Atelier has no video backend, so this shows a tasteful explainer there.
        Best-effort listing: if no list endpoint/videos exist yet, the empty/
        explainer state is shown. No data is fabricated. -->
   <section class="view" id="v-video">
@@ -5105,7 +5114,7 @@
 
 <!-- ===== QUICK-CAPTURE CAMERA ===============================================
      Always-reachable floating camera. Lives OUTSIDE #app (a sibling of #nav) so it
-     overlays every Studio view INCLUDING the full-screen editor. On capture it shows
+     overlays every Atelier view INCLUDING the full-screen editor. On capture it shows
      a small destination chooser: Add to Darkroom (hands the photo to the Darkroom
      staging+commit flow) or Include in a post (drops it into the open draft as an
      Image block, reusing bulkAddImageBlocks). capture="environment" opens the rear
@@ -5161,7 +5170,7 @@ import { resizeToBase64, decodeImage, encodeSource, MAX_EDGE } from '/resize.js'
 import { initDarkroom } from '/darkroom-upload.js';
 // On-device dictation. The heavy parts (transformers.js, the ONNX WASM runtime, the Whisper
 // model) are NOT in this bundle — `npm run stage:stt` places them same-origin and the worker
-// loads them lazily on first use, so a Studio that never dictates pays nothing for this.
+// loads them lazily on first use, so an Atelier that never dictates pays nothing for this.
 import { STT_MAX_RECORD_MS, appendDictation, whisperSupported as sttWhisperSupported,
          createWhisperProvider as sttCreateWhisperProvider } from '/stt.js';
 
@@ -5298,7 +5307,7 @@ function classifyError({ status, payload, raw } = {}){
      1. "Connect to my Helm" — window.__studioRemote.active → real fetch to the
         laptop's tunnelled Helm (X-Admin-Token), so the phone sees its REAL state.
      2. BYOK — window.__studioApi (the client-side router) does GitHub/AI locally.
-     3. Local Studio (served by Helm same-origin) — hits /api directly.
+     3. Local Atelier (served by Helm same-origin) — hits /api directly.
    Every failure path is routed through classifyError() → a friendly, typed Error. */
 const api=async(path,opts={})=>{
   if(window.__studioRemote&&window.__studioRemote.active){
@@ -5394,6 +5403,7 @@ async function boot(){
     // sent every BYOK user to Getting started on every boot, which re-showed a "connect
     // your repo & keys" step they'd already completed — confusing once you're signed in.)
     goSection('home');
+    refreshUntitledRecovery();
     // First-run get-to-know-you Q&A (sets the author/voice profile). Non-blocking;
     // deferred so it never gets in the way of the first paint.
     setTimeout(()=>{ try{ maybeFirstRunQA(); }catch{} }, 600);
@@ -5612,7 +5622,7 @@ function openDarkroom(){
 window.openDarkroom=openDarkroom;
 
 /* ── Home: "Your apps" dashboard (owner Helm only) ──────────────────────────
-   Shown only when the Studio is backed by a Helm (videoHelmReachable()); pure
+   Shown only when Atelier is backed by a Helm (videoHelmReachable()); pure
    BYOK Studios never see it. Status + quick access only — NO data browser.
    GET /api/apps → [{ id, name, clinical, url, exists, records, users, sizeBytes }]. */
 /* NOTE: fmtBytes(n) is already declared once in this module (near the crop editor)
@@ -5939,7 +5949,7 @@ const PLAT_LIMIT={x:280};
 //
 // NOT ported from Chapbook: its extra `(kind==='ai'||kind==='auth') && !_aiKeyStored()`
 // branch. That reads a BYOK key out of localStorage, which is right for Chapbook (keys live
-// in the browser) and WRONG here — Helm's Studio is server-backed and keeps AI keys in the
+// in the browser) and WRONG here — Helm's Atelier is server-backed and keeps AI keys in the
 // server config, so localStorage never holds one and every auth failure would be misreported
 // as "no provider configured".
 function isNoKeyErr(t){
@@ -7382,7 +7392,7 @@ window.loadSettings=loadSettings;
 /* ── Author / voice profile ─────────────────────────────────────────────────
    The profile steers every AI prompt (identity + voice + fact guard). It lives
    server-side in config.studio.profile (local Helm) or in the browser config seam
-   (BYOK Studio); both are reached through the same /settings/profile route. */
+   (BYOK Atelier); both are reached through the same /settings/profile route. */
 const PROFILE_FIELDS=['name','role','writesAbout','voiceNotes'];
 async function loadProfile(){
   try{
@@ -7668,7 +7678,7 @@ window.clearR2Settings=clearR2Settings;
 
 function showR2Cors(){
   const r2=window.__studioR2; if(!r2||!r2.corsPolicy) return;
-  const c=r2.corsPolicy(window.location.origin);            // policy for THIS Studio's origin
+  const c=r2.corsPolicy(window.location.origin);            // policy for THIS Atelier's origin
   $('r2CorsJson').value=c.json;
   $('r2CorsBox').style.display='';
 }
@@ -8898,7 +8908,7 @@ function deleteCitation(id){
   // remove markers from every block's html + live DOM
   for(const b of doc.blocks){
     if(b.type==='text' && b.html && b.html.includes('data-fn="'+id+'"')){
-      const tmp = document.createElement('div'); tmp.innerHTML = b.html;
+      const tmp = document.createElement('div'); tmp.innerHTML = sanitiseHtml(b.html);
       tmp.querySelectorAll('sup.fn-ref[data-fn="'+id+'"]').forEach(s => s.remove());
       b.html = tmp.innerHTML;
     }
@@ -9061,6 +9071,13 @@ $('qlClose')?.addEventListener('click', closeQuoteLibrary);
 $('qlDone')?.addEventListener('click', closeQuoteLibrary);
 $('quoteLibPanel')?.addEventListener('click', e => { if(e.target === $('quoteLibPanel')) closeQuoteLibrary(); });
 
+// Imported prose is untrusted, including saved drafts and AI document imports.
+function sanitiseHtml(html){
+  const value=String(html ?? '');
+  if(window.__studioSanitise) return window.__studioSanitise(value);
+  // Fail closed while the shared bundle loads: preserve text, never execute markup.
+  return esc(value);
+}
 function edText(b, isSel){
   const wrap = document.createElement('div');
 
@@ -9068,7 +9085,7 @@ function edText(b, isSel){
   ce.className = 'be-ce';
   ce.contentEditable = 'true';
   ce.dataset.ph = b.ph || 'Write something…  ( / for blocks )';   // per-block ghost guidance (template guide)
-  ce.innerHTML = b.html || '';
+  ce.innerHTML = sanitiseHtml(b.html || '');
   ce.addEventListener('click', e => e.stopPropagation());
   ce.addEventListener('input', () => {
     b.html = ce.innerHTML;
@@ -9907,7 +9924,7 @@ function edQuote(b, isSel){
   ce.className = 'be-quote-ce';
   ce.contentEditable = 'true';
   ce.dataset.ph = b.ph || 'Quote text…';   // template guide shows as ghost, not deletable content
-  ce.innerHTML = b.html || '';
+  ce.innerHTML = sanitiseHtml(b.html || '');
   ce.addEventListener('click', e => e.stopPropagation());
   ce.addEventListener('input', () => { b.html = ce.innerHTML; markDirty(); });
   wrap.appendChild(ce);
@@ -11235,6 +11252,9 @@ let _slugDebounce = null;
 let _saveDebounce = null;
 let _wordCountDebounce = null;
 let _topicsCache = null;
+let _editorEpoch = 0, _editSeq = 0, _ownsUntitled = false;
+let _saveLane = Promise.resolve();
+const UNTITLED_SLUG = '__untitled__';
 let _lastLocalSaveTs = 0;  // ms of the last successful local autosave (this session)
 
 /* relative-time formatter for History + draft recovery ("2 min ago") */
@@ -11261,13 +11281,17 @@ window.openNewPost = openNewPost;
    "＋ Start a new post" button, the Goblin idea-spark, and the Partner CTA are
    all there. The template picker opens ONLY when the user clicks "Start a new
    post" (openNewPost), never automatically. */
-function enterNewPost(){ /* land on #v-newpost; do NOT auto-open the picker */ }
+function enterNewPost(){ refreshUntitledRecovery(); }
 window.enterNewPost = enterNewPost;
 
 /* Bootstrap a fresh editor for a new post. `seedDoc` (optional) is a doc to
    start from (e.g. a chosen template, already id-reassigned). Defaults to a
    single empty text block — same as the old blank behaviour. */
 async function startNewPost(seedDoc){
+  if(_dirty) await autosaveDraft();
+  if(_dirty){ toast('Save or recover your current draft before starting another.'); return; }
+  clearTimeout(_saveDebounce); clearTimeout(_slugDebounce);
+  _editorEpoch++; _ownsUntitled=false;
   editorSection = 'write';   // a brand-new post belongs to the Write tab (back → New-post landing)
   currentSlug = null;
   doc = seedDoc || { version:1, blocks:[ { id:mkId(), type:'text', html:'' } ] };
@@ -11314,6 +11338,10 @@ function metaFromData(slug, data){
 
 /* ── open block editor for an existing post ─────────────────────────────── */
 async function openBlockEditor(slug){
+  if(_dirty) await autosaveDraft();
+  if(_dirty){ toast('Save or recover your current draft before opening another.'); return; }
+  clearTimeout(_saveDebounce); clearTimeout(_slugDebounce);
+  _editorEpoch++; _ownsUntitled=false;
   editorSection = 'posts';   // editing an existing post belongs to the Posts tab (back → Posts list)
   currentSlug = slug;
   doc = { version:1, blocks:[] };
@@ -11613,6 +11641,49 @@ if(_outlineRailHdr) _outlineRailHdr.addEventListener('click', ()=> $('outlineRai
 window.openOutlineSheet = openOutlineSheet;
 window.closeOutlineSheet = closeOutlineSheet;
 
+async function exportDrafts(){
+  if(!window.__studioConfig || window.__studioRemote?.active){ msg('draftsMsg',"Use Helm's backup for server drafts. Switch to This device only to manage browser drafts.",'err'); return; }
+  const S=window.__studioStorage, D=window.__studioDrafts;
+  if(!S || !D){ msg('draftsMsg','Draft tools aren’t ready yet — reload and try again.','err'); return; }
+  try{
+    const map={};
+    for(const s of D.DRAFT_STORES) map[s] = await S.all(s);
+    const env = D.serialiseDrafts(map);
+    const blob = new Blob([JSON.stringify(env,null,2)], {type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='atelier-drafts-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch{} },30000);
+    msg('draftsMsg', env.count ? ('Exported '+env.count+' item'+(env.count===1?'':'s')+' to a JSON file.') : 'Nothing to export yet — no local drafts.','ok');
+  }catch(e){ msg('draftsMsg','Export failed: '+((e&&e.message)||'unknown error'),'err'); }
+}
+window.exportDrafts=exportDrafts;
+
+/* H4 — import a previously-exported JSON, merging into IndexedDB (same-id = overwrite). */
+async function importDraftsFile(file){
+  if(!window.__studioConfig || window.__studioRemote?.active){ msg('draftsMsg',"Use Helm's backup for server drafts. Switch to This device only to manage browser drafts.",'err'); return; }
+  const S=window.__studioStorage, D=window.__studioDrafts;
+  if(!S || !D){ msg('draftsMsg','Draft tools aren’t ready yet — reload and try again.','err'); return; }
+  if(!file) return;
+  // DoS cap: refuse an oversize file BEFORE reading it into memory (parseDraftsFile
+  // re-checks the string length, and also caps record count + per-record size).
+  if(D.MAX_IMPORT_BYTES && file.size > D.MAX_IMPORT_BYTES){
+    msg('draftsMsg','That file is too big to import. Export smaller batches and import them one at a time.','err'); return;
+  }
+  let text=''; try{ text=await file.text(); }catch{ msg('draftsMsg','Could not read that file.','err'); return; }
+  const r=D.parseDraftsFile(text);
+  if(!r.ok){ msg('draftsMsg', r.error||'That file is not a Chapbook drafts export.','err'); return; }
+  if(!r.count){ msg('draftsMsg','That export has no drafts in it.','err'); return; }
+  if(!await helmConfirm({ title:'Import '+r.count+' item'+(r.count===1?'':'s')+'?', text:'Drafts with the same id are overwritten; everything else is added alongside what’s already here.', okText:'Import' })) return;
+  try{
+    let n=0;
+    for(const s of D.DRAFT_STORES) for(const rec of (r.stores[s]||[])){ await S.put(s, rec); n++; }
+    msg('draftsMsg','Imported '+n+' item'+(n===1?'':'s')+'. Open Posts or Write to see them.','ok');
+  }catch(e){ msg('draftsMsg','Import failed: '+((e&&e.message)||'unknown error'),'err'); }
+}
+$('draftsImportInput') && $('draftsImportInput').addEventListener('change',function(){ const f=this.files&&this.files[0]; this.value=''; importDraftsFile(f); });
+
 /* ── title input wired to meta ───────────────────────────────────────────── */
 $('editorTitle').addEventListener('input', ()=>{
   meta.title = $('editorTitle').value;
@@ -11625,12 +11696,13 @@ $('editorTitle').addEventListener('input', ()=>{
 });
 
 async function reserveSlug(){
+  const epoch=_editorEpoch;
   if(currentSlug) return; // already reserved
   const title = $('editorTitle').value.trim();
   if(title.length < 2) return;
   try{
     const r = await api('/slug?title='+encodeURIComponent(title));
-    if(!currentSlug) currentSlug = r.slug; // only set if still null
+    if(epoch===_editorEpoch && !currentSlug) currentSlug = typeof r==='string' ? r.trim() : r?.slug; // only set if still null
   }catch{}
 }
 
@@ -11642,10 +11714,9 @@ function syncEditorBack(){
   const btn = $('editorBackBtn'); if(!btn) return;
   btn.textContent = (editorSection === 'write') ? '← Write' : '← Posts';
 }
-$('editorBackBtn').addEventListener('click', ()=>{
+$('editorBackBtn').addEventListener('click', async ()=>{
   // flush any pending autosave so work isn't left only in the debounce timer
-  if(_dirty && currentSlug){ clearTimeout(_saveDebounce); autosaveDraft(); }
-  _dirty = false; // in-app nav is not data loss
+  if(_dirty){ clearTimeout(_saveDebounce); await autosaveDraft(); }
   if(editorSection === 'write'){ go('newpost'); }   // back to the New-post landing (no auto-picker)
   else { go('posts'); loadPosts(); }
 });
@@ -11665,6 +11736,7 @@ function setSaveState(state, text){
 
 /* ── markDirty — autosave debounced PUT (local draft, no commit) ─────────── */
 function markDirty(){
+  _editSeq++;
   setSaveState('dirty');
   clearTimeout(_saveDebounce);
   _saveDebounce = setTimeout(autosaveDraft, 1200);
@@ -11672,25 +11744,53 @@ function markDirty(){
   _wordCountDebounce = setTimeout(updateWordCount, 400);
 }
 
-async function autosaveDraft(){
-  if(!currentSlug){
-    // Try to reserve slug first if we have a title
-    await reserveSlug();
-    if(!currentSlug){ setSaveState('dirty','Unsaved · add a title to save'); return; }
-  }
-  setSaveState('saving');
-  try{
-    await api('/posts/'+currentSlug+'/blocks', {
-      method: 'PUT',
-      body: JSON.stringify({ doc, meta }),
-    });
-    _lastLocalSaveTs = Date.now();
-    setSaveState('saved','Draft · saved');
-  }catch(e){
-    setSaveState('error');
-    toast('Autosave failed — '+(e.message||'will retry on next edit'));
-  }
+async function refreshUntitledRecovery(){
+  const el=$('untitledRecovery'); if(!el) return;
+  try { const saved=await api('/posts/'+UNTITLED_SLUG+'/blocks'); el.hidden=!(saved?.source==='draft'); }
+  catch { el.hidden=true; }
 }
+async function openUntitledDraft(){
+  await openBlockEditor(UNTITLED_SLUG);
+  if(currentSlug===UNTITLED_SLUG){ currentSlug=null; _ownsUntitled=true; editorSection='write'; syncActionBtns(); }
+}
+window.openUntitledDraft=openUntitledDraft;
+
+async function autosaveDraft(){
+  const epoch=_editorEpoch, seq=_editSeq;
+  const snapshot=JSON.stringify({doc,meta});
+  const hasContent=!!meta.title?.trim() || doc.blocks.some(b=>b.type!=='text' || String(b.html||'').replace(/<[^>]*>/g,'').trim());
+  if(!hasContent) return;
+  if(!currentSlug) await reserveSlug();
+  if(epoch!==_editorEpoch) return;
+  const slug=currentSlug || UNTITLED_SLUG;
+  setSaveState('saving');
+  const save=async()=>{
+    if(slug===UNTITLED_SLUG && !_ownsUntitled){
+      let existing=null;
+      try { existing=await api('/posts/'+slug+'/blocks'); } catch(e){ if(e.status!==404) throw e; }
+      if(existing?.source==='draft'){
+        if(epoch===_editorEpoch) setSaveState('dirty','Add a title to save this separate draft');
+        return;
+      }
+    }
+    await api('/posts/'+slug+'/blocks',{method:'PUT',body:snapshot});
+    if(epoch!==_editorEpoch) return;
+    if(slug===UNTITLED_SLUG) _ownsUntitled=true;
+    else if(_ownsUntitled){
+      await api('/posts/'+UNTITLED_SLUG+'/blocks',{method:'DELETE'});
+      _ownsUntitled=false;
+    }
+    _lastLocalSaveTs=Date.now();
+    if(seq===_editSeq) setSaveState('saved',slug===UNTITLED_SLUG?'Untitled draft kept':'Draft · saved');
+    refreshUntitledRecovery();
+  };
+  _saveLane=_saveLane.catch(()=>{}).then(save);
+  try { await _saveLane; }
+  catch(e){ if(epoch===_editorEpoch){ setSaveState('error'); toast('Autosave failed — '+(e.message||'try again')); } }
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden' && _dirty){ clearTimeout(_saveDebounce); autosaveDraft(); }
+});
 
 /* Unsaved-changes guard: warn ONLY when genuinely dirty (never on clean state
    or in-app navigation, which clears _dirty as it saves/loads). */
@@ -11703,7 +11803,7 @@ function firstTextSnippet(){
   for(const b of doc.blocks){
     if(b.type==='text' && b.html){
       const tmp = document.createElement('div');
-      tmp.innerHTML = b.html;
+      tmp.innerHTML = sanitiseHtml(b.html);
       const t = tmp.textContent.trim();
       if(t) return t.slice(0,155);
     }
@@ -11917,6 +12017,8 @@ function publishMeta(){
   };
 }
 async function doPublish(){
+  clearTimeout(_saveDebounce);
+  await _saveLane.catch(()=>{});
   if(!currentSlug){ await reserveSlug(); }
   if(!currentSlug){ toast('Could not reserve a slug — add a title first'); return; }
   const btn = $('editorPublishBtn');
@@ -11927,12 +12029,13 @@ async function doPublish(){
       method: 'POST',
       body: JSON.stringify({ doc, meta: publishMeta() }),
     });
-    setSaveState('saved','Published'); _dirty=false; _lastLocalSaveTs = Date.now();
+    const label=meta.draft?'Saved as draft':'Published live';
+    setSaveState('saved',label); _dirty=false; _lastLocalSaveTs = Date.now();
     syncActionBtns();
     // snapshot the just-published state (label "Published") — never lose work.
-    snapshotCurrent('Published', { silent:true });
+    snapshotCurrent(label, { silent:true });
     if(!meta.draft && r.url){ await offerAnnounce(r.url, ((meta.title?meta.title+'\n\n':'')+docToText(doc)).slice(0,1500)); }
-    else toast('Published → ' + (r.url || currentSlug));
+    else toast(label+' → ' + (r.url || currentSlug));
   }catch(e){
     setSaveState('error','Publish failed');
     showError(e, { title:'Couldn’t publish', onRetry: doPublish });
@@ -18013,7 +18116,7 @@ function buildGenImageRow(b, placeBtnIn){
 
 // Free image generation via the R2 Worker's /image route (Cloudflare Workers AI / FLUX),
 // when the user has the Worker configured (url+secret). This works in BOTH modes — the
-// local Helm-served Studio and the hosted BYOK Studio both expose window.__studioR2 — and
+// local Helm-served Atelier and the hosted BYOK Atelier both expose window.__studioR2 — and
 // needs NO AI provider key, so it's the preferred path when available.
 function imageWorkerReady(){
   const r2 = (typeof window !== 'undefined' && window.__studioR2) || null;
@@ -19267,7 +19370,7 @@ $('tplLibSaveLibBtn')?.addEventListener('click', e=>{ e.stopPropagation(); saveC
 
 /* ── Video library (Media › Video) ──────────────────────────────────────────
    Browse videos uploaded via the editor's Video block. Videos are uploaded,
-   transcoded and self-hosted by the LOCAL Helm; the hosted BYOK Studio has no
+   transcoded and self-hosted by the LOCAL Helm; the hosted BYOK Atelier has no
    video backend. Best-effort: tries GET /media/video/list; on a missing endpoint
    (older Helm), a 503 VIDEO_LOCAL_ONLY (BYOK/hosted), an empty list, or any
    error, it shows a tasteful explainer. It NEVER fabricates videos. */
@@ -19289,7 +19392,7 @@ function videoLibExplainer(html){
   body.innerHTML = `<div class="media-empty empty-state">${html}</div>`;
 }
 
-// Is a Helm backend reachable for this Studio session? Mirrors helmReachable() in
+// Is a Helm backend reachable for this Atelier session? Mirrors helmReachable() in
 // studio-app/app.js: remote-tunnel-to-Helm OR the local same-origin Helm build count;
 // the hosted Atelier in pure-BYOK mode (window.__studioConfig present, not remote) does not.
 function videoHelmReachable(){
@@ -19300,8 +19403,8 @@ function videoHelmReachable(){
 
 // Product name. ATELIER is the composer app — the thing you write posts in — and it is
 // called that whether it is talking to a local Helm, tunnelled to a remote one, or running
-// standalone in pure-BYOK mode. (It used to rename itself per mode, "The Helm" vs "Studio",
-// which blurred the app into the backend SERVICE that Helm actually is.) Drives the document
+// standalone in pure-BYOK mode. (It used to rename itself per mode, "The Helm" vs the old
+// name, which blurred the app into the backend SERVICE that Helm actually is.) Drives the document
 // title and BOTH mastheads (login/onboarding + the app header). Kept as a function, and still
 // called when the mode is known, so a future mode-dependent suffix has one place to live.
 function applyBrandName(){

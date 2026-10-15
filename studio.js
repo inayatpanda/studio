@@ -165,6 +165,12 @@ var fromB64 = (b64) => {
   const bin = typeof atob !== "undefined" ? atob(clean) : Buffer.from(clean, "base64").toString("binary");
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 };
+function isFastForwardConflict(err) {
+  const status = err && err.status;
+  if (status !== 409 && status !== 422) return false;
+  const m = String(err && err.message || "").toLowerCase();
+  return /fast forward|reference cannot be updated|reference update failed|but expected/.test(m);
+}
 function makeGithub(gh, fetchImpl = fetch) {
   const headers5 = () => ({ Authorization: `Bearer ${gh.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
   const repoBase = `${API}/repos/${gh.owner}/${gh.repo}`;
@@ -179,13 +185,13 @@ function makeGithub(gh, fetchImpl = fetch) {
     return Object.assign(new Error(m), { status: res.status });
   }
   async function gj(url, opts) {
-    const res = await fetchImpl(url, { ...opts, headers: headers5() });
+    const res = await fetchImpl(url, { cache: "no-store", ...opts, headers: headers5() });
     if (!res.ok) throw await err(res);
     return res.json();
   }
   return {
     async getFile(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers5() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { cache: "no-store", headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       const j = await res.json();
@@ -219,18 +225,21 @@ function makeGithub(gh, fetchImpl = fetch) {
       return true;
     },
     async listDir(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers5() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { cache: "no-store", headers: headers5() });
       if (res.status === 404) return [];
       if (!res.ok) throw await err(res);
       const j = await res.json();
       return Array.isArray(j) ? j.map((e) => ({ name: e.name, path: e.path, sha: e.sha, type: e.type })) : [];
     },
     async getBinary(path3) {
-      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { headers: headers5() });
+      const res = await fetchImpl(`${base}/${enc(path3)}?ref=${gh.branch}`, { cache: "no-store", headers: headers5() });
       if (res.status === 404) return null;
       if (!res.ok) throw await err(res);
       const j = await res.json();
-      return { base64: (j.content || "").replace(/\s/g, ""), sha: j.sha };
+      const inlined = (j.content || "").replace(/\s/g, "");
+      if (j.encoding !== "none" && (inlined || !(j.size > 0))) return { base64: inlined, sha: j.sha };
+      const blob = await gj(`${repoBase}/git/blobs/${j.sha}`);
+      return { base64: String(blob.content || "").replace(/\s/g, ""), sha: j.sha };
     },
     // List every committed file under a directory prefix in ONE recursive git-trees call.
     // Filters the tree to blobs under `prefix`. Returns [{ path, size }]. Empty if absent.
@@ -246,9 +255,6 @@ function makeGithub(gh, fetchImpl = fetch) {
     // atomic multi-file commit via the Git Data API.
     // changes: [{ path, content?:string, base64?:string, delete?:true }]
     async commitMany(changes, message) {
-      const ref = await gj(`${repoBase}/git/ref/heads/${gh.branch}`);
-      const baseCommitSha = ref.object.sha;
-      const baseCommit = await gj(`${repoBase}/git/commits/${baseCommitSha}`);
       const tree = [];
       for (const c of changes) {
         if (c.delete) {
@@ -260,10 +266,21 @@ function makeGithub(gh, fetchImpl = fetch) {
         const blob = await gj(`${repoBase}/git/blobs`, { method: "POST", body: JSON.stringify({ content, encoding: enc2 }) });
         tree.push({ path: c.path, mode: "100644", type: "blob", sha: blob.sha });
       }
-      const newTree = await gj(`${repoBase}/git/trees`, { method: "POST", body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree }) });
-      const newCommit = await gj(`${repoBase}/git/commits`, { method: "POST", body: JSON.stringify({ message, tree: newTree.sha, parents: [baseCommitSha] }) });
-      await gj(`${repoBase}/git/refs/heads/${gh.branch}`, { method: "PATCH", body: JSON.stringify({ sha: newCommit.sha }) });
-      return { commit: newCommit.sha };
+      const attempt = async () => {
+        const ref = await gj(`${repoBase}/git/ref/heads/${gh.branch}`);
+        const baseCommitSha = ref.object.sha;
+        const baseCommit = await gj(`${repoBase}/git/commits/${baseCommitSha}`);
+        const newTree = await gj(`${repoBase}/git/trees`, { method: "POST", body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree }) });
+        const newCommit = await gj(`${repoBase}/git/commits`, { method: "POST", body: JSON.stringify({ message, tree: newTree.sha, parents: [baseCommitSha] }) });
+        await gj(`${repoBase}/git/refs/heads/${gh.branch}`, { method: "PATCH", body: JSON.stringify({ sha: newCommit.sha }) });
+        return { commit: newCommit.sha };
+      };
+      try {
+        return await attempt();
+      } catch (e) {
+        if (!isFastForwardConflict(e)) throw e;
+        return attempt();
+      }
     },
     // The signed-in user's OWN repos, newest first — for the device-flow repo picker.
     // Uses only the token (owner/repo not needed). Browser-direct (api.github.com sends CORS).
@@ -321,7 +338,9 @@ function makeGithub(gh, fetchImpl = fetch) {
       if (res.ok || res.status === 204) return { ok: true, alreadySet: false };
       if (res.status === 422) {
         const e = await err(res);
-        if (/already|same|taken by your site/i.test(e.message || "")) return { ok: true, alreadySet: true };
+        const msg = e.message || "";
+        if (/already taken/i.test(msg) && !/taken by your site/i.test(msg)) throw e;
+        if (/taken by your site|already set|is the same/i.test(msg)) return { ok: true, alreadySet: true };
         throw e;
       }
       throw await err(res);
@@ -423,8 +442,8 @@ __export(anthropic_exports, {
 });
 
 // engine/ai/_json.js
-function looseJson(text2) {
-  let s = String(text2 == null ? "" : text2).trim();
+function looseJson(text3) {
+  let s = String(text3 == null ? "" : text3).trim();
   try {
     return JSON.parse(s);
   } catch {
@@ -440,12 +459,12 @@ function looseJson(text2) {
   const start = s.search(/[{[]/);
   if (start >= 0) {
     const open = s[start], close = open === "{" ? "}" : "]";
-    let depth = 0, inStr = false, esc3 = false;
+    let depth = 0, inStr = false, esc4 = false;
     for (let i = start; i < s.length; i++) {
       const c = s[i];
       if (inStr) {
-        if (esc3) esc3 = false;
-        else if (c === "\\") esc3 = true;
+        if (esc4) esc4 = false;
+        else if (c === "\\") esc4 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -634,9 +653,9 @@ function buildVision({ system, prompt, imageBase64, mimeType, maxTokens, model, 
 }
 function parseText(json) {
   if (json?.stop_reason === "refusal") throw Object.assign(new Error("Anthropic declined this request (refusal)."), { code: "AI_REFUSAL" });
-  const text2 = (json?.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("").trim();
-  if (json?.stop_reason === "max_tokens") return text2;
-  return text2;
+  const text3 = (json?.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("").trim();
+  if (json?.stop_reason === "max_tokens") return text3;
+  return text3;
 }
 async function call(built, fetchImpl = fetch) {
   const res = await fetchImpl(built.url, { method: "POST", headers: built.headers, body: built.body });
@@ -662,12 +681,12 @@ async function readDocument({ system, instruction, fileBase64, mimeType, json, m
   if (json) body.output_config = { format: { type: "json_schema", schema: json } };
   const built = { url: ENDPOINT, headers: headers(key), body: JSON.stringify(body) };
   const raw_json = await call(built, fetchImpl);
-  const text2 = parseText(raw_json);
-  if (!json) return { text: text2 };
+  const text3 = parseText(raw_json);
+  if (!json) return { text: text3 };
   try {
-    return { text: text2, json: looseJson(text2) };
+    return { text: text3, json: looseJson(text3) };
   } catch {
-    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text3.slice(0, 120)}`), { code: "AI_PARSE", text: text3 });
   }
 }
 async function generateImage(_opts, _fetchImpl = fetch) {
@@ -694,11 +713,11 @@ async function generateText(opts, fetchImpl) {
     } catch {
     }
   }
-  const text2 = parseText(await call(buildTextPromptJson(opts), fetchImpl));
+  const text3 = parseText(await call(buildTextPromptJson(opts), fetchImpl));
   try {
-    return { text: text2, json: looseJson(text2) };
+    return { text: text3, json: looseJson(text3) };
   } catch {
-    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text3.slice(0, 120)}`), { code: "AI_PARSE", text: text3 });
   }
 }
 async function describeImage(opts, fetchImpl) {
@@ -823,12 +842,12 @@ async function readDocument2({ system, instruction, fileBase64, mimeType, json, 
   if (json) body.response_format = { type: "json_schema", json_schema: { name: "helm_output", schema: json, strict: true } };
   const built = { url: ENDPOINT2, headers: headers2(key), body: JSON.stringify(body) };
   const raw_json = await call2(built, fetchImpl);
-  const text2 = parseText2(raw_json);
-  if (!json) return { text: text2 };
+  const text3 = parseText2(raw_json);
+  if (!json) return { text: text3 };
   try {
-    return { text: text2, json: looseJson(text2) };
+    return { text: text3, json: looseJson(text3) };
   } catch {
-    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text3.slice(0, 120)}`), { code: "AI_PARSE", text: text3 });
   }
 }
 var IMAGE_SIZES = /* @__PURE__ */ new Set(["1024x1024", "1536x1024", "1024x1536", "auto"]);
@@ -849,12 +868,12 @@ async function generateImage2({ prompt, size, model, key, baseUrl }, fetchImpl =
 }
 async function generateText2(opts, fetchImpl) {
   const json = await call2(buildText2(opts), fetchImpl);
-  const text2 = parseText2(json);
-  if (!opts.json) return { text: text2 };
+  const text3 = parseText2(json);
+  if (!opts.json) return { text: text3 };
   try {
-    return { text: text2, json: looseJson(text2) };
+    return { text: text3, json: looseJson(text3) };
   } catch {
-    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text3.slice(0, 120)}`), { code: "AI_PARSE", text: text3 });
   }
 }
 async function describeImage2(opts, fetchImpl) {
@@ -933,14 +952,13 @@ function buildText3({ system, prompt, maxTokens, model, key, json, baseUrl }) {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     ...system ? { systemInstruction: { parts: [{ text: system }] } } : {},
     generationConfig: {
-      maxOutputTokens: maxTokens ?? 4e3,
+      maxOutputTokens: (maxTokens ?? 4e3) + GEMINI_THINKING_BUDGET,
       // Gemini 2.5 / flash-latest are "thinking" models — hidden reasoning tokens are billed
       // against maxOutputTokens FIRST. With -1 (dynamic) the model over-thinks on "complex"
       // creative tasks (social pack, thread, carousel) and spends the WHOLE low output ceiling
       // (~1200) on hidden thinking → truncated JSON → AI_PARSE. Cap it at a small FIXED budget
       // so thinking can never starve the output; simple tasks still use less than the cap.
-      // (0 is REJECTED with a 400 by gemini-flash-latest — which is this adapter's
-      // DEFAULT_MODEL and what pickLatest resolves google to — so use a positive floor.)
+      // (0 is rejected with 400 by gemini-flash-latest, so use a positive floor.)
       thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
       ...json ? { responseMimeType: "application/json", responseSchema: stripAdditionalProps(json) } : {}
     }
@@ -954,7 +972,7 @@ function buildVision3({ system, prompt, imageBase64, mimeType, maxTokens, model,
       { inlineData: { mimeType: mimeType || "image/jpeg", data: imageBase64 } },
       { text: prompt }
     ] }],
-    generationConfig: { maxOutputTokens: maxTokens ?? 300, thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET } }
+    generationConfig: { maxOutputTokens: (maxTokens ?? 300) + GEMINI_THINKING_BUDGET, thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET } }
   };
   return { url, headers: headers3(key), body: JSON.stringify(body) };
 }
@@ -963,7 +981,9 @@ function parseText3(json) {
   if (reason && reason !== "STOP" && reason !== "MAX_TOKENS") {
     throw Object.assign(new Error(`Gemini declined this request (${reason}).`), { code: "AI_REFUSAL" });
   }
-  return (json?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("").trim();
+  const text3 = (json?.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || "").join("").trim();
+  if (!text3) throw Object.assign(new Error(reason === "MAX_TOKENS" ? "Gemini reached its response limit before returning text. Try again." : "Gemini returned no text. Try again."), { code: "AI_PARSE" });
+  return text3;
 }
 async function call3(built, fetchImpl = fetch) {
   const res = await fetchImpl(built.url, { method: "POST", headers: built.headers, body: built.body });
@@ -986,39 +1006,50 @@ async function readDocument3({ system, instruction, fileBase64, mimeType, json, 
     ] }],
     ...system ? { systemInstruction: { parts: [{ text: system }] } } : {},
     generationConfig: {
-      maxOutputTokens: 4e3,
+      maxOutputTokens: 4e3 + GEMINI_THINKING_BUDGET,
       thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
       ...json ? { responseMimeType: "application/json", responseSchema: stripAdditionalProps(json) } : {}
     }
   };
   const built = { url, headers: headers3(key), body: JSON.stringify(body) };
   const raw_json = await call3(built, fetchImpl);
-  const text2 = parseText3(raw_json);
-  if (!json) return { text: text2 };
+  const text3 = parseText3(raw_json);
+  if (!json) return { text: text3 };
   try {
-    return { text: text2, json: looseJson(text2) };
+    return { text: text3, json: looseJson(text3) };
   } catch {
-    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text3.slice(0, 120)}`), { code: "AI_PARSE", text: text3 });
   }
 }
-async function generateImage3({ prompt, size, model, key, baseUrl }, fetchImpl = fetch) {
-  const imageModel = model && /imagen/i.test(model) ? model : "imagen-3.0-generate-002";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${imageModel}:predict`;
-  const body = { instances: [{ prompt }], parameters: { sampleCount: 1 } };
-  const built = { url, headers: headers3(key), body: JSON.stringify(body) };
-  const json = await call3(built, fetchImpl);
-  const b64 = json?.predictions?.[0]?.bytesBase64Encoded;
-  if (!b64) throw Object.assign(new Error("Google Imagen response had no bytesBase64Encoded"), { code: "AI_PARSE" });
-  return { base64: b64, mimeType: "image/png" };
+async function generateImage3({ prompt, size, model, key }, fetchImpl = fetch) {
+  if (model && /^imagen-/.test(model)) {
+    const json2 = await call3({
+      url: `${BASE}/${model}:predict`,
+      headers: headers3(key),
+      body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1 } })
+    }, fetchImpl);
+    const image2 = json2?.predictions?.[0];
+    if (!image2?.bytesBase64Encoded) throw Object.assign(new Error("Google returned no image."), { code: "AI_PARSE" });
+    return { base64: image2.bytesBase64Encoded, mimeType: image2.mimeType || "image/png" };
+  }
+  const imageModel = model && /^gemini-.*-image(?:$|-)/.test(model) ? model : "gemini-3.1-flash-image";
+  const aspectRatio = { "1024x1024": "1:1", "1024x1536": "2:3", "1536x1024": "3:2", "1024x1792": "9:16", "1792x1024": "16:9" }[size] || "1:1";
+  const json = await call3({ url: `${BASE}/${imageModel}:generateContent`, headers: headers3(key), body: JSON.stringify({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: { aspectRatio } }
+  }) }, fetchImpl);
+  const image = json?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data && !p.thought)?.inlineData;
+  if (!image) throw Object.assign(new Error("Gemini returned no image. Try a different description."), { code: "AI_PARSE" });
+  return { base64: image.data, mimeType: image.mimeType || "image/png" };
 }
 async function generateText3(opts, fetchImpl) {
   const json = await call3(buildText3(opts), fetchImpl);
-  const text2 = parseText3(json);
-  if (!opts.json) return { text: text2 };
+  const text3 = parseText3(json);
+  if (!opts.json) return { text: text3 };
   try {
-    return { text: text2, json: looseJson(text2) };
+    return { text: text3, json: looseJson(text3) };
   } catch {
-    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text3.slice(0, 120)}`), { code: "AI_PARSE", text: text3 });
   }
 }
 async function describeImage3(opts, fetchImpl) {
@@ -1103,8 +1134,8 @@ function parseText4(json) {
   if (json?.choices?.[0]?.finish_reason === "content_filter") throw Object.assign(new Error("Groq declined this request (content_filter)."), { code: "AI_REFUSAL" });
   return stripThink(json?.choices?.[0]?.message?.content || "").trim();
 }
-function stripThink(text2) {
-  const s = String(text2 == null ? "" : text2);
+function stripThink(text3) {
+  const s = String(text3 == null ? "" : text3);
   return s.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<think>[\s\S]*$/, "");
 }
 async function call4(built, fetchImpl = fetch) {
@@ -1133,12 +1164,12 @@ async function generateText4(opts, fetchImpl) {
     if (!cap || asked <= cap) throw err;
     json = await call4(buildText4({ ...opts, maxTokens: cap }), fetchImpl);
   }
-  const text2 = parseText4(json);
-  if (!opts.json) return { text: text2 };
+  const text3 = parseText4(json);
+  if (!opts.json) return { text: text3 };
   try {
-    return { text: text2, json: looseJson(text2) };
+    return { text: text3, json: looseJson(text3) };
   } catch {
-    throw Object.assign(new Error(`AI returned non-JSON output: ${text2.slice(0, 120)}`), { code: "AI_PARSE", text: text2 });
+    throw Object.assign(new Error(`AI returned non-JSON output: ${text3.slice(0, 120)}`), { code: "AI_PARSE", text: text3 });
   }
 }
 function parseModels4(json) {
@@ -1173,32 +1204,141 @@ async function resolveLatestModel4(opts = {}, fetchImpl = fetch) {
   return latestModelOffline("groq");
 }
 
+// engine/ai/dispatch.js
+function isDeadModelError(err) {
+  if (!err || typeof err !== "object") return false;
+  const status = Number(err.status) || 0;
+  const code = String(err.providerCode == null ? "" : err.providerCode).toLowerCase();
+  const type = String(err.providerType == null ? "" : err.providerType).toLowerCase();
+  const gStatus = String(err.providerStatus == null ? "" : err.providerStatus).toUpperCase();
+  const msg = String(err.message == null ? "" : err.message).toLowerCase();
+  const model = String(err.model == null ? "" : err.model).toLowerCase();
+  if (code === "model_decommissioned") return true;
+  if (code === "model_not_found") return true;
+  if (status === 404 && type === "not_found_error" && model && msg.includes(model)) return true;
+  if (status === 404 && gStatus === "NOT_FOUND" && /model/.test(msg)) return true;
+  return false;
+}
+
 // src/seams/ai.js
 var ADAPTERS = { anthropic: anthropic_exports, openai: openai_exports, google: google_exports, groq: groq_exports };
-function makeAi(cfg, fetchImpl = fetch) {
+function makeAi(cfg, fetchImpl = fetch, { timeoutMs = 12e4 } = {}) {
   const browserFetch = (url, opts = {}) => {
     const headers5 = { ...opts.headers || {} };
     if (String(url).includes("api.anthropic.com")) headers5["anthropic-dangerous-direct-browser-access"] = "true";
-    return fetchImpl(url, { ...opts, headers: headers5 });
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    return fetchImpl(url, { ...opts, headers: headers5, signal: ctl.signal }).catch((err) => {
+      if (ctl.signal.aborted) throw Object.assign(new Error("The AI provider took too long to respond \u2014 try again."), { code: "AI_TIMEOUT" });
+      throw err;
+    }).finally(() => clearTimeout(timer));
   };
   const pick = () => {
     const a = cfg.getAi();
     return { adapter: ADAPTERS[a.provider] || anthropic_exports, a };
   };
+  async function recoverDeadModel(err, { provider, adapter, key, model }) {
+    if (err && typeof err === "object") {
+      err.provider = err.provider || provider;
+      err.model = err.model || model;
+    }
+    if (!isDeadModelError(err)) return "";
+    if (typeof adapter.listModelsRaw !== "function") return "";
+    let next = "";
+    try {
+      next = pickLatestFromList(provider, await adapter.listModelsRaw({ key }, browserFetch));
+    } catch {
+      return "";
+    }
+    if (!next || next === model) return "";
+    try {
+      cfg.save({ aiProvider: provider, aiModel: next });
+    } catch {
+    }
+    try {
+      if (typeof window !== "undefined" && window.dispatchEvent)
+        window.dispatchEvent(new CustomEvent("studio:model-switched", { detail: { provider, from: model, to: next } }));
+    } catch {
+    }
+    return next;
+  }
+  async function runHealing(makeCall, { provider, adapter, key, model }) {
+    try {
+      return await makeCall(model);
+    } catch (err) {
+      const next = await recoverDeadModel(err, { provider, adapter, key, model });
+      if (!next) throw err;
+      return makeCall(next);
+    }
+  }
   return {
     async generateText({ system, prompt, maxTokens, json, effort }) {
       const { adapter, a } = pick();
-      return adapter.generateText({ system, prompt, maxTokens, json, effort, model: a.model || adapter.DEFAULT_MODEL, key: a.key }, browserFetch);
+      const model = a.model || adapter.DEFAULT_MODEL;
+      return runHealing(
+        (m) => adapter.generateText({ system, prompt, maxTokens, json, effort, model: m, key: a.key }, browserFetch),
+        { provider: a.provider, adapter, key: a.key, model }
+      );
     },
     async describeImage({ prompt, imageBase64, mimeType, maxTokens }) {
       const { adapter, a } = pick();
       if (!adapter.capabilities?.vision) throw Object.assign(new Error(`${a.provider} cannot read images`), { code: "AI_CAP" });
-      return adapter.describeImage({ prompt, imageBase64, mimeType, maxTokens, model: a.model || adapter.DEFAULT_MODEL, key: a.key }, browserFetch);
+      const model = a.model || adapter.DEFAULT_MODEL;
+      return runHealing(
+        (m) => adapter.describeImage({ prompt, imageBase64, mimeType, maxTokens, model: m, key: a.key }, browserFetch),
+        { provider: a.provider, adapter, key: a.key, model }
+      );
     },
     async generateImage({ prompt, size }) {
       const { adapter, a } = pick();
       if (!adapter.capabilities?.image) throw Object.assign(new Error(`${a.provider} cannot generate images`), { code: "AI_CAP" });
-      return adapter.generateImage({ prompt, size, model: a.model || adapter.DEFAULT_MODEL, key: a.key }, browserFetch);
+      return adapter.generateImage({ prompt, size, model: void 0, key: a.key }, browserFetch);
+    },
+    // Document import (PDF / image → structured blocks). studio.importDocument calls this;
+    // it was missing here, so /ai/read-document threw "ai.readDocument is not a function"
+    // and the live "Import document" feature broke for every provider. Delegate to the
+    // adapter (all three offered providers implement readDocument); a provider without it
+    // (e.g. Groq) gets a clean AI_CAP message the UI routes to Settings, not a raw TypeError.
+    async readDocument({ system, instruction, fileBase64, mimeType, json }) {
+      const { adapter, a } = pick();
+      if (typeof adapter.readDocument !== "function") throw Object.assign(new Error(`${a.provider} cannot read documents \u2014 use a provider that supports document import (e.g. Anthropic or Gemini).`), { code: "AI_CAP" });
+      const model = a.model || adapter.DEFAULT_MODEL;
+      return runHealing(
+        (m) => adapter.readDocument({ system, instruction, fileBase64, mimeType, json, model: m, key: a.key }, browserFetch),
+        { provider: a.provider, adapter, key: a.key, model }
+      );
+    },
+    // The current provider's declared capabilities ({ text, vision, document, image }).
+    // The router surfaces this in GET /settings/ai so the composer can gate capability-
+    // dependent buttons (e.g. ✦ Generate image) exactly as it did against the old server.
+    capabilities() {
+      const { adapter } = pick();
+      return adapter.capabilities || {};
+    },
+    // Layer 1 — live model list for the Settings "↻ refresh models" datalist. Uses the
+    // stored key, which BYOK holds only for the ACTIVE provider, so listing a different
+    // provider (no key) returns [] gracefully rather than firing a doomed 401. Never throws:
+    // the router wraps this as { models } and loadModels() reads r.models||[].
+    async listModels(provider) {
+      const a = cfg.getAi();
+      const id = provider || a.provider;
+      const adapter = ADAPTERS[id];
+      if (!adapter || typeof adapter.listModels !== "function") return [];
+      const key = id === a.provider ? a.key : "";
+      if (!key) return [];
+      return adapter.listModels({ key }, browserFetch);
+    },
+    // Layer 1 — resolve the provider's LATEST sensible chat model (stable alias / live query /
+    // offline default) so activation pins a current id instead of a stale hardcoded one. The
+    // adapter's resolveLatestModel never throws (a missing key / offline degrades to the
+    // offline default), so this always yields a usable id or '' for an unknown provider.
+    async resolveLatestModel(provider) {
+      const a = cfg.getAi();
+      const id = provider || a.provider;
+      const adapter = ADAPTERS[id];
+      if (!adapter || typeof adapter.resolveLatestModel !== "function") return "";
+      const key = id === a.provider ? a.key : "";
+      return adapter.resolveLatestModel({ key }, browserFetch);
     }
   };
 }
@@ -1570,9 +1710,11 @@ function safeName(name) {
   if (!stem) stem = "video";
   return ext ? `${stem}.${ext}` : stem;
 }
-function r2Key(name, now = Date.now()) {
+var _seq = 0;
+var randSuffix = () => Math.random().toString(36).slice(2, 6).padStart(4, "0") + (_seq = (_seq + 1) % 1679616).toString(36).padStart(4, "0");
+function r2Key(name, now = Date.now(), rand = randSuffix()) {
   const ts = Math.floor(now).toString(36);
-  return `videos/${ts}-${safeName(name)}`;
+  return `videos/${ts}${rand}-${safeName(name)}`;
 }
 var CT = { mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", ogg: "video/ogg", ogv: "video/ogg" };
 function contentTypeFor(file) {
@@ -1580,7 +1722,7 @@ function contentTypeFor(file) {
   const ext = (String(file && file.name || "").split(".").pop() || "").toLowerCase();
   return CT[ext] || "application/octet-stream";
 }
-function buildCorsPolicy(origin = "https://inayat-studio.netlify.app") {
+function buildCorsPolicy(origin = "https://chapbook-publishing-studio.netlify.app") {
   const policy = [
     {
       AllowedOrigins: [origin],
@@ -1830,7 +1972,7 @@ function makeR2(config2) {
 }
 
 // src/seams/storage.js
-var STORES = ["drafts", "blockdrafts", "partner", "shapes", "versions", "ideas"];
+var STORES = ["drafts", "blockdrafts", "partner", "shapes", "versions", "ideas", "threads"];
 function memoryBackend() {
   const db = Object.fromEntries(STORES.map((s) => [s, /* @__PURE__ */ new Map()]));
   return {
@@ -1846,12 +1988,16 @@ function memoryBackend() {
     },
     async del(store, id) {
       db[store].delete(id);
+    },
+    // In-memory: always openable, but NOT persisted across reloads — the UI warns on this.
+    async probe() {
+      return { ok: true, persistent: false };
     }
   };
 }
 function idbBackend(name = "helm-studio") {
   const open = () => new Promise((res, rej) => {
-    const r = indexedDB.open(name, 4);
+    const r = indexedDB.open(name, 5);
     r.onupgradeneeded = () => {
       const d = r.result;
       for (const s of STORES) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: "id" });
@@ -1871,13 +2017,102 @@ function idbBackend(name = "helm-studio") {
     get: (store, id) => tx(store, "readonly", (os) => os.get(id)).then((v) => v || null),
     put: (store, obj) => tx(store, "readwrite", (os) => os.put(obj)).then(() => obj),
     all: (store) => tx(store, "readonly", (os) => os.getAll()),
-    del: (store, id) => tx(store, "readwrite", (os) => os.delete(id))
+    del: (store, id) => tx(store, "readwrite", (os) => os.delete(id)),
+    // Health check: can we actually open the DB? Safari private mode / ITP eviction / a
+    // storage-blocked browser make indexedDB.open() REJECT — otherwise silently, deep inside
+    // the first draft read. probe() surfaces it so boot can warn instead of failing blank.
+    async probe() {
+      try {
+        await open();
+        return { ok: true, persistent: true };
+      } catch (e) {
+        return { ok: false, persistent: false, error: String(e && e.message || e) };
+      }
+    }
   };
 }
 function makeStorage(backend) {
   return backend;
 }
 var storage = makeStorage(typeof indexedDB !== "undefined" ? idbBackend() : memoryBackend());
+
+// src/core/draftsIo.js
+var draftsIo_exports = {};
+__export(draftsIo_exports, {
+  DRAFTS_FORMAT: () => DRAFTS_FORMAT,
+  DRAFTS_VERSION: () => DRAFTS_VERSION,
+  DRAFT_STORES: () => STORES,
+  MAX_IMPORT_BYTES: () => MAX_IMPORT_BYTES,
+  MAX_IMPORT_RECORDS: () => MAX_IMPORT_RECORDS,
+  MAX_RECORD_BYTES: () => MAX_RECORD_BYTES,
+  parseDraftsFile: () => parseDraftsFile,
+  serialiseDrafts: () => serialiseDrafts
+});
+var DRAFTS_FORMAT = "chapbook-drafts";
+var DRAFTS_VERSION = 1;
+var MAX_IMPORT_BYTES = 25 * 1024 * 1024;
+var MAX_IMPORT_RECORDS = 5e3;
+var MAX_RECORD_BYTES = 2 * 1024 * 1024;
+function serialiseDrafts(storesMap, { now = () => (/* @__PURE__ */ new Date()).toISOString() } = {}) {
+  const map = storesMap && typeof storesMap === "object" ? storesMap : {};
+  const stores = {};
+  let count = 0;
+  for (const s of STORES) {
+    const arr = Array.isArray(map[s]) ? map[s] : [];
+    stores[s] = arr;
+    count += arr.length;
+  }
+  return { format: DRAFTS_FORMAT, version: DRAFTS_VERSION, exportedAt: now(), count, stores };
+}
+function parseDraftsFile(input, {
+  maxBytes = MAX_IMPORT_BYTES,
+  maxRecords = MAX_IMPORT_RECORDS,
+  maxRecordBytes = MAX_RECORD_BYTES
+} = {}) {
+  let obj = input;
+  if (typeof input === "string") {
+    if (input.length > maxBytes) {
+      return { ok: false, error: "That file is too big to import. Export smaller batches and import them one at a time." };
+    }
+    try {
+      obj = JSON.parse(input);
+    } catch {
+      return { ok: false, error: "That file is not valid JSON." };
+    }
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+    return { ok: false, error: "That file is not a Chapbook drafts export." };
+  }
+  if (obj.format !== DRAFTS_FORMAT) {
+    return { ok: false, error: "That file is not a Chapbook drafts export." };
+  }
+  if (!obj.stores || typeof obj.stores !== "object") {
+    return { ok: false, error: "That export has no drafts in it." };
+  }
+  const stores = {};
+  let count = 0;
+  for (const s of STORES) {
+    const raw = Array.isArray(obj.stores[s]) ? obj.stores[s] : [];
+    const clean = raw.filter((r) => r && typeof r === "object" && typeof r.id === "string");
+    for (const r of clean) {
+      let size = 0;
+      try {
+        size = JSON.stringify(r).length;
+      } catch {
+        size = Infinity;
+      }
+      if (size > maxRecordBytes) {
+        return { ok: false, error: "That export contains an item that is too big to import." };
+      }
+    }
+    stores[s] = clean;
+    count += clean.length;
+    if (count > maxRecords) {
+      return { ok: false, error: `That export has too many items to import (the limit is ${maxRecords}).` };
+    }
+  }
+  return { ok: true, stores, count };
+}
 
 // engine/frontmatter.js
 var GALLERY_START = "<!-- gallery:start -->";
@@ -1887,7 +2122,7 @@ function parse(md) {
   if (!m) return { data: {}, body: md };
   const data = {};
   for (const line3 of m[1].split("\n")) {
-    const mm = /^(\w+):\s*(.*)$/.exec(line3);
+    const mm = /^(\w[\w-]*):\s*(.*)$/.exec(line3);
     if (!mm) continue;
     const key = mm[1];
     const val = mm[2].trim();
@@ -1907,18 +2142,35 @@ function parse(md) {
     } else if (val === "true" || val === "false") {
       data[key] = val === "true";
     } else {
-      data[key] = val.replace(/^["']|["']$/g, "").replace(/\\"/g, '"');
+      data[key] = val.replace(/^["']|["']$/g, "").replace(/\\([\\"])/g, "$1");
     }
   }
   return { data, body: m[2] };
 }
-var q = (s) => '"' + String(s).replace(/"/g, '\\"') + '"';
+var oneLine = (s) => String(s).replace(/[\r\n]+/g, " ");
+var q = (s) => '"' + oneLine(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+var KNOWN_KEYS = /* @__PURE__ */ new Set([
+  "title",
+  "description",
+  "image",
+  "date",
+  "tags",
+  "citations",
+  "series",
+  "seriesPart",
+  "accent",
+  "glyph",
+  "template",
+  "theme",
+  "draft",
+  "publishAt"
+]);
 function serialise({ data, body }) {
   const lines = [];
   if (data.title != null) lines.push(`title: ${q(data.title)}`);
   if (data.description != null) lines.push(`description: ${q(data.description)}`);
   if (data.image) lines.push(`image: ${q(data.image)}`);
-  if (data.date != null) lines.push(`date: ${data.date}`);
+  if (data.date != null) lines.push(`date: ${oneLine(data.date)}`);
   if (data.tags != null) lines.push(`tags: [${data.tags.map(q).join(", ")}]`);
   if (Array.isArray(data.citations) && data.citations.length) {
     const clean = data.citations.filter((c) => c && c.id).map((c) => ({ id: String(c.id), text: String(c.text == null ? "" : c.text) }));
@@ -1930,8 +2182,13 @@ function serialise({ data, body }) {
   if (data.glyph != null) lines.push(`glyph: ${q(data.glyph)}`);
   if (data.template != null && data.template !== "observatory") lines.push(`template: ${q(data.template)}`);
   if (data.theme != null && data.theme !== "dark") lines.push(`theme: ${q(data.theme)}`);
+  for (const [k, v] of Object.entries(data)) {
+    if (KNOWN_KEYS.has(k) || v == null || !/^\w[\w-]*$/.test(k)) continue;
+    if (typeof v === "boolean" || typeof v === "number") lines.push(`${k}: ${v}`);
+    else if (typeof v === "string") lines.push(`${k}: ${q(v)}`);
+  }
   if (data.draft === true) lines.push("draft: true");
-  if (data.publishAt) lines.push(`publishAt: ${data.publishAt}`);
+  if (data.publishAt) lines.push(`publishAt: ${oneLine(data.publishAt)}`);
   return `---
 ${lines.join("\n")}
 ---
@@ -2038,7 +2295,7 @@ function arrow({ x1, y1, x2, y2, label: lbl, stroke = INK, width, size = 8, ...r
   }
   return el("g", {}, parts);
 }
-function label(text2, x, y, opts = {}) {
+function label(text3, x, y, opts = {}) {
   const { size = 13, anchor = "start", fill = INK, font = FONT, ...rest } = opts;
   return el("text", {
     x,
@@ -2048,7 +2305,7 @@ function label(text2, x, y, opts = {}) {
     "text-anchor": anchor,
     fill,
     ...rest
-  }, escText(text2));
+  }, escText(text3));
 }
 function leader(from = [0, 0], to = [0, 0]) {
   const [x1, y1] = from;
@@ -2186,8 +2443,8 @@ function cleanStyle(css) {
   }
   return out.trim();
 }
-function sanitise(svg2) {
-  let s = String(svg2 ?? "");
+function sanitise(svg3) {
+  let s = String(svg3 ?? "");
   s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
   s = s.replace(/<script\b[^>]*\/\s*>/gi, "");
   s = s.replace(/<\/?script\b[^>]*>/gi, "");
@@ -2198,28 +2455,1608 @@ function sanitise(svg2) {
   s = s.replace(new RegExp(`<(${SMIL})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, "gi"), "");
   s = s.replace(new RegExp(`<${SMIL}\\b[^>]*\\/\\s*>`, "gi"), "");
   s = s.replace(new RegExp(`<\\/?${SMIL}\\b[^>]*>`, "gi"), "");
-  const onAttr = /\son[a-z-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+  const onAttr = /([\s/"'`])on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
   let prev;
   do {
     prev = s;
-    s = s.replace(onAttr, "");
+    s = s.replace(onAttr, "$1");
   } while (s !== prev);
   const keepHref = (v) => v.startsWith("#") || SAFE_IMAGE_DATA_URL.test(v);
-  const hrefAttr = /\s(?:xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
-  s = s.replace(hrefAttr, (m, dq, sq) => {
+  const hrefAttr = /([\s/"'`])(?:(?:xlink:)?href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  s = s.replace(hrefAttr, (m, d, dq, sq) => {
     const v = ((dq !== void 0 ? dq : sq) || "").trim();
-    return keepHref(v) ? m : "";
+    return keepHref(v) ? m : d;
   });
-  const hrefUnquoted = /\s(?:xlink:)?href\s*=\s*([^\s">]+)/gi;
-  s = s.replace(hrefUnquoted, (m, val) => {
+  const hrefUnquoted = /([\s/"'`])(?:(?:xlink:)?href|src)\s*=\s*([^\s">]+)/gi;
+  s = s.replace(hrefUnquoted, (m, d, val) => {
     const v = (val || "").trim();
-    return keepHref(v) ? m : "";
+    return keepHref(v) ? m : d;
   });
   s = s.replace(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi, (_, css) => {
     const cleaned = cleanStyle(css);
     return `<style>${cleaned}</style>`;
   });
   return s;
+}
+
+// node_modules/dompurify/dist/purify.es.mjs
+function _arrayLikeToArray(r, a) {
+  (null == a || a > r.length) && (a = r.length);
+  for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e];
+  return n;
+}
+function _arrayWithHoles(r) {
+  if (Array.isArray(r)) return r;
+}
+function _iterableToArrayLimit(r, l) {
+  var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"];
+  if (null != t) {
+    var e, n, i, u, a = [], f = true, o = false;
+    try {
+      if (i = (t = t.call(r)).next, 0 === l) ;
+      else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = true) ;
+    } catch (r2) {
+      o = true, n = r2;
+    } finally {
+      try {
+        if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return;
+      } finally {
+        if (o) throw n;
+      }
+    }
+    return a;
+  }
+}
+function _nonIterableRest() {
+  throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+}
+function _slicedToArray(r, e) {
+  return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest();
+}
+function _unsupportedIterableToArray(r, a) {
+  if (r) {
+    if ("string" == typeof r) return _arrayLikeToArray(r, a);
+    var t = {}.toString.call(r).slice(8, -1);
+    return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0;
+  }
+}
+var entries = Object.entries;
+var setPrototypeOf = Object.setPrototypeOf;
+var isFrozen = Object.isFrozen;
+var getPrototypeOf = Object.getPrototypeOf;
+var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+var freeze = Object.freeze;
+var seal = Object.seal;
+var create = Object.create;
+var _ref = typeof Reflect !== "undefined" && Reflect;
+var apply = _ref.apply;
+var construct = _ref.construct;
+if (!freeze) {
+  freeze = function freeze2(x) {
+    return x;
+  };
+}
+if (!seal) {
+  seal = function seal2(x) {
+    return x;
+  };
+}
+if (!apply) {
+  apply = function apply2(func, thisArg) {
+    for (var _len = arguments.length, args = new Array(_len > 2 ? _len - 2 : 0), _key = 2; _key < _len; _key++) {
+      args[_key - 2] = arguments[_key];
+    }
+    return func.apply(thisArg, args);
+  };
+}
+if (!construct) {
+  construct = function construct2(Func) {
+    for (var _len2 = arguments.length, args = new Array(_len2 > 1 ? _len2 - 1 : 0), _key2 = 1; _key2 < _len2; _key2++) {
+      args[_key2 - 1] = arguments[_key2];
+    }
+    return new Func(...args);
+  };
+}
+var arrayForEach = unapply(Array.prototype.forEach);
+var arrayLastIndexOf = unapply(Array.prototype.lastIndexOf);
+var arrayPop = unapply(Array.prototype.pop);
+var arrayPush = unapply(Array.prototype.push);
+var arraySplice = unapply(Array.prototype.splice);
+var arrayIsArray = Array.isArray;
+var stringToLowerCase = unapply(String.prototype.toLowerCase);
+var stringToString = unapply(String.prototype.toString);
+var stringMatch = unapply(String.prototype.match);
+var stringReplace = unapply(String.prototype.replace);
+var stringIndexOf = unapply(String.prototype.indexOf);
+var stringTrim = unapply(String.prototype.trim);
+var numberToString = unapply(Number.prototype.toString);
+var booleanToString = unapply(Boolean.prototype.toString);
+var bigintToString = typeof BigInt === "undefined" ? null : unapply(BigInt.prototype.toString);
+var symbolToString = typeof Symbol === "undefined" ? null : unapply(Symbol.prototype.toString);
+var objectHasOwnProperty = unapply(Object.prototype.hasOwnProperty);
+var objectToString = unapply(Object.prototype.toString);
+var regExpTest = unapply(RegExp.prototype.test);
+var typeErrorCreate = unconstruct(TypeError);
+function unapply(func) {
+  return function(thisArg) {
+    if (thisArg instanceof RegExp) {
+      thisArg.lastIndex = 0;
+    }
+    for (var _len3 = arguments.length, args = new Array(_len3 > 1 ? _len3 - 1 : 0), _key3 = 1; _key3 < _len3; _key3++) {
+      args[_key3 - 1] = arguments[_key3];
+    }
+    return apply(func, thisArg, args);
+  };
+}
+function unconstruct(Func) {
+  return function() {
+    for (var _len4 = arguments.length, args = new Array(_len4), _key4 = 0; _key4 < _len4; _key4++) {
+      args[_key4] = arguments[_key4];
+    }
+    return construct(Func, args);
+  };
+}
+function addToSet(set, array) {
+  let transformCaseFunc = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : stringToLowerCase;
+  if (setPrototypeOf) {
+    setPrototypeOf(set, null);
+  }
+  if (!arrayIsArray(array)) {
+    return set;
+  }
+  let l = array.length;
+  while (l--) {
+    let element = array[l];
+    if (typeof element === "string") {
+      const lcElement = transformCaseFunc(element);
+      if (lcElement !== element) {
+        if (!isFrozen(array)) {
+          array[l] = lcElement;
+        }
+        element = lcElement;
+      }
+    }
+    set[element] = true;
+  }
+  return set;
+}
+function cleanArray(array) {
+  for (let index = 0; index < array.length; index++) {
+    const isPropertyExist = objectHasOwnProperty(array, index);
+    if (!isPropertyExist) {
+      array[index] = null;
+    }
+  }
+  return array;
+}
+function clone(object) {
+  const newObject = create(null);
+  for (const _ref2 of entries(object)) {
+    var _ref3 = _slicedToArray(_ref2, 2);
+    const property = _ref3[0];
+    const value = _ref3[1];
+    const isPropertyExist = objectHasOwnProperty(object, property);
+    if (isPropertyExist) {
+      if (arrayIsArray(value)) {
+        newObject[property] = cleanArray(value);
+      } else if (value && typeof value === "object" && value.constructor === Object) {
+        newObject[property] = clone(value);
+      } else {
+        newObject[property] = value;
+      }
+    }
+  }
+  return newObject;
+}
+function stringifyValue(value) {
+  switch (typeof value) {
+    case "string": {
+      return value;
+    }
+    case "number": {
+      return numberToString(value);
+    }
+    case "boolean": {
+      return booleanToString(value);
+    }
+    case "bigint": {
+      return bigintToString ? bigintToString(value) : "0";
+    }
+    case "symbol": {
+      return symbolToString ? symbolToString(value) : "Symbol()";
+    }
+    case "undefined": {
+      return objectToString(value);
+    }
+    case "function":
+    case "object": {
+      if (value === null) {
+        return objectToString(value);
+      }
+      const valueAsRecord = value;
+      const valueToString = lookupGetter(valueAsRecord, "toString");
+      if (typeof valueToString === "function") {
+        const stringified = valueToString(valueAsRecord);
+        return typeof stringified === "string" ? stringified : objectToString(stringified);
+      }
+      return objectToString(value);
+    }
+    default: {
+      return objectToString(value);
+    }
+  }
+}
+function lookupGetter(object, prop) {
+  while (object !== null) {
+    const desc = getOwnPropertyDescriptor(object, prop);
+    if (desc) {
+      if (desc.get) {
+        return unapply(desc.get);
+      }
+      if (typeof desc.value === "function") {
+        return unapply(desc.value);
+      }
+    }
+    object = getPrototypeOf(object);
+  }
+  function fallbackValue() {
+    return null;
+  }
+  return fallbackValue;
+}
+function isRegex(value) {
+  try {
+    regExpTest(value, "");
+    return true;
+  } catch (_unused) {
+    return false;
+  }
+}
+var html$1 = freeze(["a", "abbr", "acronym", "address", "area", "article", "aside", "audio", "b", "bdi", "bdo", "big", "blink", "blockquote", "body", "br", "button", "canvas", "caption", "center", "cite", "code", "col", "colgroup", "content", "data", "datalist", "dd", "decorator", "del", "details", "dfn", "dialog", "dir", "div", "dl", "dt", "element", "em", "fieldset", "figcaption", "figure", "font", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "i", "img", "input", "ins", "kbd", "label", "legend", "li", "main", "map", "mark", "marquee", "menu", "menuitem", "meter", "nav", "nobr", "ol", "optgroup", "option", "output", "p", "picture", "pre", "progress", "q", "rp", "rt", "ruby", "s", "samp", "search", "section", "select", "shadow", "slot", "small", "source", "spacer", "span", "strike", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "time", "tr", "track", "tt", "u", "ul", "var", "video", "wbr"]);
+var svg$1 = freeze(["svg", "a", "altglyph", "altglyphdef", "altglyphitem", "animatecolor", "animatemotion", "animatetransform", "circle", "clippath", "defs", "desc", "ellipse", "enterkeyhint", "exportparts", "filter", "font", "g", "glyph", "glyphref", "hkern", "image", "inputmode", "line", "lineargradient", "marker", "mask", "metadata", "mpath", "part", "path", "pattern", "polygon", "polyline", "radialgradient", "rect", "stop", "style", "switch", "symbol", "text", "textpath", "title", "tref", "tspan", "view", "vkern"]);
+var svgFilters = freeze(["feBlend", "feColorMatrix", "feComponentTransfer", "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB", "feFuncG", "feFuncR", "feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset", "fePointLight", "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence"]);
+var svgDisallowed = freeze(["animate", "color-profile", "cursor", "discard", "font-face", "font-face-format", "font-face-name", "font-face-src", "font-face-uri", "foreignobject", "hatch", "hatchpath", "mesh", "meshgradient", "meshpatch", "meshrow", "missing-glyph", "script", "set", "solidcolor", "unknown", "use"]);
+var mathMl$1 = freeze(["math", "menclose", "merror", "mfenced", "mfrac", "mglyph", "mi", "mlabeledtr", "mmultiscripts", "mn", "mo", "mover", "mpadded", "mphantom", "mroot", "mrow", "ms", "mspace", "msqrt", "mstyle", "msub", "msup", "msubsup", "mtable", "mtd", "mtext", "mtr", "munder", "munderover", "mprescripts"]);
+var mathMlDisallowed = freeze(["maction", "maligngroup", "malignmark", "mlongdiv", "mscarries", "mscarry", "msgroup", "mstack", "msline", "msrow", "semantics", "annotation", "annotation-xml", "mprescripts", "none"]);
+var text = freeze(["#text"]);
+var html = freeze(["accept", "action", "align", "alt", "autocapitalize", "autocomplete", "autopictureinpicture", "autoplay", "background", "bgcolor", "border", "capture", "cellpadding", "cellspacing", "checked", "cite", "class", "clear", "color", "cols", "colspan", "command", "commandfor", "controls", "controlslist", "coords", "crossorigin", "datetime", "decoding", "default", "dir", "disabled", "disablepictureinpicture", "disableremoteplayback", "download", "draggable", "enctype", "enterkeyhint", "exportparts", "face", "for", "headers", "height", "hidden", "high", "href", "hreflang", "id", "inert", "inputmode", "integrity", "ismap", "kind", "label", "lang", "list", "loading", "loop", "low", "max", "maxlength", "media", "method", "min", "minlength", "multiple", "muted", "name", "nonce", "noshade", "novalidate", "nowrap", "open", "optimum", "part", "pattern", "placeholder", "playsinline", "popover", "popovertarget", "popovertargetaction", "poster", "preload", "pubdate", "radiogroup", "readonly", "rel", "required", "rev", "reversed", "role", "rows", "rowspan", "spellcheck", "scope", "selected", "shape", "size", "sizes", "slot", "span", "srclang", "start", "src", "srcset", "step", "style", "summary", "tabindex", "title", "translate", "type", "usemap", "valign", "value", "width", "wrap", "xmlns"]);
+var svg = freeze(["accent-height", "accumulate", "additive", "alignment-baseline", "amplitude", "ascent", "attributename", "attributetype", "azimuth", "basefrequency", "baseline-shift", "begin", "bias", "by", "class", "clip", "clippathunits", "clip-path", "clip-rule", "color", "color-interpolation", "color-interpolation-filters", "color-profile", "color-rendering", "cx", "cy", "d", "dx", "dy", "diffuseconstant", "direction", "display", "divisor", "dominant-baseline", "dur", "edgemode", "elevation", "end", "exponent", "fill", "fill-opacity", "fill-rule", "filter", "filterunits", "flood-color", "flood-opacity", "font-family", "font-size", "font-size-adjust", "font-stretch", "font-style", "font-variant", "font-weight", "fx", "fy", "g1", "g2", "glyph-name", "glyphref", "gradientunits", "gradienttransform", "height", "href", "id", "image-rendering", "in", "in2", "intercept", "k", "k1", "k2", "k3", "k4", "kerning", "keypoints", "keysplines", "keytimes", "lang", "lengthadjust", "letter-spacing", "kernelmatrix", "kernelunitlength", "lighting-color", "local", "marker-end", "marker-mid", "marker-start", "markerheight", "markerunits", "markerwidth", "maskcontentunits", "maskunits", "max", "mask", "mask-type", "media", "method", "mode", "min", "name", "numoctaves", "offset", "operator", "opacity", "order", "orient", "orientation", "origin", "overflow", "paint-order", "path", "pathlength", "patterncontentunits", "patterntransform", "patternunits", "points", "preservealpha", "preserveaspectratio", "primitiveunits", "r", "rx", "ry", "radius", "refx", "refy", "repeatcount", "repeatdur", "restart", "result", "rotate", "scale", "seed", "shape-rendering", "slope", "specularconstant", "specularexponent", "spreadmethod", "startoffset", "stddeviation", "stitchtiles", "stop-color", "stop-opacity", "stroke-dasharray", "stroke-dashoffset", "stroke-linecap", "stroke-linejoin", "stroke-miterlimit", "stroke-opacity", "stroke", "stroke-width", "style", "surfacescale", "systemlanguage", "tabindex", "tablevalues", "targetx", "targety", "transform", "transform-origin", "text-anchor", "text-decoration", "text-orientation", "text-rendering", "textlength", "type", "u1", "u2", "unicode", "values", "viewbox", "visibility", "version", "vert-adv-y", "vert-origin-x", "vert-origin-y", "width", "word-spacing", "wrap", "writing-mode", "xchannelselector", "ychannelselector", "x", "x1", "x2", "xmlns", "y", "y1", "y2", "z", "zoomandpan"]);
+var mathMl = freeze(["accent", "accentunder", "align", "bevelled", "close", "columnalign", "columnlines", "columnspacing", "columnspan", "denomalign", "depth", "dir", "display", "displaystyle", "encoding", "fence", "frame", "height", "href", "id", "largeop", "length", "linethickness", "lquote", "lspace", "mathbackground", "mathcolor", "mathsize", "mathvariant", "maxsize", "minsize", "movablelimits", "notation", "numalign", "open", "rowalign", "rowlines", "rowspacing", "rowspan", "rspace", "rquote", "scriptlevel", "scriptminsize", "scriptsizemultiplier", "selection", "separator", "separators", "stretchy", "subscriptshift", "supscriptshift", "symmetric", "voffset", "width", "xmlns"]);
+var xml = freeze(["xlink:href", "xml:id", "xlink:title", "xml:space", "xmlns:xlink"]);
+var MUSTACHE_EXPR = seal(/{{[\w\W]*|^[\w\W]*}}/g);
+var ERB_EXPR = seal(/<%[\w\W]*|^[\w\W]*%>/g);
+var TMPLIT_EXPR = seal(/\${[\w\W]*/g);
+var DATA_ATTR = seal(/^data-[\-\w.\u00B7-\uFFFF]+$/);
+var ARIA_ATTR = seal(/^aria-[\-\w]+$/);
+var IS_ALLOWED_URI = seal(
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+  // eslint-disable-line no-useless-escape
+);
+var IS_SCRIPT_OR_DATA = seal(/^(?:\w+script|data):/i);
+var ATTR_WHITESPACE = seal(
+  /[\u0000-\u0020\u00A0\u1680\u180E\u2000-\u2029\u205F\u3000]/g
+  // eslint-disable-line no-control-regex
+);
+var DOCTYPE_NAME = seal(/^html$/i);
+var CUSTOM_ELEMENT = seal(/^[a-z][.\w]*(-[.\w]+)+$/i);
+var ELEMENT_MARKUP_PROBE = seal(/<[/\w!]/g);
+var COMMENT_MARKUP_PROBE = seal(/<[/\w]/g);
+var FALLBACK_TAG_CLOSE = seal(/<\/no(script|embed|frames)/i);
+var SELF_CLOSING_TAG = seal(/\/>/i);
+var NODE_TYPE = {
+  element: 1,
+  attribute: 2,
+  text: 3,
+  cdataSection: 4,
+  entityReference: 5,
+  // Deprecated
+  entityNode: 6,
+  // Deprecated
+  processingInstruction: 7,
+  comment: 8,
+  document: 9,
+  documentType: 10,
+  documentFragment: 11,
+  notation: 12
+  // Deprecated
+};
+var getGlobal = function getGlobal2() {
+  return typeof window === "undefined" ? null : window;
+};
+var _createTrustedTypesPolicy = function _createTrustedTypesPolicy2(trustedTypes, purifyHostElement) {
+  if (typeof trustedTypes !== "object" || typeof trustedTypes.createPolicy !== "function") {
+    return null;
+  }
+  let suffix = null;
+  const ATTR_NAME = "data-tt-policy-suffix";
+  if (purifyHostElement && purifyHostElement.hasAttribute(ATTR_NAME)) {
+    suffix = purifyHostElement.getAttribute(ATTR_NAME);
+  }
+  const policyName = "dompurify" + (suffix ? "#" + suffix : "");
+  try {
+    return trustedTypes.createPolicy(policyName, {
+      createHTML(html2) {
+        return html2;
+      },
+      createScriptURL(scriptUrl) {
+        return scriptUrl;
+      }
+    });
+  } catch (_) {
+    console.warn("TrustedTypes policy " + policyName + " could not be created.");
+    return null;
+  }
+};
+var _createHooksMap = function _createHooksMap2() {
+  return {
+    afterSanitizeAttributes: [],
+    afterSanitizeElements: [],
+    afterSanitizeShadowDOM: [],
+    beforeSanitizeAttributes: [],
+    beforeSanitizeElements: [],
+    beforeSanitizeShadowDOM: [],
+    uponSanitizeAttribute: [],
+    uponSanitizeElement: [],
+    uponSanitizeShadowNode: []
+  };
+};
+var _resolveSetOption = function _resolveSetOption2(cfg, key, fallback, options) {
+  return objectHasOwnProperty(cfg, key) && arrayIsArray(cfg[key]) ? addToSet(options.base ? clone(options.base) : {}, cfg[key], options.transform) : fallback;
+};
+function createDOMPurify() {
+  let window2 = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : getGlobal();
+  const DOMPurify = (root) => createDOMPurify(root);
+  DOMPurify.version = "3.4.13";
+  DOMPurify.removed = [];
+  if (!window2 || !window2.document || window2.document.nodeType !== NODE_TYPE.document || !window2.Element) {
+    DOMPurify.isSupported = false;
+    return DOMPurify;
+  }
+  let document2 = window2.document;
+  const originalDocument = document2;
+  const currentScript = originalDocument.currentScript;
+  window2.DocumentFragment;
+  const HTMLTemplateElement = window2.HTMLTemplateElement, Node = window2.Node, Element = window2.Element, NodeFilter = window2.NodeFilter, _window$NamedNodeMap = window2.NamedNodeMap;
+  _window$NamedNodeMap === void 0 ? window2.NamedNodeMap || window2.MozNamedAttrMap : _window$NamedNodeMap;
+  window2.HTMLFormElement;
+  const DOMParser = window2.DOMParser, trustedTypes = window2.trustedTypes;
+  const ElementPrototype = Element.prototype;
+  const cloneNode = lookupGetter(ElementPrototype, "cloneNode");
+  const remove = lookupGetter(ElementPrototype, "remove");
+  const getNextSibling = lookupGetter(ElementPrototype, "nextSibling");
+  const getChildNodes = lookupGetter(ElementPrototype, "childNodes");
+  const getParentNode = lookupGetter(ElementPrototype, "parentNode");
+  const getShadowRoot = lookupGetter(ElementPrototype, "shadowRoot");
+  const getAttributes = lookupGetter(ElementPrototype, "attributes");
+  const getNodeType = Node && Node.prototype ? lookupGetter(Node.prototype, "nodeType") : null;
+  const getNodeName = Node && Node.prototype ? lookupGetter(Node.prototype, "nodeName") : null;
+  const getOwnerDocument = Node && Node.prototype ? lookupGetter(Node.prototype, "ownerDocument") : null;
+  if (typeof HTMLTemplateElement === "function") {
+    const template = document2.createElement("template");
+    if (template.content && template.content.ownerDocument) {
+      document2 = template.content.ownerDocument;
+    }
+  }
+  let trustedTypesPolicy;
+  let emptyHTML = "";
+  let defaultTrustedTypesPolicy;
+  let defaultTrustedTypesPolicyResolved = false;
+  let IN_TRUSTED_TYPES_POLICY = 0;
+  const _assertNotInTrustedTypesPolicy = function _assertNotInTrustedTypesPolicy2() {
+    if (IN_TRUSTED_TYPES_POLICY > 0) {
+      throw typeErrorCreate('A configured TRUSTED_TYPES_POLICY callback (createHTML or createScriptURL) must not call DOMPurify.sanitize, as that causes infinite recursion. Do not pass a policy whose callbacks wrap DOMPurify as TRUSTED_TYPES_POLICY; see the "DOMPurify and Trusted Types" section of the README.');
+    }
+  };
+  const _createTrustedHTML = function _createTrustedHTML2(html2) {
+    _assertNotInTrustedTypesPolicy();
+    IN_TRUSTED_TYPES_POLICY++;
+    try {
+      return trustedTypesPolicy.createHTML(html2);
+    } finally {
+      IN_TRUSTED_TYPES_POLICY--;
+    }
+  };
+  const _createTrustedScriptURL = function _createTrustedScriptURL2(scriptUrl) {
+    _assertNotInTrustedTypesPolicy();
+    IN_TRUSTED_TYPES_POLICY++;
+    try {
+      return trustedTypesPolicy.createScriptURL(scriptUrl);
+    } finally {
+      IN_TRUSTED_TYPES_POLICY--;
+    }
+  };
+  const _getDefaultTrustedTypesPolicy = function _getDefaultTrustedTypesPolicy2() {
+    if (!defaultTrustedTypesPolicyResolved) {
+      defaultTrustedTypesPolicy = _createTrustedTypesPolicy(trustedTypes, currentScript);
+      defaultTrustedTypesPolicyResolved = true;
+    }
+    return defaultTrustedTypesPolicy;
+  };
+  const _document = document2, implementation = _document.implementation, createNodeIterator = _document.createNodeIterator, createDocumentFragment = _document.createDocumentFragment, getElementsByTagName = _document.getElementsByTagName;
+  const importNode = originalDocument.importNode;
+  let hooks = _createHooksMap();
+  DOMPurify.isSupported = typeof entries === "function" && typeof getParentNode === "function" && implementation && implementation.createHTMLDocument !== void 0;
+  const MUSTACHE_EXPR$1 = MUSTACHE_EXPR, ERB_EXPR$1 = ERB_EXPR, TMPLIT_EXPR$1 = TMPLIT_EXPR, DATA_ATTR$1 = DATA_ATTR, ARIA_ATTR$1 = ARIA_ATTR, IS_SCRIPT_OR_DATA$1 = IS_SCRIPT_OR_DATA, ATTR_WHITESPACE$1 = ATTR_WHITESPACE, CUSTOM_ELEMENT$1 = CUSTOM_ELEMENT;
+  let IS_ALLOWED_URI$1 = IS_ALLOWED_URI;
+  let ALLOWED_TAGS = null;
+  const DEFAULT_ALLOWED_TAGS = addToSet({}, [...html$1, ...svg$1, ...svgFilters, ...mathMl$1, ...text]);
+  let ALLOWED_ATTR = null;
+  const DEFAULT_ALLOWED_ATTR = addToSet({}, [...html, ...svg, ...mathMl, ...xml]);
+  let CUSTOM_ELEMENT_HANDLING = Object.seal(create(null, {
+    tagNameCheck: {
+      writable: true,
+      configurable: false,
+      enumerable: true,
+      value: null
+    },
+    attributeNameCheck: {
+      writable: true,
+      configurable: false,
+      enumerable: true,
+      value: null
+    },
+    allowCustomizedBuiltInElements: {
+      writable: true,
+      configurable: false,
+      enumerable: true,
+      value: false
+    }
+  }));
+  let FORBID_TAGS = null;
+  let FORBID_ATTR = null;
+  const EXTRA_ELEMENT_HANDLING = Object.seal(create(null, {
+    tagCheck: {
+      writable: true,
+      configurable: false,
+      enumerable: true,
+      value: null
+    },
+    attributeCheck: {
+      writable: true,
+      configurable: false,
+      enumerable: true,
+      value: null
+    }
+  }));
+  let ALLOW_ARIA_ATTR = true;
+  let ALLOW_DATA_ATTR = true;
+  let ALLOW_UNKNOWN_PROTOCOLS = false;
+  let ALLOW_SELF_CLOSE_IN_ATTR = true;
+  let SAFE_FOR_TEMPLATES = false;
+  let SAFE_FOR_XML = true;
+  let WHOLE_DOCUMENT = false;
+  let SET_CONFIG = false;
+  let SET_CONFIG_ALLOWED_TAGS = null;
+  let SET_CONFIG_ALLOWED_ATTR = null;
+  let FORCE_BODY = false;
+  let RETURN_DOM = false;
+  let RETURN_DOM_FRAGMENT = false;
+  let RETURN_TRUSTED_TYPE = false;
+  let SANITIZE_DOM = true;
+  let SANITIZE_NAMED_PROPS = false;
+  const SANITIZE_NAMED_PROPS_PREFIX = "user-content-";
+  let KEEP_CONTENT = true;
+  let IN_PLACE = false;
+  let USE_PROFILES = {};
+  let FORBID_CONTENTS = null;
+  const DEFAULT_FORBID_CONTENTS = addToSet({}, [
+    "annotation-xml",
+    "audio",
+    "colgroup",
+    "desc",
+    "foreignobject",
+    "head",
+    "iframe",
+    "math",
+    "mi",
+    "mn",
+    "mo",
+    "ms",
+    "mtext",
+    "noembed",
+    "noframes",
+    "noscript",
+    "plaintext",
+    "script",
+    // <selectedcontent> mirrors the selected <option>'s subtree, cloned by
+    // the UA (customizable <select>) — including any on* handlers — and the
+    // engine re-mirrors synchronously whenever a removal changes which
+    // option/selectedcontent is current, even inside DOMPurify's inert
+    // DOMParser document. Hoisting its children on removal re-inserts a fresh
+    // mirror target ahead of the walk, which the engine refills, looping
+    // forever (DoS) and amplifying output. Dropping its content on removal
+    // (rather than hoisting) breaks that cascade; the content is a duplicate
+    // of the option, which is sanitized on its own. See campaign-3 F1/F6.
+    "selectedcontent",
+    "style",
+    "svg",
+    "template",
+    "thead",
+    "title",
+    "video",
+    "xmp"
+  ]);
+  let DATA_URI_TAGS = null;
+  const DEFAULT_DATA_URI_TAGS = addToSet({}, ["audio", "video", "img", "source", "image", "track"]);
+  let URI_SAFE_ATTRIBUTES = null;
+  const DEFAULT_URI_SAFE_ATTRIBUTES = addToSet({}, ["alt", "class", "for", "id", "label", "name", "pattern", "placeholder", "role", "summary", "title", "value", "style", "xmlns"]);
+  const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
+  const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+  const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+  let NAMESPACE = HTML_NAMESPACE;
+  let IS_EMPTY_INPUT = false;
+  let ALLOWED_NAMESPACES = null;
+  const DEFAULT_ALLOWED_NAMESPACES = addToSet({}, [MATHML_NAMESPACE, SVG_NAMESPACE, HTML_NAMESPACE], stringToString);
+  const DEFAULT_MATHML_TEXT_INTEGRATION_POINTS = freeze(["mi", "mo", "mn", "ms", "mtext"]);
+  let MATHML_TEXT_INTEGRATION_POINTS = addToSet({}, DEFAULT_MATHML_TEXT_INTEGRATION_POINTS);
+  const DEFAULT_HTML_INTEGRATION_POINTS = freeze(["annotation-xml"]);
+  let HTML_INTEGRATION_POINTS = addToSet({}, DEFAULT_HTML_INTEGRATION_POINTS);
+  const COMMON_SVG_AND_HTML_ELEMENTS = addToSet({}, ["title", "style", "font", "a", "script"]);
+  let PARSER_MEDIA_TYPE = null;
+  const SUPPORTED_PARSER_MEDIA_TYPES = ["application/xhtml+xml", "text/html"];
+  const DEFAULT_PARSER_MEDIA_TYPE = "text/html";
+  let transformCaseFunc = null;
+  let CONFIG = null;
+  const formElement = document2.createElement("form");
+  const isRegexOrFunction = function isRegexOrFunction2(testValue) {
+    return testValue instanceof RegExp || testValue instanceof Function;
+  };
+  const _parseConfig = function _parseConfig2() {
+    let cfg = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {};
+    if (CONFIG && CONFIG === cfg) {
+      return;
+    }
+    if (!cfg || typeof cfg !== "object") {
+      cfg = {};
+    }
+    cfg = clone(cfg);
+    PARSER_MEDIA_TYPE = // eslint-disable-next-line unicorn/prefer-includes
+    SUPPORTED_PARSER_MEDIA_TYPES.indexOf(cfg.PARSER_MEDIA_TYPE) === -1 ? DEFAULT_PARSER_MEDIA_TYPE : cfg.PARSER_MEDIA_TYPE;
+    transformCaseFunc = PARSER_MEDIA_TYPE === "application/xhtml+xml" ? stringToString : stringToLowerCase;
+    ALLOWED_TAGS = _resolveSetOption(cfg, "ALLOWED_TAGS", DEFAULT_ALLOWED_TAGS, {
+      transform: transformCaseFunc
+    });
+    ALLOWED_ATTR = _resolveSetOption(cfg, "ALLOWED_ATTR", DEFAULT_ALLOWED_ATTR, {
+      transform: transformCaseFunc
+    });
+    ALLOWED_NAMESPACES = _resolveSetOption(cfg, "ALLOWED_NAMESPACES", DEFAULT_ALLOWED_NAMESPACES, {
+      transform: stringToString
+    });
+    URI_SAFE_ATTRIBUTES = _resolveSetOption(cfg, "ADD_URI_SAFE_ATTR", DEFAULT_URI_SAFE_ATTRIBUTES, {
+      transform: transformCaseFunc,
+      base: DEFAULT_URI_SAFE_ATTRIBUTES
+    });
+    DATA_URI_TAGS = _resolveSetOption(cfg, "ADD_DATA_URI_TAGS", DEFAULT_DATA_URI_TAGS, {
+      transform: transformCaseFunc,
+      base: DEFAULT_DATA_URI_TAGS
+    });
+    FORBID_CONTENTS = _resolveSetOption(cfg, "FORBID_CONTENTS", DEFAULT_FORBID_CONTENTS, {
+      transform: transformCaseFunc
+    });
+    FORBID_TAGS = _resolveSetOption(cfg, "FORBID_TAGS", clone({}), {
+      transform: transformCaseFunc
+    });
+    FORBID_ATTR = _resolveSetOption(cfg, "FORBID_ATTR", clone({}), {
+      transform: transformCaseFunc
+    });
+    USE_PROFILES = objectHasOwnProperty(cfg, "USE_PROFILES") ? cfg.USE_PROFILES && typeof cfg.USE_PROFILES === "object" ? clone(cfg.USE_PROFILES) : cfg.USE_PROFILES : false;
+    ALLOW_ARIA_ATTR = cfg.ALLOW_ARIA_ATTR !== false;
+    ALLOW_DATA_ATTR = cfg.ALLOW_DATA_ATTR !== false;
+    ALLOW_UNKNOWN_PROTOCOLS = cfg.ALLOW_UNKNOWN_PROTOCOLS || false;
+    ALLOW_SELF_CLOSE_IN_ATTR = cfg.ALLOW_SELF_CLOSE_IN_ATTR !== false;
+    SAFE_FOR_TEMPLATES = cfg.SAFE_FOR_TEMPLATES || false;
+    SAFE_FOR_XML = cfg.SAFE_FOR_XML !== false;
+    WHOLE_DOCUMENT = cfg.WHOLE_DOCUMENT || false;
+    RETURN_DOM = cfg.RETURN_DOM || false;
+    RETURN_DOM_FRAGMENT = cfg.RETURN_DOM_FRAGMENT || false;
+    RETURN_TRUSTED_TYPE = cfg.RETURN_TRUSTED_TYPE || false;
+    FORCE_BODY = cfg.FORCE_BODY || false;
+    SANITIZE_DOM = cfg.SANITIZE_DOM !== false;
+    SANITIZE_NAMED_PROPS = cfg.SANITIZE_NAMED_PROPS || false;
+    KEEP_CONTENT = cfg.KEEP_CONTENT !== false;
+    IN_PLACE = cfg.IN_PLACE || false;
+    IS_ALLOWED_URI$1 = isRegex(cfg.ALLOWED_URI_REGEXP) ? cfg.ALLOWED_URI_REGEXP : IS_ALLOWED_URI;
+    NAMESPACE = typeof cfg.NAMESPACE === "string" ? cfg.NAMESPACE : HTML_NAMESPACE;
+    MATHML_TEXT_INTEGRATION_POINTS = objectHasOwnProperty(cfg, "MATHML_TEXT_INTEGRATION_POINTS") && cfg.MATHML_TEXT_INTEGRATION_POINTS && typeof cfg.MATHML_TEXT_INTEGRATION_POINTS === "object" ? clone(cfg.MATHML_TEXT_INTEGRATION_POINTS) : addToSet({}, DEFAULT_MATHML_TEXT_INTEGRATION_POINTS);
+    HTML_INTEGRATION_POINTS = objectHasOwnProperty(cfg, "HTML_INTEGRATION_POINTS") && cfg.HTML_INTEGRATION_POINTS && typeof cfg.HTML_INTEGRATION_POINTS === "object" ? clone(cfg.HTML_INTEGRATION_POINTS) : addToSet({}, DEFAULT_HTML_INTEGRATION_POINTS);
+    const customElementHandling = objectHasOwnProperty(cfg, "CUSTOM_ELEMENT_HANDLING") && cfg.CUSTOM_ELEMENT_HANDLING && typeof cfg.CUSTOM_ELEMENT_HANDLING === "object" ? clone(cfg.CUSTOM_ELEMENT_HANDLING) : create(null);
+    CUSTOM_ELEMENT_HANDLING = create(null);
+    if (objectHasOwnProperty(customElementHandling, "tagNameCheck") && isRegexOrFunction(customElementHandling.tagNameCheck)) {
+      CUSTOM_ELEMENT_HANDLING.tagNameCheck = customElementHandling.tagNameCheck;
+    }
+    if (objectHasOwnProperty(customElementHandling, "attributeNameCheck") && isRegexOrFunction(customElementHandling.attributeNameCheck)) {
+      CUSTOM_ELEMENT_HANDLING.attributeNameCheck = customElementHandling.attributeNameCheck;
+    }
+    if (objectHasOwnProperty(customElementHandling, "allowCustomizedBuiltInElements") && typeof customElementHandling.allowCustomizedBuiltInElements === "boolean") {
+      CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements = customElementHandling.allowCustomizedBuiltInElements;
+    }
+    seal(CUSTOM_ELEMENT_HANDLING);
+    if (SAFE_FOR_TEMPLATES) {
+      ALLOW_DATA_ATTR = false;
+    }
+    if (RETURN_DOM_FRAGMENT) {
+      RETURN_DOM = true;
+    }
+    if (USE_PROFILES) {
+      ALLOWED_TAGS = addToSet({}, text);
+      ALLOWED_ATTR = create(null);
+      if (USE_PROFILES.html === true) {
+        addToSet(ALLOWED_TAGS, html$1);
+        addToSet(ALLOWED_ATTR, html);
+      }
+      if (USE_PROFILES.svg === true) {
+        addToSet(ALLOWED_TAGS, svg$1);
+        addToSet(ALLOWED_ATTR, svg);
+        addToSet(ALLOWED_ATTR, xml);
+      }
+      if (USE_PROFILES.svgFilters === true) {
+        addToSet(ALLOWED_TAGS, svgFilters);
+        addToSet(ALLOWED_ATTR, svg);
+        addToSet(ALLOWED_ATTR, xml);
+      }
+      if (USE_PROFILES.mathMl === true) {
+        addToSet(ALLOWED_TAGS, mathMl$1);
+        addToSet(ALLOWED_ATTR, mathMl);
+        addToSet(ALLOWED_ATTR, xml);
+      }
+    }
+    EXTRA_ELEMENT_HANDLING.tagCheck = null;
+    EXTRA_ELEMENT_HANDLING.attributeCheck = null;
+    if (objectHasOwnProperty(cfg, "ADD_TAGS")) {
+      if (typeof cfg.ADD_TAGS === "function") {
+        EXTRA_ELEMENT_HANDLING.tagCheck = cfg.ADD_TAGS;
+      } else if (arrayIsArray(cfg.ADD_TAGS)) {
+        if (ALLOWED_TAGS === DEFAULT_ALLOWED_TAGS) {
+          ALLOWED_TAGS = clone(ALLOWED_TAGS);
+        }
+        addToSet(ALLOWED_TAGS, cfg.ADD_TAGS, transformCaseFunc);
+      }
+    }
+    if (objectHasOwnProperty(cfg, "ADD_ATTR")) {
+      if (typeof cfg.ADD_ATTR === "function") {
+        EXTRA_ELEMENT_HANDLING.attributeCheck = cfg.ADD_ATTR;
+      } else if (arrayIsArray(cfg.ADD_ATTR)) {
+        if (ALLOWED_ATTR === DEFAULT_ALLOWED_ATTR) {
+          ALLOWED_ATTR = clone(ALLOWED_ATTR);
+        }
+        addToSet(ALLOWED_ATTR, cfg.ADD_ATTR, transformCaseFunc);
+      }
+    }
+    if (objectHasOwnProperty(cfg, "ADD_URI_SAFE_ATTR") && arrayIsArray(cfg.ADD_URI_SAFE_ATTR)) {
+      addToSet(URI_SAFE_ATTRIBUTES, cfg.ADD_URI_SAFE_ATTR, transformCaseFunc);
+    }
+    if (objectHasOwnProperty(cfg, "FORBID_CONTENTS") && arrayIsArray(cfg.FORBID_CONTENTS)) {
+      if (FORBID_CONTENTS === DEFAULT_FORBID_CONTENTS) {
+        FORBID_CONTENTS = clone(FORBID_CONTENTS);
+      }
+      addToSet(FORBID_CONTENTS, cfg.FORBID_CONTENTS, transformCaseFunc);
+    }
+    if (objectHasOwnProperty(cfg, "ADD_FORBID_CONTENTS") && arrayIsArray(cfg.ADD_FORBID_CONTENTS)) {
+      if (FORBID_CONTENTS === DEFAULT_FORBID_CONTENTS) {
+        FORBID_CONTENTS = clone(FORBID_CONTENTS);
+      }
+      addToSet(FORBID_CONTENTS, cfg.ADD_FORBID_CONTENTS, transformCaseFunc);
+    }
+    if (KEEP_CONTENT) {
+      ALLOWED_TAGS["#text"] = true;
+    }
+    if (WHOLE_DOCUMENT) {
+      addToSet(ALLOWED_TAGS, ["html", "head", "body"]);
+    }
+    if (ALLOWED_TAGS.table) {
+      addToSet(ALLOWED_TAGS, ["tbody"]);
+      delete FORBID_TAGS.tbody;
+    }
+    if (cfg.TRUSTED_TYPES_POLICY) {
+      if (typeof cfg.TRUSTED_TYPES_POLICY.createHTML !== "function") {
+        throw typeErrorCreate('TRUSTED_TYPES_POLICY configuration option must provide a "createHTML" hook.');
+      }
+      if (typeof cfg.TRUSTED_TYPES_POLICY.createScriptURL !== "function") {
+        throw typeErrorCreate('TRUSTED_TYPES_POLICY configuration option must provide a "createScriptURL" hook.');
+      }
+      const previousTrustedTypesPolicy = trustedTypesPolicy;
+      trustedTypesPolicy = cfg.TRUSTED_TYPES_POLICY;
+      try {
+        emptyHTML = _createTrustedHTML("");
+      } catch (error) {
+        trustedTypesPolicy = previousTrustedTypesPolicy;
+        throw error;
+      }
+    } else if (cfg.TRUSTED_TYPES_POLICY === null) {
+      trustedTypesPolicy = void 0;
+      emptyHTML = "";
+    } else {
+      if (trustedTypesPolicy === void 0) {
+        trustedTypesPolicy = _getDefaultTrustedTypesPolicy();
+      }
+      if (trustedTypesPolicy && typeof emptyHTML === "string") {
+        emptyHTML = _createTrustedHTML("");
+      }
+    }
+    if (freeze) {
+      freeze(cfg);
+    }
+    CONFIG = cfg;
+  };
+  const ALL_SVG_TAGS = addToSet({}, [...svg$1, ...svgFilters, ...svgDisallowed]);
+  const ALL_MATHML_TAGS = addToSet({}, [...mathMl$1, ...mathMlDisallowed]);
+  const _checkSvgNamespace = function _checkSvgNamespace2(tagName, parent, parentTagName) {
+    if (parent.namespaceURI === HTML_NAMESPACE) {
+      return tagName === "svg";
+    }
+    if (parent.namespaceURI === MATHML_NAMESPACE) {
+      return tagName === "svg" && (parentTagName === "annotation-xml" || MATHML_TEXT_INTEGRATION_POINTS[parentTagName]);
+    }
+    return Boolean(ALL_SVG_TAGS[tagName]);
+  };
+  const _checkMathMlNamespace = function _checkMathMlNamespace2(tagName, parent, parentTagName) {
+    if (parent.namespaceURI === HTML_NAMESPACE) {
+      return tagName === "math";
+    }
+    if (parent.namespaceURI === SVG_NAMESPACE) {
+      return tagName === "math" && HTML_INTEGRATION_POINTS[parentTagName];
+    }
+    return Boolean(ALL_MATHML_TAGS[tagName]);
+  };
+  const _checkHtmlNamespace = function _checkHtmlNamespace2(tagName, parent, parentTagName) {
+    if (parent.namespaceURI === SVG_NAMESPACE && !HTML_INTEGRATION_POINTS[parentTagName]) {
+      return false;
+    }
+    if (parent.namespaceURI === MATHML_NAMESPACE && !MATHML_TEXT_INTEGRATION_POINTS[parentTagName]) {
+      return false;
+    }
+    return !ALL_MATHML_TAGS[tagName] && (COMMON_SVG_AND_HTML_ELEMENTS[tagName] || !ALL_SVG_TAGS[tagName]);
+  };
+  const _checkValidNamespace = function _checkValidNamespace2(element) {
+    let parent = getParentNode(element);
+    if (!parent || !parent.tagName) {
+      parent = {
+        namespaceURI: NAMESPACE,
+        tagName: "template"
+      };
+    }
+    const tagName = stringToLowerCase(element.tagName);
+    const parentTagName = stringToLowerCase(parent.tagName);
+    if (!ALLOWED_NAMESPACES[element.namespaceURI]) {
+      return false;
+    }
+    if (element.namespaceURI === SVG_NAMESPACE) {
+      return _checkSvgNamespace(tagName, parent, parentTagName);
+    }
+    if (element.namespaceURI === MATHML_NAMESPACE) {
+      return _checkMathMlNamespace(tagName, parent, parentTagName);
+    }
+    if (element.namespaceURI === HTML_NAMESPACE) {
+      return _checkHtmlNamespace(tagName, parent, parentTagName);
+    }
+    if (PARSER_MEDIA_TYPE === "application/xhtml+xml" && ALLOWED_NAMESPACES[element.namespaceURI]) {
+      return true;
+    }
+    return false;
+  };
+  const _forceRemove = function _forceRemove2(node) {
+    arrayPush(DOMPurify.removed, {
+      element: node
+    });
+    try {
+      getParentNode(node).removeChild(node);
+    } catch (_) {
+      remove(node);
+      if (!getParentNode(node)) {
+        throw typeErrorCreate("a node selected for removal could not be detached from its tree and cannot be safely returned; refusing to sanitize in place");
+      }
+    }
+  };
+  const _neutralizeRoot = function _neutralizeRoot2(root) {
+    _neutralizeSubtree(root);
+    const childNodes = getChildNodes(root);
+    if (childNodes) {
+      const snapshot = [];
+      arrayForEach(childNodes, (child) => {
+        arrayPush(snapshot, child);
+      });
+      arrayForEach(snapshot, (child) => {
+        try {
+          remove(child);
+        } catch (_) {
+        }
+      });
+    }
+    const attributes = getAttributes(root);
+    if (attributes) {
+      for (let i = attributes.length - 1; i >= 0; --i) {
+        const attribute = attributes[i];
+        const name = attribute && attribute.name;
+        if (typeof name === "string") {
+          try {
+            root.removeAttribute(name);
+          } catch (_) {
+          }
+        }
+      }
+    }
+  };
+  const _removeAttribute = function _removeAttribute2(name, element) {
+    try {
+      arrayPush(DOMPurify.removed, {
+        attribute: element.getAttributeNode(name),
+        from: element
+      });
+    } catch (_) {
+      arrayPush(DOMPurify.removed, {
+        attribute: null,
+        from: element
+      });
+    }
+    element.removeAttribute(name);
+    if (name === "is") {
+      if (RETURN_DOM || RETURN_DOM_FRAGMENT) {
+        try {
+          _forceRemove(element);
+        } catch (_) {
+        }
+      } else {
+        try {
+          element.setAttribute(name, "");
+        } catch (_) {
+        }
+      }
+    }
+  };
+  const _stripDisallowedAttributes = function _stripDisallowedAttributes2(element) {
+    const attributes = getAttributes(element);
+    if (!attributes) {
+      return;
+    }
+    for (let i = attributes.length - 1; i >= 0; --i) {
+      const attribute = attributes[i];
+      const name = attribute && attribute.name;
+      if (typeof name !== "string" || ALLOWED_ATTR[transformCaseFunc(name)]) {
+        continue;
+      }
+      try {
+        element.removeAttribute(name);
+      } catch (_) {
+      }
+    }
+  };
+  const _neutralizeSubtree = function _neutralizeSubtree2(root) {
+    const stack = [root];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      const nodeType = getNodeType ? getNodeType(node) : node.nodeType;
+      if (nodeType === NODE_TYPE.element) {
+        _stripDisallowedAttributes(node);
+      }
+      const childNodes = getChildNodes(node);
+      if (childNodes) {
+        for (let i = childNodes.length - 1; i >= 0; --i) {
+          stack.push(childNodes[i]);
+        }
+      }
+    }
+  };
+  const _neutralizePatchLinkage = function _neutralizePatchLinkage2(root) {
+    if (!SAFE_FOR_XML) {
+      return;
+    }
+    const stack = [root];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      const nodeType = getNodeType ? getNodeType(node) : node.nodeType;
+      if (nodeType === NODE_TYPE.processingInstruction || nodeType === NODE_TYPE.comment && regExpTest(COMMENT_MARKUP_PROBE, node.data)) {
+        try {
+          remove(node);
+        } catch (_) {
+        }
+        continue;
+      }
+      if (nodeType === NODE_TYPE.element) {
+        const element = node;
+        const lcTag = transformCaseFunc(getNodeName ? getNodeName(node) : node.nodeName);
+        try {
+          if (element.hasAttribute && element.hasAttribute("patchsrc")) {
+            element.removeAttribute("patchsrc");
+          }
+          if (element.hasAttribute && element.hasAttribute("for") && lcTag !== "label" && lcTag !== "output") {
+            element.removeAttribute("for");
+          }
+        } catch (_) {
+        }
+      }
+      const childNodes = getChildNodes(node);
+      if (childNodes) {
+        for (let i = childNodes.length - 1; i >= 0; --i) {
+          stack.push(childNodes[i]);
+        }
+      }
+    }
+  };
+  const _initDocument = function _initDocument2(dirty) {
+    let doc = null;
+    let leadingWhitespace = null;
+    if (FORCE_BODY) {
+      dirty = "<remove></remove>" + dirty;
+    } else {
+      const matches = stringMatch(dirty, /^[\r\n\t ]+/);
+      leadingWhitespace = matches && matches[0];
+    }
+    if (PARSER_MEDIA_TYPE === "application/xhtml+xml" && NAMESPACE === HTML_NAMESPACE) {
+      dirty = '<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>' + dirty + "</body></html>";
+    }
+    const dirtyPayload = trustedTypesPolicy ? _createTrustedHTML(dirty) : dirty;
+    if (NAMESPACE === HTML_NAMESPACE) {
+      try {
+        doc = new DOMParser().parseFromString(dirtyPayload, PARSER_MEDIA_TYPE);
+      } catch (_) {
+      }
+    }
+    if (!doc || !doc.documentElement) {
+      doc = implementation.createDocument(NAMESPACE, "template", null);
+      try {
+        doc.documentElement.innerHTML = IS_EMPTY_INPUT ? emptyHTML : dirtyPayload;
+      } catch (_) {
+      }
+    }
+    const body = doc.body || doc.documentElement;
+    if (dirty && leadingWhitespace) {
+      body.insertBefore(document2.createTextNode(leadingWhitespace), body.childNodes[0] || null);
+    }
+    if (NAMESPACE === HTML_NAMESPACE) {
+      return getElementsByTagName.call(doc, WHOLE_DOCUMENT ? "html" : "body")[0];
+    }
+    return WHOLE_DOCUMENT ? doc.documentElement : body;
+  };
+  const _createNodeIterator = function _createNodeIterator2(root) {
+    const doc = getOwnerDocument ? getOwnerDocument(root) : root.ownerDocument;
+    return createNodeIterator.call(
+      doc || root,
+      root,
+      // eslint-disable-next-line no-bitwise
+      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_PROCESSING_INSTRUCTION | NodeFilter.SHOW_CDATA_SECTION,
+      null
+    );
+  };
+  const _stripTemplateExpressions = function _stripTemplateExpressions2(value) {
+    value = stringReplace(value, MUSTACHE_EXPR$1, " ");
+    value = stringReplace(value, ERB_EXPR$1, " ");
+    value = stringReplace(value, TMPLIT_EXPR$1, " ");
+    return value;
+  };
+  const _scrubTemplateExpressions2 = function _scrubTemplateExpressions(node) {
+    var _node$querySelectorAl;
+    node.normalize();
+    const doc = getOwnerDocument ? getOwnerDocument(node) : node.ownerDocument;
+    const walker = createNodeIterator.call(
+      doc || node,
+      node,
+      // eslint-disable-next-line no-bitwise
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_CDATA_SECTION | NodeFilter.SHOW_PROCESSING_INSTRUCTION,
+      null
+    );
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+      currentNode.data = _stripTemplateExpressions(currentNode.data);
+      currentNode = walker.nextNode();
+    }
+    const templates2 = (_node$querySelectorAl = node.querySelectorAll) === null || _node$querySelectorAl === void 0 ? void 0 : _node$querySelectorAl.call(node, "template");
+    if (templates2) {
+      arrayForEach(templates2, (tmpl) => {
+        if (_isDocumentFragment(tmpl.content)) {
+          _scrubTemplateExpressions2(tmpl.content);
+        }
+      });
+    }
+  };
+  const _isClobbered = function _isClobbered2(element) {
+    const realTagName = getNodeName ? getNodeName(element) : null;
+    if (typeof realTagName !== "string") {
+      return false;
+    }
+    if (transformCaseFunc(realTagName) !== "form") {
+      return false;
+    }
+    return typeof element.nodeName !== "string" || typeof element.textContent !== "string" || typeof element.removeChild !== "function" || // Realm-safe NamedNodeMap detection: equality against the cached
+    // prototype getter. Clobbered .attributes (e.g. <input name="attributes">)
+    // makes the direct read diverge from the cached read; a clean form
+    // (same-realm OR foreign-realm) has both reads pointing at the same
+    // canonical NamedNodeMap.
+    element.attributes !== getAttributes(element) || typeof element.removeAttribute !== "function" || typeof element.setAttribute !== "function" || typeof element.namespaceURI !== "string" || typeof element.insertBefore !== "function" || typeof element.hasChildNodes !== "function" || // NodeType clobbering probe. Cached Node.prototype.nodeType getter
+    // returns the integer 1 for any Element regardless of realm; direct
+    // read on a clobbered form (e.g. <input name="nodeType">) returns
+    // the named child element. Cheap addition — nodeType is read from
+    // an internal slot, no serialization cost — and removes a residual
+    // clobbering surface used by several mXSS / PI / comment branches
+    // in _sanitizeElements that compare currentNode.nodeType directly.
+    element.nodeType !== getNodeType(element) || // HTMLFormElement has [LegacyOverrideBuiltIns]: a descendant named
+    // "childNodes" shadows the prototype getter. Direct reads of
+    // form.childNodes from a clobbered form return the named child
+    // instead of the real NodeList, so any walk that reads it directly
+    // skips the form's real children. Compare the direct read to the
+    // cached Node.prototype getter — when the form's named-property
+    // getter intercepts the read, the two values differ and we flag
+    // the form. This catches every clobbering child type (input,
+    // select, etc.) regardless of whether the named child happens to
+    // carry a numeric .length, which a typeof-based probe would miss
+    // (e.g. HTMLSelectElement.length is a defined unsigned-long).
+    element.childNodes !== getChildNodes(element);
+  };
+  const _isDocumentFragment = function _isDocumentFragment2(value) {
+    if (!getNodeType || typeof value !== "object" || value === null) {
+      return false;
+    }
+    try {
+      return getNodeType(value) === NODE_TYPE.documentFragment;
+    } catch (_) {
+      return false;
+    }
+  };
+  const _isNode = function _isNode2(value) {
+    if (!getNodeType || typeof value !== "object" || value === null) {
+      return false;
+    }
+    try {
+      return typeof getNodeType(value) === "number";
+    } catch (_) {
+      return false;
+    }
+  };
+  function _executeHooks(hooks2, currentNode, data) {
+    if (hooks2.length === 0) {
+      return;
+    }
+    arrayForEach(hooks2, (hook) => {
+      hook.call(DOMPurify, currentNode, data, CONFIG);
+    });
+  }
+  const _isUnsafeNode = function _isUnsafeNode2(currentNode, tagName) {
+    if (SAFE_FOR_XML && currentNode.hasChildNodes() && !_isNode(currentNode.firstElementChild) && regExpTest(ELEMENT_MARKUP_PROBE, currentNode.textContent) && regExpTest(ELEMENT_MARKUP_PROBE, currentNode.innerHTML)) {
+      return true;
+    }
+    if (SAFE_FOR_XML && currentNode.namespaceURI === HTML_NAMESPACE && tagName === "style" && _isNode(currentNode.firstElementChild)) {
+      return true;
+    }
+    if (currentNode.nodeType === NODE_TYPE.processingInstruction) {
+      return true;
+    }
+    if (SAFE_FOR_XML && currentNode.nodeType === NODE_TYPE.comment && regExpTest(COMMENT_MARKUP_PROBE, currentNode.data)) {
+      return true;
+    }
+    return false;
+  };
+  const _sanitizeDisallowedNode = function _sanitizeDisallowedNode2(currentNode, tagName, root) {
+    if (!FORBID_TAGS[tagName] && _isBasicCustomElement(tagName)) {
+      if (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.tagNameCheck, tagName)) {
+        return false;
+      }
+      if (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.tagNameCheck(tagName)) {
+        return false;
+      }
+    }
+    if (KEEP_CONTENT && !FORBID_CONTENTS[tagName]) {
+      const parentNode = getParentNode(currentNode);
+      const childNodes = getChildNodes(currentNode);
+      if (childNodes && parentNode) {
+        const childCount = childNodes.length;
+        for (let i = childCount - 1; i >= 0; --i) {
+          const hoisted = currentNode === root ? cloneNode(childNodes[i], true) : childNodes[i];
+          parentNode.insertBefore(hoisted, getNextSibling(currentNode));
+        }
+      }
+    }
+    _forceRemove(currentNode);
+    return true;
+  };
+  const _forkSharedAllowlist = function _forkSharedAllowlist2(hookList, set, defaultSet, setConfigSet) {
+    if (hookList.length === 0) {
+      return set;
+    }
+    return set === defaultSet || set === setConfigSet ? clone(set) : set;
+  };
+  const _sanitizeElements = function _sanitizeElements2(currentNode, root) {
+    _executeHooks(hooks.beforeSanitizeElements, currentNode, null);
+    if (currentNode !== root && getParentNode(currentNode) === null) {
+      if (IN_PLACE) {
+        _neutralizeSubtree(currentNode);
+      }
+      return true;
+    }
+    if (_isClobbered(currentNode)) {
+      _forceRemove(currentNode);
+      return true;
+    }
+    const tagName = transformCaseFunc(getNodeName ? getNodeName(currentNode) : currentNode.nodeName);
+    ALLOWED_TAGS = _forkSharedAllowlist(hooks.uponSanitizeElement, ALLOWED_TAGS, DEFAULT_ALLOWED_TAGS, SET_CONFIG_ALLOWED_TAGS);
+    _executeHooks(hooks.uponSanitizeElement, currentNode, {
+      tagName,
+      allowedTags: ALLOWED_TAGS
+    });
+    if (currentNode !== root && getParentNode(currentNode) === null) {
+      if (IN_PLACE) {
+        _neutralizeSubtree(currentNode);
+      }
+      return true;
+    }
+    if (_isUnsafeNode(currentNode, tagName)) {
+      _forceRemove(currentNode);
+      return true;
+    }
+    if (FORBID_TAGS[tagName] || !(EXTRA_ELEMENT_HANDLING.tagCheck instanceof Function && EXTRA_ELEMENT_HANDLING.tagCheck(tagName)) && !ALLOWED_TAGS[tagName]) {
+      const removed = _sanitizeDisallowedNode(currentNode, tagName, root);
+      if (removed === false) {
+        _executeHooks(hooks.afterSanitizeElements, currentNode, null);
+      }
+      return removed;
+    }
+    const nt = getNodeType ? getNodeType(currentNode) : currentNode.nodeType;
+    if (nt === NODE_TYPE.element && !_checkValidNamespace(currentNode)) {
+      _forceRemove(currentNode);
+      return true;
+    }
+    if ((tagName === "noscript" || tagName === "noembed" || tagName === "noframes") && regExpTest(FALLBACK_TAG_CLOSE, currentNode.innerHTML)) {
+      _forceRemove(currentNode);
+      return true;
+    }
+    if (SAFE_FOR_TEMPLATES && currentNode.nodeType === NODE_TYPE.text) {
+      const content = _stripTemplateExpressions(currentNode.textContent);
+      if (currentNode.textContent !== content) {
+        arrayPush(DOMPurify.removed, {
+          element: currentNode.cloneNode()
+        });
+        currentNode.textContent = content;
+      }
+    }
+    _executeHooks(hooks.afterSanitizeElements, currentNode, null);
+    return false;
+  };
+  const _isValidAttribute = function _isValidAttribute2(lcTag, lcName, value) {
+    if (FORBID_ATTR[lcName]) {
+      return false;
+    }
+    if (SAFE_FOR_XML && lcName === "patchsrc") {
+      return false;
+    }
+    if (SAFE_FOR_XML && lcName === "for" && lcTag !== "label" && lcTag !== "output") {
+      return false;
+    }
+    if (SANITIZE_DOM && (lcName === "id" || lcName === "name") && (value in document2 || value in formElement)) {
+      return false;
+    }
+    const nameIsPermitted = ALLOWED_ATTR[lcName] || EXTRA_ELEMENT_HANDLING.attributeCheck instanceof Function && EXTRA_ELEMENT_HANDLING.attributeCheck(lcName, lcTag);
+    if (ALLOW_DATA_ATTR && regExpTest(DATA_ATTR$1, lcName)) ;
+    else if (ALLOW_ARIA_ATTR && regExpTest(ARIA_ATTR$1, lcName)) ;
+    else if (!nameIsPermitted) {
+      if (
+        // First condition does a very basic check if a) it's basically a valid custom element tagname AND
+        // b) if the tagName passes whatever the user has configured for CUSTOM_ELEMENT_HANDLING.tagNameCheck
+        // and c) if the attribute name passes whatever the user has configured for CUSTOM_ELEMENT_HANDLING.attributeNameCheck
+        _isBasicCustomElement(lcTag) && (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.tagNameCheck, lcTag) || CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.tagNameCheck(lcTag)) && (CUSTOM_ELEMENT_HANDLING.attributeNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.attributeNameCheck, lcName) || CUSTOM_ELEMENT_HANDLING.attributeNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.attributeNameCheck(lcName, lcTag)) || // Alternative, second condition checks if it's an `is`-attribute, AND
+        // the value passes whatever the user has configured for CUSTOM_ELEMENT_HANDLING.tagNameCheck
+        lcName === "is" && CUSTOM_ELEMENT_HANDLING.allowCustomizedBuiltInElements && (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof RegExp && regExpTest(CUSTOM_ELEMENT_HANDLING.tagNameCheck, value) || CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof Function && CUSTOM_ELEMENT_HANDLING.tagNameCheck(value))
+      ) ;
+      else {
+        return false;
+      }
+    } else if (URI_SAFE_ATTRIBUTES[lcName]) ;
+    else if (regExpTest(IS_ALLOWED_URI$1, stringReplace(value, ATTR_WHITESPACE$1, ""))) ;
+    else if ((lcName === "src" || lcName === "xlink:href" || lcName === "href") && lcTag !== "script" && stringIndexOf(value, "data:") === 0 && DATA_URI_TAGS[lcTag]) ;
+    else if (ALLOW_UNKNOWN_PROTOCOLS && !regExpTest(IS_SCRIPT_OR_DATA$1, stringReplace(value, ATTR_WHITESPACE$1, ""))) ;
+    else if (value) {
+      return false;
+    } else ;
+    return true;
+  };
+  const RESERVED_CUSTOM_ELEMENT_NAMES = addToSet({}, ["annotation-xml", "color-profile", "font-face", "font-face-format", "font-face-name", "font-face-src", "font-face-uri", "missing-glyph"]);
+  const _isBasicCustomElement = function _isBasicCustomElement2(tagName) {
+    return !RESERVED_CUSTOM_ELEMENT_NAMES[stringToLowerCase(tagName)] && regExpTest(CUSTOM_ELEMENT$1, tagName);
+  };
+  const _applyTrustedTypesToAttribute = function _applyTrustedTypesToAttribute2(lcTag, lcName, namespaceURI, value) {
+    if (trustedTypesPolicy && typeof trustedTypes === "object" && typeof trustedTypes.getAttributeType === "function" && !namespaceURI) {
+      switch (trustedTypes.getAttributeType(lcTag, lcName)) {
+        case "TrustedHTML": {
+          return _createTrustedHTML(value);
+        }
+        case "TrustedScriptURL": {
+          return _createTrustedScriptURL(value);
+        }
+      }
+    }
+    return value;
+  };
+  const _setAttributeValue = function _setAttributeValue2(currentNode, name, namespaceURI, value) {
+    try {
+      if (namespaceURI) {
+        currentNode.setAttributeNS(namespaceURI, name, value);
+      } else {
+        currentNode.setAttribute(name, value);
+      }
+      if (_isClobbered(currentNode)) {
+        _forceRemove(currentNode);
+      } else {
+        arrayPop(DOMPurify.removed);
+      }
+    } catch (_) {
+      _removeAttribute(name, currentNode);
+    }
+  };
+  const _sanitizeAttributes = function _sanitizeAttributes2(currentNode) {
+    _executeHooks(hooks.beforeSanitizeAttributes, currentNode, null);
+    const attributes = currentNode.attributes;
+    if (!attributes || _isClobbered(currentNode)) {
+      return;
+    }
+    ALLOWED_ATTR = _forkSharedAllowlist(hooks.uponSanitizeAttribute, ALLOWED_ATTR, DEFAULT_ALLOWED_ATTR, SET_CONFIG_ALLOWED_ATTR);
+    const hookEvent = {
+      attrName: "",
+      attrValue: "",
+      keepAttr: true,
+      allowedAttributes: ALLOWED_ATTR,
+      forceKeepAttr: void 0
+    };
+    let l = attributes.length;
+    const lcTag = transformCaseFunc(currentNode.nodeName);
+    while (l--) {
+      const attr = attributes[l];
+      const name = attr.name, namespaceURI = attr.namespaceURI, attrValue = attr.value;
+      const lcName = transformCaseFunc(name);
+      const initValue = attrValue;
+      let value = name === "value" ? initValue : stringTrim(initValue);
+      hookEvent.attrName = lcName;
+      hookEvent.attrValue = value;
+      hookEvent.keepAttr = true;
+      hookEvent.forceKeepAttr = void 0;
+      _executeHooks(hooks.uponSanitizeAttribute, currentNode, hookEvent);
+      value = hookEvent.attrValue;
+      if (SANITIZE_NAMED_PROPS && (lcName === "id" || lcName === "name") && stringIndexOf(value, SANITIZE_NAMED_PROPS_PREFIX) !== 0) {
+        _removeAttribute(name, currentNode);
+        value = SANITIZE_NAMED_PROPS_PREFIX + value;
+      }
+      if (SAFE_FOR_XML && regExpTest(/((--!?|])>)|<\/(style|script|title|xmp|textarea|noscript|iframe|noembed|noframes)/i, value)) {
+        _removeAttribute(name, currentNode);
+        continue;
+      }
+      if (lcName === "attributename" && stringMatch(value, "href")) {
+        _removeAttribute(name, currentNode);
+        continue;
+      }
+      if (hookEvent.forceKeepAttr) {
+        continue;
+      }
+      if (!hookEvent.keepAttr) {
+        _removeAttribute(name, currentNode);
+        continue;
+      }
+      if (!ALLOW_SELF_CLOSE_IN_ATTR && regExpTest(SELF_CLOSING_TAG, value)) {
+        _removeAttribute(name, currentNode);
+        continue;
+      }
+      if (SAFE_FOR_TEMPLATES) {
+        value = _stripTemplateExpressions(value);
+      }
+      if (!_isValidAttribute(lcTag, lcName, value)) {
+        _removeAttribute(name, currentNode);
+        continue;
+      }
+      value = _applyTrustedTypesToAttribute(lcTag, lcName, namespaceURI, value);
+      if (value !== initValue) {
+        _setAttributeValue(currentNode, name, namespaceURI, value);
+      }
+    }
+    _executeHooks(hooks.afterSanitizeAttributes, currentNode, null);
+  };
+  const _sanitizeShadowDOM2 = function _sanitizeShadowDOM(fragment) {
+    let shadowNode = null;
+    const shadowIterator = _createNodeIterator(fragment);
+    _executeHooks(hooks.beforeSanitizeShadowDOM, fragment, null);
+    while (shadowNode = shadowIterator.nextNode()) {
+      _executeHooks(hooks.uponSanitizeShadowNode, shadowNode, null);
+      _sanitizeElements(shadowNode, fragment);
+      _sanitizeAttributes(shadowNode);
+      if (_isDocumentFragment(shadowNode.content)) {
+        _sanitizeShadowDOM2(shadowNode.content);
+      }
+      const shadowNodeType = getNodeType ? getNodeType(shadowNode) : shadowNode.nodeType;
+      if (shadowNodeType === NODE_TYPE.element) {
+        const innerSr = getShadowRoot(shadowNode);
+        if (_isDocumentFragment(innerSr)) {
+          _sanitizeAttachedShadowRoots(innerSr);
+          _sanitizeShadowDOM2(innerSr);
+        }
+      }
+    }
+    _executeHooks(hooks.afterSanitizeShadowDOM, fragment, null);
+  };
+  const _sanitizeAttachedShadowRoots = function _sanitizeAttachedShadowRoots2(root) {
+    const stack = [{
+      node: root,
+      shadow: null
+    }];
+    while (stack.length > 0) {
+      const item = stack.pop();
+      if (item.shadow) {
+        _sanitizeShadowDOM2(item.shadow);
+        continue;
+      }
+      const node = item.node;
+      const nodeType = getNodeType ? getNodeType(node) : node.nodeType;
+      const isElement = nodeType === NODE_TYPE.element;
+      const childNodes = getChildNodes(node);
+      if (childNodes) {
+        for (let i = childNodes.length - 1; i >= 0; --i) {
+          stack.push({
+            node: childNodes[i],
+            shadow: null
+          });
+        }
+      }
+      if (isElement) {
+        const rootName = getNodeName ? getNodeName(node) : null;
+        if (typeof rootName === "string" && transformCaseFunc(rootName) === "template") {
+          const content = node.content;
+          if (_isDocumentFragment(content)) {
+            stack.push({
+              node: content,
+              shadow: null
+            });
+          }
+        }
+      }
+      if (isElement) {
+        const sr = getShadowRoot(node);
+        if (_isDocumentFragment(sr)) {
+          stack.push({
+            node: null,
+            shadow: sr
+          }, {
+            node: sr,
+            shadow: null
+          });
+        }
+      }
+    }
+  };
+  DOMPurify.sanitize = function(dirty) {
+    let cfg = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
+    let body = null;
+    let importedNode = null;
+    let currentNode = null;
+    let returnNode = null;
+    IS_EMPTY_INPUT = !dirty;
+    if (IS_EMPTY_INPUT) {
+      dirty = "<!-->";
+    }
+    if (typeof dirty !== "string" && !_isNode(dirty)) {
+      dirty = stringifyValue(dirty);
+      if (typeof dirty !== "string") {
+        throw typeErrorCreate("dirty is not a string, aborting");
+      }
+    }
+    if (!DOMPurify.isSupported) {
+      return dirty;
+    }
+    if (SET_CONFIG) {
+      ALLOWED_TAGS = SET_CONFIG_ALLOWED_TAGS;
+      ALLOWED_ATTR = SET_CONFIG_ALLOWED_ATTR;
+    } else {
+      _parseConfig(cfg);
+    }
+    if (hooks.uponSanitizeElement.length > 0 || hooks.uponSanitizeAttribute.length > 0) {
+      ALLOWED_TAGS = clone(ALLOWED_TAGS);
+    }
+    if (hooks.uponSanitizeAttribute.length > 0) {
+      ALLOWED_ATTR = clone(ALLOWED_ATTR);
+    }
+    DOMPurify.removed = [];
+    const inPlace = IN_PLACE && typeof dirty !== "string" && _isNode(dirty);
+    if (inPlace) {
+      _neutralizePatchLinkage(dirty);
+      const nn = getNodeName ? getNodeName(dirty) : dirty.nodeName;
+      if (typeof nn === "string") {
+        const tagName = transformCaseFunc(nn);
+        if (!ALLOWED_TAGS[tagName] || FORBID_TAGS[tagName]) {
+          _neutralizeRoot(dirty);
+          throw typeErrorCreate("root node is forbidden and cannot be sanitized in-place");
+        }
+      }
+      if (_isClobbered(dirty)) {
+        _neutralizeRoot(dirty);
+        throw typeErrorCreate("root node is clobbered and cannot be sanitized in-place");
+      }
+      try {
+        _sanitizeAttachedShadowRoots(dirty);
+      } catch (error) {
+        _neutralizeRoot(dirty);
+        throw error;
+      }
+    } else if (_isNode(dirty)) {
+      body = _initDocument("<!---->");
+      importedNode = body.ownerDocument.importNode(dirty, true);
+      if (importedNode.nodeType === NODE_TYPE.element && importedNode.nodeName === "BODY") {
+        body = importedNode;
+      } else if (importedNode.nodeName === "HTML") {
+        body = importedNode;
+      } else {
+        body.appendChild(importedNode);
+      }
+      _sanitizeAttachedShadowRoots(importedNode);
+    } else {
+      if (!RETURN_DOM && !SAFE_FOR_TEMPLATES && !WHOLE_DOCUMENT && // eslint-disable-next-line unicorn/prefer-includes
+      dirty.indexOf("<") === -1) {
+        return trustedTypesPolicy && RETURN_TRUSTED_TYPE ? _createTrustedHTML(dirty) : dirty;
+      }
+      body = _initDocument(dirty);
+      if (!body) {
+        return RETURN_DOM ? null : RETURN_TRUSTED_TYPE ? emptyHTML : "";
+      }
+    }
+    if (body && FORCE_BODY) {
+      _forceRemove(body.firstChild);
+    }
+    const walkRoot = inPlace ? dirty : body;
+    try {
+      const nodeIterator = _createNodeIterator(walkRoot);
+      while (currentNode = nodeIterator.nextNode()) {
+        _sanitizeElements(currentNode, walkRoot);
+        _sanitizeAttributes(currentNode);
+        if (_isDocumentFragment(currentNode.content)) {
+          _sanitizeShadowDOM2(currentNode.content);
+        }
+      }
+    } catch (error) {
+      if (inPlace) {
+        _neutralizeRoot(dirty);
+        arrayForEach(DOMPurify.removed, (entry) => {
+          if (entry.element) {
+            _neutralizeSubtree(entry.element);
+          }
+        });
+      }
+      throw error;
+    }
+    if (inPlace) {
+      arrayForEach(DOMPurify.removed, (entry) => {
+        if (entry.element) {
+          _neutralizeSubtree(entry.element);
+        }
+      });
+      if (SAFE_FOR_TEMPLATES) {
+        _scrubTemplateExpressions2(dirty);
+      }
+      return dirty;
+    }
+    if (RETURN_DOM) {
+      if (SAFE_FOR_TEMPLATES) {
+        _scrubTemplateExpressions2(body);
+      }
+      if (RETURN_DOM_FRAGMENT) {
+        returnNode = createDocumentFragment.call(body.ownerDocument);
+        while (body.firstChild) {
+          returnNode.appendChild(body.firstChild);
+        }
+      } else {
+        returnNode = body;
+      }
+      if (ALLOWED_ATTR.shadowroot || ALLOWED_ATTR.shadowrootmode) {
+        returnNode = importNode.call(originalDocument, returnNode, true);
+      }
+      return returnNode;
+    }
+    let serializedHTML = WHOLE_DOCUMENT ? body.outerHTML : body.innerHTML;
+    if (WHOLE_DOCUMENT && ALLOWED_TAGS["!doctype"] && body.ownerDocument && body.ownerDocument.doctype && body.ownerDocument.doctype.name && regExpTest(DOCTYPE_NAME, body.ownerDocument.doctype.name)) {
+      serializedHTML = "<!DOCTYPE " + body.ownerDocument.doctype.name + ">\n" + serializedHTML;
+    }
+    if (SAFE_FOR_TEMPLATES) {
+      serializedHTML = _stripTemplateExpressions(serializedHTML);
+    }
+    return trustedTypesPolicy && RETURN_TRUSTED_TYPE ? _createTrustedHTML(serializedHTML) : serializedHTML;
+  };
+  DOMPurify.setConfig = function() {
+    let cfg = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {};
+    _parseConfig(cfg);
+    SET_CONFIG = true;
+    SET_CONFIG_ALLOWED_TAGS = ALLOWED_TAGS;
+    SET_CONFIG_ALLOWED_ATTR = ALLOWED_ATTR;
+  };
+  DOMPurify.clearConfig = function() {
+    CONFIG = null;
+    SET_CONFIG = false;
+    SET_CONFIG_ALLOWED_TAGS = null;
+    SET_CONFIG_ALLOWED_ATTR = null;
+    trustedTypesPolicy = defaultTrustedTypesPolicy;
+    emptyHTML = "";
+  };
+  DOMPurify.isValidAttribute = function(tag, attr, value) {
+    if (!CONFIG) {
+      _parseConfig({});
+    }
+    const lcTag = transformCaseFunc(tag);
+    const lcName = transformCaseFunc(attr);
+    return _isValidAttribute(lcTag, lcName, value);
+  };
+  DOMPurify.addHook = function(entryPoint2, hookFunction) {
+    if (typeof hookFunction !== "function") {
+      return;
+    }
+    if (!objectHasOwnProperty(hooks, entryPoint2)) {
+      return;
+    }
+    arrayPush(hooks[entryPoint2], hookFunction);
+  };
+  DOMPurify.removeHook = function(entryPoint2, hookFunction) {
+    if (!objectHasOwnProperty(hooks, entryPoint2)) {
+      return void 0;
+    }
+    if (hookFunction !== void 0) {
+      const index = arrayLastIndexOf(hooks[entryPoint2], hookFunction);
+      return index === -1 ? void 0 : arraySplice(hooks[entryPoint2], index, 1)[0];
+    }
+    return arrayPop(hooks[entryPoint2]);
+  };
+  DOMPurify.removeHooks = function(entryPoint2) {
+    if (!objectHasOwnProperty(hooks, entryPoint2)) {
+      return;
+    }
+    hooks[entryPoint2] = [];
+  };
+  DOMPurify.removeAllHooks = function() {
+    hooks = _createHooksMap();
+  };
+  return DOMPurify;
+}
+var purify = createDOMPurify();
+
+// engine/sanitise.js
+var PURIFY_CONFIG = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ["script", "iframe", "object", "embed", "svg", "math", "style", "form"],
+  FORBID_ATTR: ["formaction"],
+  // on* handlers are stripped by the default profile
+  ALLOW_UNKNOWN_PROTOCOLS: false
+};
+function regexStripFallback(html2) {
+  let s = String(html2 || "");
+  s = s.replace(/<(script|iframe|object|embed|svg|math)\b[\s\S]*?<\/\1\s*>/gi, "");
+  s = s.replace(/<\/?(?:script|iframe|object|embed|svg|math|use)\b[^>]*>/gi, "");
+  const keepDelim = (m, d) => /\s/.test(d) ? "" : d;
+  s = s.replace(/([\s/"'`])on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, keepDelim);
+  s = s.replace(
+    /([\s/"'`])(?:xlink:)?(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+    (m, d, dq, sq, uq) => {
+      const raw = (dq !== void 0 ? dq : sq !== void 0 ? sq : uq) || "";
+      const norm2 = normaliseUrl(raw);
+      if (/^(?:javascript|vbscript):/.test(norm2)) return keepDelim(m, d);
+      if (/^data:/.test(norm2)) return SAFE_IMAGE_DATA_URL.test(raw.trim()) ? m : keepDelim(m, d);
+      return m;
+    }
+  );
+  return s;
+}
+function normaliseUrl(raw) {
+  return String(raw || "").replace(/&#x([0-9a-f]+);?/gi, (_m, h) => {
+    try {
+      return String.fromCodePoint(parseInt(h, 16));
+    } catch {
+      return "";
+    }
+  }).replace(/&#(\d+);?/g, (_m, n) => {
+    try {
+      return String.fromCodePoint(parseInt(n, 10));
+    } catch {
+      return "";
+    }
+  }).replace(/&colon;/gi, ":").replace(/&(?:tab|newline|nbsp);/gi, " ").replace(/[\u0000-\u0020]+/g, "").toLowerCase();
+}
+function purifyIsLive() {
+  return typeof window !== "undefined" && purify && typeof purify.sanitize === "function";
+}
+function sanitiseHtml(html2) {
+  const input = String(html2 ?? "");
+  if (!purifyIsLive()) return regexStripFallback(input);
+  try {
+    return String(purify.sanitize(input, PURIFY_CONFIG));
+  } catch {
+    return regexStripFallback(input);
+  }
 }
 
 // engine/blocks.js
@@ -2229,17 +4066,17 @@ function decodeEntities(s) {
 }
 var CITE_ID = /^[a-z][\w-]*$/;
 var safeCiteId = (id) => CITE_ID.test(String(id || "")) ? String(id) : "";
-function inlineHtmlToMd(html) {
-  let s = String(html || "");
+function inlineHtmlToMd(html2) {
+  let s = String(html2 || "");
   s = s.replace(/<sup\b[^>]*\bclass="[^"]*\bfn-ref\b[^"]*"[^>]*>[\s\S]*?<\/sup>/gi, (m) => {
     const idm = /\bdata-fn="([^"]*)"/i.exec(m);
     const id = idm ? safeCiteId(decodeEntities(idm[1])) : "";
     return id ? `[^${id}]` : "";
   });
   s = s.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, txt) => {
-    const text2 = txt.replace(/<[^>]+>/g, "");
-    if (/^\s*(?:javascript|vbscript):/i.test(decodeEntities(href))) return text2;
-    return `[${text2}](${href})`;
+    const text3 = txt.replace(/<[^>]+>/g, "");
+    if (/^\s*(?:javascript|vbscript):/i.test(decodeEntities(href))) return text3;
+    return `[${text3}](${href})`;
   });
   s = s.replace(/<code>([\s\S]*?)<\/code>/gi, (_, t) => `\`${decodeEntities(t.replace(/<[^>]+>/g, ""))}\``);
   s = s.replace(/<(strong|b)>([\s\S]*?)<\/\1>/gi, (_, __, t) => `**${t}**`);
@@ -2258,31 +4095,6 @@ function escHtml(s) {
 function escMdText(s) {
   return String(s == null ? "" : s).replace(/[\r\n]+/g, " ").replace(/[\\`*_~\[\]()<>]/g, (c) => `\\${c}`);
 }
-var SAFE_HTTPS_URL = /^https:\/\/[^\s"'<>\\]+$/i;
-var isSafeHttpsRef = (url) => {
-  const s = String(url || "");
-  return SAFE_HTTPS_URL.test(s) && !s.split("/").includes("..");
-};
-var ATTR_UNSAFE = /[\s"'<>\\]/;
-function safeEmbedSrc(src) {
-  const s = String(src == null ? "" : src).trim();
-  if (!s) return "";
-  if (/^\/[^/]/.test(s)) return ATTR_UNSAFE.test(s) ? "" : s;
-  const up = s.replace(/^http:\/\//i, "https://");
-  return isSafeHttpsRef(up) ? up : "";
-}
-function placementClass(b) {
-  const p = b && b.placement;
-  return p === "wide" ? " breakout" : p === "left" ? " img-left" : p === "right" ? " img-right" : "";
-}
-function videoFigure(b) {
-  const cap = b.caption ? `<figcaption>${escHtml(b.caption)}</figcaption>` : "";
-  return `<figure class="post-video"><video controls playsinline preload="metadata" poster="${escAttr2(b.poster)}" src="${escAttr2(b.url)}"></video>${cap}</figure>`;
-}
-var isUnsafeFilename = (name) => {
-  const s = String(name);
-  return s.includes("/") || s.includes("\\") || s.includes("..");
-};
 var ALIGNS = /* @__PURE__ */ new Set(["left", "center", "right"]);
 function blkWidth(b) {
   const n = Number(b && b.width);
@@ -2300,8 +4112,8 @@ function resizeAttrs(b) {
   if (w == null) return "";
   return ` style="--blk-w:${w}%" data-align="${blkAlign(b)}"`;
 }
-function pgHtml(html) {
-  return String(html || "").split("\n").filter((ln) => ln.trim() !== "").map((ln) => ln.replace(/^\s+/, (m) => m.length >= 4 ? "  " : m)).join("\n");
+function pgHtml(html2) {
+  return String(html2 || "").split("\n").filter((ln) => ln.trim() !== "").map((ln) => ln.replace(/^\s+/, (m) => m.length >= 4 ? "  " : m)).join("\n");
 }
 function figureClasses(b) {
   if (b.placement === "wide") return ["breakout"];
@@ -2311,6 +4123,10 @@ function figureClasses(b) {
   if (b.size === "sm") out.push("img-sm");
   else if (b.size === "md") out.push("img-md");
   return out;
+}
+function placementClass(b) {
+  const p = b && b.placement;
+  return p === "wide" ? " breakout" : p === "left" ? " img-left" : p === "right" ? " img-right" : "";
 }
 var HEIGHT_CAPS = { short: 240, medium: 400, tall: 560 };
 function heightCapStyle(b) {
@@ -2323,6 +4139,10 @@ function imageFigure(b, slug) {
   const src = b.url ? String(b.url) : `/images/posts/${slug}/${b.file}`;
   const cap = b.caption ? `<figcaption>${escHtml(b.caption)}</figcaption>` : "";
   return `<figure${cls}${resizeAttrs(b)}><img src="${escAttr2(src)}" alt="${escAttr2(b.alt)}" loading="lazy"${heightCapStyle(b)}>${cap}</figure>`;
+}
+function videoFigure(b) {
+  const cap = b.caption ? `<figcaption>${escHtml(b.caption)}</figcaption>` : "";
+  return `<figure class="post-video"><video controls playsinline preload="metadata" poster="${escAttr2(b.poster)}" src="${escAttr2(b.url)}"></video>${cap}</figure>`;
 }
 function figureInner(b, slug) {
   const parts = [];
@@ -2401,14 +4221,14 @@ function serialiseBlock(block, ctx = {}) {
       return "";
     }
     case "playground": {
-      const html = pgHtml(block.html);
+      const html2 = pgHtml(block.html);
       const js = String(block.js || "").trim().replace(/<\/(script)/gi, "<\\/$1");
       const css = pgHtml(block.css || "").replace(/<\/(style)/gi, "<\\/$1");
-      if (!html && !js && !css) return "";
+      if (!html2 && !js && !css) return "";
       const idAttr = block.domId && /^[a-zA-Z][\w-]*$/.test(block.domId) ? ` id="${block.domId}"` : "";
-      const place = block.placement === "wide" ? " breakout" : block.placement === "left" ? " img-left" : block.placement === "right" ? " img-right" : "";
+      const place = placementClass(block);
       const div = `<div class="playground${place}"${idAttr}${resizeAttrs(block)}>
-${html}
+${html2}
 </div>`;
       const style = css ? `
 
@@ -2447,12 +4267,12 @@ var DANGEROUS_SCHEME = /^\s*(?:javascript|data|vbscript):/i;
 function stripDangerousMdLinks(s) {
   let out = String(s == null ? "" : s);
   out = out.replace(/!\[([^\]]*)\]\(([^)]*)\)/g, (m, alt, url) => DANGEROUS_SCHEME.test(url) ? alt : m);
-  out = out.replace(/\[([^\]]*)\]\(([^)]*)\)/g, (m, text2, url) => DANGEROUS_SCHEME.test(url) ? text2 : m);
+  out = out.replace(/\[([^\]]*)\]\(([^)]*)\)/g, (m, text3, url) => DANGEROUS_SCHEME.test(url) ? text3 : m);
   out = out.replace(/<\s*(?:javascript|data|vbscript):[^>]*>/gi, "");
   return out;
 }
-function citationDefText(text2) {
-  return stripDangerousMdLinks(stripUnsafeHtml(String(text2 == null ? "" : text2))).replace(/[\r\n]+/g, " ").replace(/[ \t]+/g, " ").trim();
+function citationDefText(text3) {
+  return stripDangerousMdLinks(stripUnsafeHtml(String(text3 == null ? "" : text3))).replace(/[\r\n]+/g, " ").replace(/[ \t]+/g, " ").trim();
 }
 function appendCitationDefs(body, citations) {
   if (!Array.isArray(citations) || !citations.length) return body;
@@ -2476,9 +4296,9 @@ function serialiseBlocks(blocks, ctx = {}) {
 }
 function renderPreviewHtml(blocks, ctx = {}) {
   const slug = ctx.slug || "post";
-  const origin = ctx.siteOrigin || "https://inayatpanda.com";
-  const imgSrc = (b) => b.base64 ? b.base64 : b.url ? `${origin}${b.url}` : b.src || `${origin}/images/posts/${slug}/${b.file}`;
-  const placeCls = (p) => p === "wide" ? " breakout" : p === "left" ? " img-left" : p === "right" ? " img-right" : "";
+  const origin = ctx.siteOrigin || "";
+  const asDataUri = (s) => /^data:/i.test(s) ? s : `data:image/jpeg;base64,${s}`;
+  const imgSrc = (b) => b.base64 ? asDataUri(b.base64) : b.url ? /^https?:\/\//i.test(b.url) ? b.url : `${origin}${b.url}` : b.src || `${origin}/images/posts/${slug}/${b.file}`;
   const figure = (b) => {
     const cap = b.caption ? `<figcaption>${escHtml(b.caption)}</figcaption>` : "";
     const cls = figureClasses(b).join(" ");
@@ -2521,27 +4341,28 @@ function renderPreviewHtml(blocks, ctx = {}) {
       case "gallery": {
         const ims = (b.images || []).filter((im) => im && (im.file || im.base64));
         if (!ims.length) return "";
-        return `<div class="gallery"${resizeAttrs(b)}>${ims.map((im) => `<figure><img src="${escAttr2(im.base64 || `${origin}/images/${slug}/${im.file}`)}" alt="${escAttr2(im.alt)}">${im.alt ? `<figcaption>${escHtml(im.alt)}</figcaption>` : ""}</figure>`).join("")}</div>`;
+        return `<div class="gallery${placementClass(b)}"${resizeAttrs(b)}>${ims.map((im) => `<figure><img src="${escAttr2(im.base64 ? asDataUri(im.base64) : `${origin}/images/${slug}/${im.file}`)}" alt="${escAttr2(im.alt)}">${im.alt ? `<figcaption>${escHtml(im.alt)}</figcaption>` : ""}</figure>`).join("")}</div>`;
       }
       case "embed": {
         const ra = resizeAttrs(b);
-        if (b.provider === "youtube" && b.videoId) return `<div class="embed-16x9"${ra}><iframe src="https://www.youtube-nocookie.com/embed/${escAttr2(b.videoId)}" title="${escAttr2(b.title)}" loading="lazy" allowfullscreen></iframe></div>`;
-        if (b.provider === "vimeo" && b.videoId) return `<div class="embed-16x9"${ra}><iframe src="https://player.vimeo.com/video/${escAttr2(b.videoId)}" title="${escAttr2(b.title)}" loading="lazy" allowfullscreen></iframe></div>`;
+        const pl = placementClass(b);
+        if (b.provider === "youtube" && b.videoId) return `<div class="embed-16x9${pl}"${ra}><iframe src="https://www.youtube-nocookie.com/embed/${escAttr2(b.videoId)}" title="${escAttr2(b.title)}" loading="lazy" allowfullscreen></iframe></div>`;
+        if (b.provider === "vimeo" && b.videoId) return `<div class="embed-16x9${pl}"${ra}><iframe src="https://player.vimeo.com/video/${escAttr2(b.videoId)}" title="${escAttr2(b.title)}" loading="lazy" allowfullscreen></iframe></div>`;
         if (b.src) {
           const poster = b.poster ? ` poster="${escAttr2(b.poster)}"` : "";
           const tag = `<video src="${escAttr2(b.src)}"${poster}${heightCapStyle(b)} controls preload="metadata" playsinline></video>`;
           const cap = b.caption ? `<figcaption>${escHtml(b.caption)}</figcaption>` : "";
-          return ra || cap ? `<figure class="blk-video"${ra}>${tag}${cap}</figure>` : tag;
+          return ra || cap || pl ? `<figure class="blk-video${pl}"${ra}>${tag}${cap}</figure>` : tag;
         }
         return "";
       }
       case "playground": {
-        const html = pgHtml(b.html);
+        const html2 = pgHtml(b.html);
         const js = String(b.js || "").trim().replace(/<\/(script)/gi, "<\\/$1");
         const css = pgHtml(b.css || "").replace(/<\/(style)/gi, "<\\/$1");
-        if (!html && !js && !css) return "";
+        if (!html2 && !js && !css) return "";
         const idAttr = b.domId && /^[a-zA-Z][\w-]*$/.test(b.domId) ? ` id="${b.domId}"` : "";
-        return `<div class="playground${placeCls(b.placement)}"${idAttr}${resizeAttrs(b)}>${css ? `<style>${css}</style>` : ""}${html}${js ? `<script>${js}<\/script>` : ""}</div>`;
+        return `<div class="playground${placementClass(b)}"${idAttr}${resizeAttrs(b)}>${css ? `<style>${css}</style>` : ""}${html2}${js ? `<script>${js}<\/script>` : ""}</div>`;
       }
       case "table": {
         const header = Array.isArray(b.header) ? b.header : [];
@@ -2569,11 +4390,29 @@ var isSafeIllustrationUrl = (url) => {
   const s = String(url || "");
   return s.startsWith(ILLUSTRATION_ORIGIN) && SAFE_HTTPS_URL.test(s) && !s.split("/").includes("..");
 };
+var SAFE_HTTPS_URL = /^https:\/\/[^\s"'<>\\]+$/i;
+var isSafeHttpsRef = (url) => {
+  const s = String(url || "");
+  return SAFE_HTTPS_URL.test(s) && !s.split("/").includes("..");
+};
+var ATTR_UNSAFE = /[\s"'<>\\]/;
+function safeEmbedSrc(src) {
+  const s = String(src == null ? "" : src).trim();
+  if (!s) return "";
+  if (/^\/[^/]/.test(s)) return ATTR_UNSAFE.test(s) ? "" : s;
+  const up = s.replace(/^http:\/\//i, "https://");
+  return isSafeHttpsRef(up) ? up : "";
+}
+var isUnsafeFilename = (name) => {
+  const s = String(name);
+  return s.includes("/") || s.includes("\\") || s.includes("..");
+};
 function validateDoc(doc) {
   if (!doc || !Array.isArray(doc.blocks)) throw Object.assign(new Error("block doc must have a blocks array"), { status: 400 });
   for (const b of doc.blocks) {
     if (!b || !KNOWN.has(b.type)) throw Object.assign(new Error(`unknown block type: ${b && b.type}`), { status: 400 });
     if (b.type === "image" && !b.file && !b.base64 && !b.url) throw Object.assign(new Error("image block needs file, base64 or url"), { status: 400 });
+    if (b.type === "image" && b.base64 && !b.file) throw Object.assign(new Error("image with image data needs a filename"), { status: 400 });
     if (b.type === "image" && b.url && !b.base64 && !isSafeImageRef(b.url) && !isSafeIllustrationUrl(b.url))
       throw Object.assign(new Error("image reference must be a site image path under /images/posts/ or an illustration URL"), { status: 400 });
     if (b.type === "image" && b.file && isUnsafeFilename(b.file))
@@ -2595,7 +4434,7 @@ function validateDoc(doc) {
   return true;
 }
 function rawDocFromMarkdown(body) {
-  return { version: 1, blocks: [{ id: "legacy", type: "raw", content: String(body || "") }] };
+  return { version: 1, blocks: [{ id: "legacy", type: "raw", content: sanitiseHtml(String(body || "")) }] };
 }
 function inlineMdToHtml(s) {
   let out = String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -2611,17 +4450,12 @@ function inlineMdToHtml(s) {
 function escHtmlInline(s) {
   return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function stripUnsafeHtml(html) {
-  let s = String(html || "");
-  s = s.replace(/<(script|iframe|object|embed)\b[\s\S]*?<\/\1\s*>/gi, "");
-  s = s.replace(/<\/?(?:script|iframe|object|embed)\b[^>]*>/gi, "");
-  s = s.replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-  s = s.replace(/\s(?:href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]*)/gi, "");
-  return s;
+function stripUnsafeHtml(html2) {
+  return sanitiseHtml(String(html2 || ""));
 }
 function blocksFromMarkdown(body) {
-  const text2 = String(body || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const lines = text2.split("\n");
+  const text3 = String(body || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = text3.split("\n");
   const blocks = [];
   const push = (b) => {
     blocks.push(b);
@@ -2729,8 +4563,8 @@ function blocksFromMarkdown(body) {
       }
       i--;
       const tag = ordered ? "ol" : "ul";
-      const html = `<${tag}>` + items.map((it) => `<li>${inlineMdToHtml(it)}</li>`).join("") + `</${tag}>`;
-      push({ type: "raw", content: stripUnsafeHtml(html) });
+      const html2 = `<${tag}>` + items.map((it) => `<li>${inlineMdToHtml(it)}</li>`).join("") + `</${tag}>`;
+      push({ type: "raw", content: stripUnsafeHtml(html2) });
       continue;
     }
     para.push(trimmed);
@@ -2740,6 +4574,11 @@ function blocksFromMarkdown(body) {
   return { version: 1, blocks };
 }
 
+// src/core/slug.js
+function slugify(title) {
+  return String(title || "").toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+}
+
 // src/core/posts.js
 var BLOG_DIR = "src/content/blog";
 var postPath = (slug) => `${BLOG_DIR}/${slug}.md`;
@@ -2747,14 +4586,33 @@ var imgDir = (slug) => `${BLOG_DIR}/_images/${slug}`;
 var blocksPath = (slug) => `${BLOG_DIR}/_blocks/${slug}.json`;
 var publicImgDir = (slug) => `public/images/posts/${slug}`;
 var todayISO = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-function slugify(title) {
-  return String(title || "").toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "post";
+function slugify2(title) {
+  return slugify(title) || "post";
 }
-function galleryFilename(im, i) {
-  if (im.file) return im.file;
-  const m = /^data:image\/(\w+);base64,/.exec(im.base64 || "");
-  const ext = m ? m[1] === "jpeg" ? "jpg" : m[1] : "jpg";
-  return `gallery-${i + 1}.${ext}`;
+function galleryExt(im) {
+  const m = /^data:image\/(\w+);base64,/i.exec(im.base64 || "");
+  if (!m) return "jpg";
+  const t = m[1].toLowerCase();
+  return t === "jpeg" ? "jpg" : t;
+}
+function makeGalleryNamer(docBlocks) {
+  const taken = /* @__PURE__ */ new Set();
+  for (const b of docBlocks) {
+    if (b && b.type === "gallery" && Array.isArray(b.images)) {
+      for (const im of b.images) if (im && im.file) taken.add(String(im.file).toLowerCase());
+    }
+  }
+  let slot = 0;
+  return (im) => {
+    slot++;
+    if (im.file) return im.file;
+    const ext = galleryExt(im);
+    let n = slot;
+    while (taken.has(`gallery-${n}.${ext}`)) n++;
+    const file = `gallery-${n}.${ext}`;
+    taken.add(file.toLowerCase());
+    return file;
+  };
 }
 function makePosts(gh) {
   async function uniqueSlug(base) {
@@ -2799,12 +4657,12 @@ function makePosts(gh) {
       return f ? JSON.parse(f.content) : [];
     },
     async listPosts() {
-      const entries = (await gh.listDir(BLOG_DIR)).filter((e) => e.type === "file" && e.name.endsWith(".md"));
-      const out = [];
-      for (const e of entries) {
+      const entries2 = (await gh.listDir(BLOG_DIR)).filter((e) => e.type === "file" && e.name.endsWith(".md"));
+      const rowFor = async (e) => {
         const f = await gh.getFile(e.path);
+        if (!f) return null;
         const { data, body } = parse(f.content);
-        out.push({
+        return {
           slug: e.name.replace(/\.md$/, ""),
           title: data.title || e.name,
           date: data.date || "",
@@ -2814,13 +4672,22 @@ function makePosts(gh) {
           series: data.series || "",
           seriesPart: Number.isFinite(Number(data.seriesPart)) ? Number(data.seriesPart) : null,
           photoCount: readGallery(body).length
-        });
-      }
-      return out.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        };
+      };
+      const out = new Array(entries2.length);
+      let next = 0;
+      const worker = async () => {
+        while (next < entries2.length) {
+          const i = next++;
+          out[i] = await rowFor(entries2[i]);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(8, entries2.length) }, worker));
+      return out.filter(Boolean).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     },
     getPost,
     suggestSlug(title) {
-      return uniqueSlug(slugify(title || "untitled"));
+      return uniqueSlug(slugify2(title || "untitled"));
     },
     // Media library: every committed post image under public/images/posts/, grouped by
     // slug, so the composer can REUSE an existing image (insert a /images/posts/... url
@@ -2828,9 +4695,9 @@ function makePosts(gh) {
     async listMediaImages() {
       const PREFIX = "public/images/posts";
       const EXT = /\.(png|jpe?g|webp|gif|avif|svg)$/i;
-      const entries = (await gh.listTree(PREFIX)).filter((e) => EXT.test(e.path));
+      const entries2 = (await gh.listTree(PREFIX)).filter((e) => EXT.test(e.path));
       const groups = /* @__PURE__ */ new Map();
-      for (const e of entries) {
+      for (const e of entries2) {
         const rest = e.path.slice(PREFIX.length + 1);
         const i = rest.indexOf("/");
         if (i < 0) continue;
@@ -2853,7 +4720,10 @@ function makePosts(gh) {
       const side = await gh.getFile(blocksPath(slug));
       if (side) {
         const doc = JSON.parse(side.content);
-        for (const b of doc.blocks) if (b.type === "image" && b.file) b.src = `/images/posts/${slug}/${b.file}`;
+        for (const b of doc.blocks) {
+          if (b.type === "image" && b.file) b.src = `/images/posts/${slug}/${b.file}`;
+          if (b.type === "figure" && b.base && b.base.file && !b.base.base64) b.base.src = `/images/posts/${slug}/${b.base.file}`;
+        }
         return { source: "sidecar", doc, data: post.data };
       }
       return { source: "legacy", doc: rawDocFromMarkdown(post.body), data: post.data };
@@ -2876,9 +4746,10 @@ function makePosts(gh) {
     async duplicatePost(slug) {
       const cur = await getPost(slug);
       if (!cur) throw Object.assign(new Error("not found"), { status: 404 });
-      const newSlug = await uniqueSlug(slugify(`${cur.data.title || slug}-copy`));
+      const newSlug = await uniqueSlug(slugify2(`${cur.data.title || slug}-copy`));
       const rewrite = (s) => (s || "").split(`_images/${slug}/`).join(`_images/${newSlug}/`).split(`images/posts/${slug}/`).join(`images/posts/${newSlug}/`);
       const data = { ...cur.data, title: `${cur.data.title || slug} (copy)`, date: todayISO(), draft: true };
+      delete data.publishAt;
       const changes = [{ path: postPath(newSlug), content: serialise({ data, body: rewrite(cur.body) }) }];
       const side = await gh.getFile(blocksPath(slug));
       if (side) changes.push({ path: blocksPath(newSlug), content: rewrite(side.content) });
@@ -2894,7 +4765,8 @@ function makePosts(gh) {
     async publishBlocks(slug, doc, meta24) {
       validateDoc(doc);
       const imageChanges = [];
-      const storedBlocks = doc.blocks.map((b) => {
+      const galleryName = makeGalleryNamer(doc.blocks);
+      const storedBlocks = doc.blocks.map((b, bi) => {
         if (b.type === "image" && b.url && !b.base64) {
           const { base64, src, file, ...ref } = b;
           return ref;
@@ -2909,12 +4781,27 @@ function makePosts(gh) {
           return ref;
         }
         if (b.type === "gallery" && Array.isArray(b.images)) {
-          const images = b.images.map((im, i) => {
-            const file = galleryFilename(im || {}, i);
+          const images = b.images.map((im) => {
+            const file = galleryName(im || {});
             if (im && im.base64) imageChanges.push({ path: `${imgDir(slug)}/${file}`, base64: im.base64 });
             return { file, alt: im && im.alt || "" };
           });
           return { ...b, images };
+        }
+        if (b.type === "figure" && b.base) {
+          if (b.base.file) return { ...b, base: { file: b.base.file, alt: b.base.alt || "" } };
+          if (b.base.base64) {
+            const du = String(b.base.base64);
+            const m = SAFE_IMAGE_DATA_URL.test(du) && /^data:image\/([a-z+]+);base64,([\s\S]+)$/i.exec(du);
+            if (m) {
+              const ext = m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
+              const file = `figure-base-${bi + 1}.${ext}`;
+              imageChanges.push({ path: `${publicImgDir(slug)}/${file}`, base64: m[2] });
+              return { ...b, base: { file, alt: b.base.alt || "" } };
+            }
+            const { base, ...rest } = b;
+            return rest;
+          }
         }
         return b;
       });
@@ -2931,6 +4818,10 @@ function makePosts(gh) {
         accent: meta24.accent || "#2dd4bf",
         ...meta24.image ? { image: meta24.image } : {},
         ...meta24.glyph ? { glyph: meta24.glyph } : {},
+        // Reading template: the editor always sends one (default 'observatory'); carry it
+        // through and let serialise() omit the default — previously the allowlist dropped
+        // it entirely, so a chosen template was silently lost on every publish.
+        ...meta24.template ? { template: String(meta24.template) } : {},
         ...meta24.theme && meta24.theme !== "dark" ? { theme: meta24.theme } : {},
         ...citations.length ? { citations } : {},
         // A scheduled post is committed as a hidden draft carrying publishAt; the site's
@@ -3053,7 +4944,7 @@ var toggle_ab_default = {
         stateA: {
           label: "On-device",
           accent: "#2dd4bf",
-          caption: "The record never leaves the laptop. No round trip, nothing to intercept.",
+          caption: "The record never leaves the device. No round trip, nothing to intercept.",
           readouts: [{ label: "Latency", value: "instant" }, { label: "Who can read it", value: "only you" }, { label: "Offline", value: "still works" }]
         },
         stateB: {
@@ -3065,19 +4956,19 @@ var toggle_ab_default = {
       }
     },
     {
-      name: "Conservative vs operative",
+      name: "Film vs digital",
       params: {
         stateA: {
-          label: "Conservative",
+          label: "Film",
           accent: "#2dd4bf",
-          caption: "Time and physiotherapy; the body does the repair.",
-          readouts: [{ label: "Risk", value: "low, but slow" }, { label: "Recovery", value: "weeks\u2013months" }, { label: "Reversible", value: "yes" }]
+          caption: "Slower, and you feel every frame. You wait to see what you got.",
+          readouts: [{ label: "Shots", value: "36 to a roll" }, { label: "Feedback", value: "days later" }, { label: "Cost per frame", value: "real" }]
         },
         stateB: {
-          label: "Operative",
+          label: "Digital",
           accent: "#818cf8",
-          caption: "Faster structural fix, at the cost of an operation.",
-          readouts: [{ label: "Risk", value: "surgical" }, { label: "Recovery", value: "rehab protocol" }, { label: "Reversible", value: "no" }]
+          caption: "Instant, endless, and easy to never stop shooting.",
+          readouts: [{ label: "Shots", value: "thousands" }, { label: "Feedback", value: "instant" }, { label: "Cost per frame", value: "~nothing" }]
         }
       }
     }
@@ -3085,7 +4976,7 @@ var toggle_ab_default = {
   build(params, domId) {
     const A = params.stateA || {}, B = params.stateB || {};
     const title = params.title ? `<div class="pg-ab-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-ab-toggle" role="group" aria-label="Choose a state"><button type="button" data-role="a" class="pg-ab-btn is-active" aria-pressed="true">${esc(A.label)}</button><button type="button" data-role="b" class="pg-ab-btn" aria-pressed="false">${esc(B.label)}</button></div><div class="pg-ab-panel" data-role="panel" aria-live="polite"><dl class="pg-ab-readouts" data-role="readouts"></dl><div class="pg-readout" data-role="caption"></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-ab-toggle" role="group" aria-label="Choose a state"><button type="button" data-role="a" class="pg-ab-btn is-active" aria-pressed="true">${esc(A.label)}</button><button type="button" data-role="b" class="pg-ab-btn" aria-pressed="false">${esc(B.label)}</button></div><div class="pg-ab-panel" data-role="panel" aria-live="polite"><dl class="pg-ab-readouts" data-role="readouts"></dl><div class="pg-readout" data-role="caption"></div></div></div>`;
     const css = [
       `#${domId} .pg-ab-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-ab-toggle{display:inline-flex;gap:.4rem;border:1px solid var(--line,#23304a);border-radius:99px;padding:.25rem}`,
@@ -3116,7 +5007,7 @@ btnA.addEventListener('click',function(){pick(true);});
 btnB.addEventListener('click',function(){pick(false);});
 pick(true);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -3191,12 +5082,12 @@ var function_explorer_default = {
       }
     },
     {
-      name: "Logistic (dose\u2013response)",
+      name: "Logistic (adoption curve)",
       params: {
-        sliders: [{ key: "dose", label: "Dose", min: 0, max: 100, value: 50, step: 1, unit: "" }],
-        curve: { xLabel: "dose \u2192", yLabel: "response \u2192", yExpr: "1/(1+Math.exp(-(t-0.5)*10))", markerExpr: "V.dose/100" },
-        output: { label: "response", expr: "100/(1+Math.exp(-((V.dose/100)-0.5)*10))", unit: "%", decimals: 0 },
-        verdict: { bands: [{ max: 20, label: "sub-threshold", colour: "#717d99" }, { max: 80, label: "climbing fast", colour: "#22d3ee" }, { max: 100, label: "plateau", colour: "#2dd4bf" }] }
+        sliders: [{ key: "time", label: "Time", min: 0, max: 100, value: 50, step: 1, unit: "" }],
+        curve: { xLabel: "time \u2192", yLabel: "adopters \u2192", yExpr: "1/(1+Math.exp(-(t-0.5)*10))", markerExpr: "V.time/100" },
+        output: { label: "share adopted", expr: "100/(1+Math.exp(-((V.time/100)-0.5)*10))", unit: "%", decimals: 0 },
+        verdict: { bands: [{ max: 20, label: "early days", colour: "#717d99" }, { max: 80, label: "taking off", colour: "#22d3ee" }, { max: 100, label: "everyone has one", colour: "#2dd4bf" }] }
       }
     }
   ],
@@ -3208,7 +5099,7 @@ var function_explorer_default = {
       (s) => `<div class="pg-field"><label for="${domId}-${esc(s.key)}">${esc(s.label)} <b data-val="${esc(s.key)}"></b></label><input id="${domId}-${esc(s.key)}" data-key="${esc(s.key)}" data-unit="${esc(s.unit || "")}" type="range" min="${s.min}" max="${s.max}" step="${s.step || 1}" value="${s.value}"></div>`
     ).join("");
     const plot = `<svg viewBox="0 0 360 220" role="img" aria-label="${esc((c.yLabel || "value") + " against " + (c.xLabel || "input"))}" class="pg-fx-plot"><line x1="40" y1="190" x2="340" y2="190" stroke="#3a4866"/><line x1="40" y1="30" x2="40" y2="190" stroke="#3a4866"/><text x="340" y="208" fill="#717d99" font-size="10" text-anchor="end">${esc(c.xLabel || "")}</text><text x="14" y="30" fill="#717d99" font-size="10" transform="rotate(-90 14 30)" text-anchor="end">${esc(c.yLabel || "")}</text><path data-role="curve" fill="none" stroke="#22d3ee" stroke-width="2.5"/><circle data-role="dot" r="6" fill="#2dd4bf" cx="40" cy="190"/></svg>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-fx-grid">${plot}<div class="pg-fx-side"><div class="pg-readout">${esc(params.output.label)} <b data-role="out"></b></div><div class="pg-fx-verdict" data-role="verdict" aria-live="polite"></div></div></div><div class="pg-controls">${controls}</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-fx-grid">${plot}<div class="pg-fx-side"><div class="pg-readout">${esc(params.output.label)} <b data-role="out"></b></div><div class="pg-fx-verdict" data-role="verdict" aria-live="polite"></div></div></div><div class="pg-controls">${controls}</div></div>`;
     const css = [
       `#${domId} .pg-fx-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-fx-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;align-items:center}`,
@@ -3240,7 +5131,7 @@ function redraw(){
 inputs.forEach(function(i){i.addEventListener('input',redraw);});
 redraw();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -3275,26 +5166,26 @@ var stepper_timeline_default = {
     {
       name: "Eras of an idea",
       params: {
-        title: "Drilling the skull, through the ages",
+        title: "Mapping the night sky, through the ages",
         xLabel: "earlier \u2190  time  \u2192 later",
         stages: [
-          { label: "Neolithic", value: 0, caption: "Holes scraped into living skulls \u2014 and the bone healed, so they survived.", detail: "Trepanation predates writing; ritual and pressure-relief both proposed." },
-          { label: "Antiquity", value: 0.34, caption: "Hippocratic writers codify when to drill and when to leave well alone.", detail: "The first attempt at indications rather than instinct." },
-          { label: "Renaissance", value: 0.67, caption: "Trephine instruments are engineered; anatomy is drawn from dissection.", detail: "Tooling improves faster than understanding of infection." },
-          { label: "Modern", value: 1, caption: "Burr holes under imaging, asepsis, and a clear pressure rationale.", detail: "Same hole, finally for the right reason." }
+          { label: "Neolithic", value: 0, caption: "Stone circles line up with the solstice sunrise \u2014 sky-keeping built to last.", detail: "Careful sky-watching predates writing; calendar and ritual both proposed." },
+          { label: "Antiquity", value: 0.34, caption: "Greek astronomers name the constellations and write the first star catalogues.", detail: "The first attempt at order rather than folklore." },
+          { label: "Renaissance", value: 0.67, caption: "The telescope arrives; charts are drawn from patient, repeated observation.", detail: "Tooling improves faster than the theory behind it." },
+          { label: "Modern", value: 1, caption: "Digital surveys map billions of stars, each measured and catalogued.", detail: "Same sky, finally in fine detail." }
         ]
       }
     },
     {
       name: "Case walkthrough",
       params: {
-        title: "A shoulder, from injury to verdict",
-        xLabel: "presentation  \u2192  decision",
+        title: "A sour espresso, from taste to fix",
+        xLabel: "symptom  \u2192  decision",
         stages: [
-          { label: "Presentation", value: 0, caption: "Fall onto an outstretched hand; the arm is held still, the contour is off.", detail: "History points before the X-ray confirms." },
-          { label: "Imaging", value: 0.4, caption: "Plain films show a displaced proximal humerus in three parts.", detail: "Fracture pattern drives the next fork." },
-          { label: "Options", value: 0.7, caption: "Weigh fixation against replacement against accepting the position.", detail: "Age, bone quality, and demand all pull differently." },
-          { label: "Verdict", value: 1, caption: "Fix it: restore the tuberosities, protect the blood supply, rehab early.", detail: "Chosen for a younger patient with reconstructable bone." }
+          { label: "Symptom", value: 0, caption: "The shot tastes sharp and sour, and it ran through the basket fast.", detail: "Taste points before the scales confirm." },
+          { label: "Check", value: 0.4, caption: "Weigh the cup: far more liquid out than the recipe asks for.", detail: "The flow rate drives the next fork." },
+          { label: "Options", value: 0.7, caption: "Weigh a finer grind against a bigger dose against living with it.", detail: "Bean age, grinder, and taste all pull differently." },
+          { label: "Fix", value: 1, caption: "Grind finer: slow the flow, pull less liquid, then taste again.", detail: "Chosen for fresh beans and a shot that simply ran too quickly." }
         ]
       }
     }
@@ -3306,7 +5197,7 @@ var stepper_timeline_default = {
     const n = stages.length;
     const maxIdx = Math.max(0, n - 1);
     const track = `<svg viewBox="0 0 360 90" role="img" aria-label="Timeline track with a marker showing the current stage" class="pg-st-track"><line x1="30" y1="58" x2="330" y2="58" stroke="#3a4866" stroke-width="2"/><g data-role="ticks"></g><line data-role="cursor" x1="30" y1="40" x2="30" y2="76" stroke="#22d3ee" stroke-width="2.5"/><circle data-role="marker" cx="30" cy="58" r="7" fill="#2dd4bf" stroke="#04060c" stroke-width="2"/><text data-role="markerlabel" x="30" y="30" fill="#fff" font-size="12" text-anchor="middle"></text></svg>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-readout">stage <b data-role="idx">1</b> of <b data-role="count">${n}</b></div>` + track + xLabel + `<div class="pg-st-caption" data-role="caption" aria-live="polite"></div><div class="pg-st-detail" data-role="detail"></div><div class="pg-controls pg-st-controls"><div class="pg-st-buttons" role="group" aria-label="Step through stages"><button type="button" data-role="prev" class="pg-st-btn">\u2039 Prev</button><button type="button" data-role="next" class="pg-st-btn">Next \u203A</button></div><div class="pg-field"><label for="${domId}-scrub">Scrub stages</label><input id="${domId}-scrub" data-role="scrub" type="range" min="0" max="${maxIdx}" step="1" value="0"></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-readout">stage <b data-role="idx">1</b> of <b data-role="count">${n}</b></div>` + track + xLabel + `<div class="pg-st-caption" data-role="caption" aria-live="polite"></div><div class="pg-st-detail" data-role="detail"></div><div class="pg-controls pg-st-controls"><div class="pg-st-buttons" role="group" aria-label="Step through stages"><button type="button" data-role="prev" class="pg-st-btn">\u2039 Prev</button><button type="button" data-role="next" class="pg-st-btn">Next \u203A</button></div><div class="pg-field"><label for="${domId}-scrub">Scrub stages</label><input id="${domId}-scrub" data-role="scrub" type="range" min="0" max="${maxIdx}" step="1" value="0"></div></div></div>`;
     const css = [
       `#${domId} .pg-st-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-st-track{width:100%;height:auto;display:block;margin:.4rem 0 .2rem}`,
@@ -3355,7 +5246,7 @@ if(prev)prev.addEventListener('click',function(){go(cur-1);});
 if(next)next.addEventListener('click',function(){go(cur+1);});
 go(0);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -3414,7 +5305,7 @@ var scatter_sim_default = {
     const resetLabel = esc(params.resetLabel || "Reset");
     const caption = params.caption ? `<div class="pg-readout pg-sc-caption" data-role="caption"></div>` : "";
     const plot = `<svg viewBox="0 0 360 220" role="img" aria-label="Scatter of random samples plotted against a threshold line" class="pg-sc-plot"><line x1="40" y1="190" x2="340" y2="190" stroke="#3a4866"/><line x1="40" y1="20" x2="40" y2="190" stroke="#3a4866"/><text x="14" y="20" fill="#717d99" font-size="10" transform="rotate(-90 14 20)" text-anchor="end">value \u2192</text><line data-role="threshold" x1="40" y1="190" x2="340" y2="190" stroke="#f472b6" stroke-width="1.6" stroke-dasharray="4 4"/><text data-role="thresholdlabel" x="340" y="0" fill="#f472b6" font-size="10" text-anchor="end"></text><g data-role="dots"></g></svg>`;
-    const html = `<div class="pg-stage">${title}${plot}<div class="pg-sc-readouts"><div class="pg-readout">total <b data-role="total">0</b></div><div class="pg-readout"><b data-role="hitname"></b> <b data-role="hits">0</b></div><div class="pg-readout">smallest <b data-role="min">\u2013</b></div></div>${caption}<div class="pg-controls pg-sc-controls" role="group" aria-label="Run the simulation"><button type="button" data-role="run" class="pg-sc-btn pg-sc-run">${runLabel}</button><button type="button" data-role="reset" class="pg-sc-btn">${resetLabel}</button></div></div>`;
+    const html2 = `<div class="pg-stage">${title}${plot}<div class="pg-sc-readouts"><div class="pg-readout">total <b data-role="total">0</b></div><div class="pg-readout"><b data-role="hitname"></b> <b data-role="hits">0</b></div><div class="pg-readout">smallest <b data-role="min">\u2013</b></div></div>${caption}<div class="pg-controls pg-sc-controls" role="group" aria-label="Run the simulation"><button type="button" data-role="run" class="pg-sc-btn pg-sc-run">${runLabel}</button><button type="button" data-role="reset" class="pg-sc-btn">${resetLabel}</button></div></div>`;
     const css = [
       `#${domId} .pg-sc-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-sc-plot{width:100%;height:auto;display:block}`,
@@ -3481,7 +5372,7 @@ if(reset)reset.addEventListener('click',function(){
   if(minEl)minEl.textContent='\u2013';
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -3533,31 +5424,31 @@ var tappable_meter_default = {
   },
   presets: [
     {
-      name: "Surgical checklist",
+      name: "What makes a meeting work",
       params: {
-        title: "Tick the checklist \u2014 watch the risk drain",
+        title: "Tick the checklist \u2014 watch the wasted time drain",
         direction: "drain",
-        meterLabel: "residual avoidable risk",
+        meterLabel: "time likely wasted",
         runLabel: "Tick everything",
         resetLabel: "Reset",
         skipLabel: 'Skip the "soft" ones',
         skipKeeps: [0, 1, 2],
         items: [
-          { label: "Whole team introduced themselves by name and role", weight: 4 },
-          { label: "Surgeon shared the critical/unexpected steps", weight: 4 },
-          { label: "Concerns invited from anyone in the room", weight: 3 },
-          { label: "Patient identity confirmed", weight: 1 },
-          { label: "Site marked and confirmed", weight: 1 },
-          { label: "Procedure and consent confirmed", weight: 1 },
-          { label: "Anaesthetic safety check complete", weight: 1 },
-          { label: "Antibiotic prophylaxis given on time", weight: 1 },
-          { label: "Imaging displayed and correct", weight: 1 }
+          { label: "Everyone introduced, and their role is clear", weight: 4 },
+          { label: "The one decision to make was stated up front", weight: 4 },
+          { label: "Quieter voices were actually invited in", weight: 3 },
+          { label: "Agenda shared beforehand", weight: 1 },
+          { label: "Start time honoured", weight: 1 },
+          { label: "Someone is taking notes", weight: 1 },
+          { label: "Phones away", weight: 1 },
+          { label: "Action items assigned to a name", weight: 1 },
+          { label: "Finished on time", weight: 1 }
         ],
         bands: [
-          { max: 10, label: "safe \u2014 the team is a team", colour: "#2dd4bf" },
-          { max: 35, label: "mostly covered", colour: "#22d3ee" },
-          { max: 70, label: "gaps remain", colour: "#fbbf24" },
-          { max: 100, label: "high avoidable risk", colour: "#f472b6" }
+          { max: 10, label: "sharp \u2014 this was worth it", colour: "#2dd4bf" },
+          { max: 35, label: "mostly useful", colour: "#22d3ee" },
+          { max: 70, label: "patchy", colour: "#fbbf24" },
+          { max: 100, label: "mostly wasted", colour: "#f472b6" }
         ]
       }
     },
@@ -3599,7 +5490,7 @@ var tappable_meter_default = {
       (it, i) => `<label class="pg-tm-item" for="${domId}-it${i}"><input id="${domId}-it${i}" data-role="item" data-idx="${i}" data-weight="${Number(it.weight) || 0}" type="checkbox"><span>${esc(it.label)}</span></label>`
     ).join("");
     const gauge = `<svg viewBox="0 0 220 130" role="img" aria-label="${esc(meterLabel || "meter")}" class="pg-tm-gauge"><path d="M20 120 A100 100 0 0 1 200 120" fill="none" stroke="#23304a" stroke-width="16" stroke-linecap="round"/><path data-role="arc" d="M20 120 A100 100 0 0 1 200 120" fill="none" stroke="#22d3ee" stroke-width="16" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/><text data-role="pct" x="110" y="100" fill="#fff" font-size="34" font-weight="700" text-anchor="middle">0%</text></svg>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-tm-grid"><div class="pg-tm-meter">${gauge}<div class="pg-readout" data-role="verdict" aria-live="polite"></div>` + (meterLabel ? `<div class="pg-tm-caption">${esc(meterLabel)}</div>` : "") + `</div><div class="pg-tm-list" role="group" aria-label="Checklist items">${rows}</div></div><div class="pg-controls pg-tm-controls"><button type="button" data-role="run" class="pg-tm-btn">${esc(runLabel)}</button><button type="button" data-role="reset" class="pg-tm-btn">${esc(resetLabel)}</button>` + skipBtn + `</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-tm-grid"><div class="pg-tm-meter">${gauge}<div class="pg-readout" data-role="verdict" aria-live="polite"></div>` + (meterLabel ? `<div class="pg-tm-caption">${esc(meterLabel)}</div>` : "") + `</div><div class="pg-tm-list" role="group" aria-label="Checklist items">${rows}</div></div><div class="pg-controls pg-tm-controls"><button type="button" data-role="run" class="pg-tm-btn">${esc(runLabel)}</button><button type="button" data-role="reset" class="pg-tm-btn">${esc(resetLabel)}</button>` + skipBtn + `</div></div>`;
     const css = [
       `#${domId} .pg-tm-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-tm-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:1.2rem;align-items:center}`,
@@ -3650,7 +5541,7 @@ if(resetBtn)resetBtn.addEventListener('click',function(){setAll(false);});
 if(skipBtn)skipBtn.addEventListener('click',skip);
 setAll(false);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -3747,7 +5638,7 @@ var mixer_default = {
       (s) => `<div class="pg-field"><label for="${domId}-${esc(s.key)}">${esc(s.label)} <b data-val="${esc(s.key)}"></b></label><input id="${domId}-${esc(s.key)}" data-key="${esc(s.key)}" data-unit="${esc(s.unit || "")}" type="range" min="${s.min}" max="${s.max}" step="${s.step || 1}" value="${s.value}"></div>`
     ).join("");
     const outputPanel = mode === "colour" ? `<div class="pg-mx-swatch" data-role="swatch" role="img" aria-label="Mixed colour"></div><div class="pg-readout">hex <b data-role="out"></b></div>` : `<div class="pg-readout pg-mx-number"><b data-role="out"></b></div><div class="pg-mx-verdict" data-role="verdict" aria-live="polite"></div>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-mx-grid"><div class="pg-mx-out">${outputPanel}${caption}</div><div class="pg-controls">${controls}</div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-mx-grid"><div class="pg-mx-out">${outputPanel}${caption}</div><div class="pg-controls">${controls}</div></div></div>`;
     const css = [
       `#${domId} .pg-mx-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-mx-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:1.2rem;align-items:center}`,
@@ -3795,7 +5686,7 @@ function render(){
 inputs.forEach(function(i){i.addEventListener('input',render);});
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -3843,33 +5734,33 @@ var stopwatch_default = {
   },
   presets: [
     {
-      name: "The 28-second leg",
+      name: "Dinner, two ways",
       params: {
-        title: "How long did the amputation take?",
-        compareLine: "Robert Liston operated for speed, in the years before anaesthesia made speed beside the point.",
+        title: "How long does dinner take?",
+        compareLine: "Same craving; the clock tells two completely different stories.",
         runs: [
           {
-            label: "Liston, 1846",
-            seconds: 28,
+            label: "Instant noodles",
+            seconds: 120,
             accent: "#f472b6",
             stages: [
-              { at: 0, text: "Knife to skin. The patient is awake, held down, and counting." },
-              { at: 8, text: "Through the muscle in one circular sweep \u2014 no pause to look." },
-              { at: 16, text: "The saw takes the femur; an assistant clamps the great vessels." },
-              { at: 24, text: "Flap drawn over, first ligature thrown." },
-              { at: 28, text: "Done. Twenty-eight seconds, and the leg is off." }
+              { at: 0, text: "Kettle on, pot ready, packet torn open." },
+              { at: 30, text: "Water boiling; the noodle block goes in." },
+              { at: 60, text: "Stirring the block loose as it softens." },
+              { at: 90, text: "Seasoning stirred through; a quick taste." },
+              { at: 120, text: "Done. Two minutes, and dinner is served." }
             ]
           },
           {
-            label: "The modern way",
+            label: "A proper rag\xF9",
             seconds: 5400,
             accent: "#2dd4bf",
             stages: [
-              { at: 0, text: "Anaesthetised, prepped, draped. Nobody is in a hurry." },
-              { at: 600, text: "Tourniquet up; tissues divided in unhurried layers." },
-              { at: 2400, text: "Vessels and nerves handled individually, named and tied." },
-              { at: 4200, text: "Bone cut, edges smoothed, a myoplastic flap fashioned." },
-              { at: 5400, text: "Closed in layers over a drain. Ninety minutes, and it will heal." }
+              { at: 0, text: "Soffritto down low; onion, carrot and celery softening." },
+              { at: 600, text: "Mince browned in batches, not crowded, for colour." },
+              { at: 2400, text: "Wine in, reduced right down before the tomatoes." },
+              { at: 4200, text: "Barely a simmer now \u2014 a bubble every few seconds." },
+              { at: 5400, text: "Ninety minutes in, and it finally tastes like Sunday." }
             ]
           }
         ]
@@ -3914,7 +5805,7 @@ var stopwatch_default = {
       (r, i) => `<button type="button" data-role="run" data-idx="${i}" class="pg-sw-btn">${esc(r.label)}</button>`
     ).join("");
     const dial = `<svg viewBox="0 0 200 200" role="img" aria-label="Stopwatch dial with a sweeping hand and progress ring" class="pg-sw-dial"><circle cx="100" cy="100" r="84" fill="none" stroke="#23304a" stroke-width="3"/><circle data-role="ring" cx="100" cy="100" r="70" fill="none" stroke="#22d3ee" stroke-width="6" stroke-linecap="round" transform="rotate(-90 100 100)" stroke-dasharray="439.82" stroke-dashoffset="439.82"/><g data-role="marks"></g><line data-role="hand" x1="100" y1="100" x2="100" y2="30" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="100" cy="100" r="6" fill="#fff"/><text data-role="time" x="100" y="150" fill="#fff" font-size="22" font-family="monospace" text-anchor="middle">0:00</text></svg>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-sw-grid">${dial}<div class="pg-sw-side"><div class="pg-readout"><b data-role="status">Ready</b></div><div class="pg-sw-log" data-role="log" aria-live="polite"></div></div></div>${compare}<div class="pg-controls pg-sw-controls" role="group" aria-label="Run the stopwatch">` + buttons + `<button type="button" data-role="reset" class="pg-sw-btn pg-sw-reset">${esc(resetLabel)}</button></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-sw-grid">${dial}<div class="pg-sw-side"><div class="pg-readout"><b data-role="status">Ready</b></div><div class="pg-sw-log" data-role="log" aria-live="polite"></div></div></div>${compare}<div class="pg-controls pg-sw-controls" role="group" aria-label="Run the stopwatch">` + buttons + `<button type="button" data-role="reset" class="pg-sw-btn pg-sw-reset">${esc(resetLabel)}</button></div></div>`;
     const css = [
       `#${domId} .pg-sw-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-sw-grid{display:grid;grid-template-columns:auto 1fr;gap:1.2rem;align-items:center}`,
@@ -3995,7 +5886,7 @@ runBtns.forEach(function(b){b.addEventListener('click',function(){start(parseInt
 if(resetBtn)resetBtn.addEventListener('click',reset);
 reset();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4045,21 +5936,21 @@ var lever_geometry_default = {
   },
   presets: [
     {
-      name: "Rotator cuff lever",
+      name: "Spanner on a bolt",
       params: {
-        title: "Why the cuff lifts the arm \u2014 and the geometry that lets it",
-        armLabel: "Arm elevation",
+        title: "Why a spanner turns a bolt \u2014 and the geometry that lets it",
+        armLabel: "Spanner angle",
         pullLabel: "Line of pull",
         armRange: [0, 150],
         pullRange: [0, 180],
         armValue: 20,
         pullValue: 110,
-        outLabel: "lifting effect",
+        outLabel: "turning effect",
         bands: [
-          { max: 20, label: "cannot lift \u2014 the pull runs almost along the bone, into the joint", colour: "#f472b6" },
-          { max: 60, label: "some lift, but mostly compressing the joint", colour: "#fbbf24" },
-          { max: 85, label: "good leverage \u2014 most of the pull turns the arm", colour: "#22d3ee" },
-          { max: 100, label: "lifts cleanly \u2014 the pull is square to the bone", colour: "#2dd4bf" }
+          { max: 20, label: "will not turn \u2014 the pull runs almost along the shaft, into the bolt", colour: "#f472b6" },
+          { max: 60, label: "some turn, but mostly straining the bolt sideways", colour: "#fbbf24" },
+          { max: 85, label: "good leverage \u2014 most of the pull turns the bolt", colour: "#22d3ee" },
+          { max: 100, label: "turns cleanly \u2014 the pull is square to the spanner", colour: "#2dd4bf" }
         ]
       }
     },
@@ -4092,7 +5983,7 @@ var lever_geometry_default = {
     const pullValue = params.pullValue == null ? Math.round((pullRange[0] + pullRange[1]) / 2) : params.pullValue;
     const outLabel = params.outLabel || "turning effect";
     const diagram = `<svg viewBox="0 0 280 260" role="img" aria-label="A pivot with an arm and a line of pull; the perpendicular moment arm is shown" class="pg-lv-svg"><line data-role="ground" x1="20" y1="220" x2="260" y2="220" stroke="#23304a" stroke-width="2"/><line data-role="moment" stroke="#818cf8" stroke-width="2" stroke-dasharray="4 4"/><line data-role="arm" stroke="#2dd4bf" stroke-width="6" stroke-linecap="round"/><line data-role="pull" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" marker-end="url(#${domId}-arrow)"/><defs><marker id="${domId}-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#22d3ee"/></marker></defs><circle data-role="pivot" r="6" fill="#fff" stroke="#04060c" stroke-width="2"/></svg>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-lv-grid">${diagram}<div class="pg-lv-side"><div class="pg-readout">${esc(outLabel)} <b data-role="out">0%</b></div><div class="pg-lv-verdict" data-role="verdict" aria-live="polite"></div></div></div><div class="pg-controls pg-lv-controls"><div class="pg-field"><label for="${domId}-arm">${esc(armLabel)} <b data-role="armval"></b></label><input id="${domId}-arm" data-role="arm-in" type="range" min="${armRange[0]}" max="${armRange[1]}" step="1" value="${armValue}"></div><div class="pg-field"><label for="${domId}-pull">${esc(pullLabel)} <b data-role="pullval"></b></label><input id="${domId}-pull" data-role="pull-in" type="range" min="${pullRange[0]}" max="${pullRange[1]}" step="1" value="${pullValue}"></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-lv-grid">${diagram}<div class="pg-lv-side"><div class="pg-readout">${esc(outLabel)} <b data-role="out">0%</b></div><div class="pg-lv-verdict" data-role="verdict" aria-live="polite"></div></div></div><div class="pg-controls pg-lv-controls"><div class="pg-field"><label for="${domId}-arm">${esc(armLabel)} <b data-role="armval"></b></label><input id="${domId}-arm" data-role="arm-in" type="range" min="${armRange[0]}" max="${armRange[1]}" step="1" value="${armValue}"></div><div class="pg-field"><label for="${domId}-pull">${esc(pullLabel)} <b data-role="pullval"></b></label><input id="${domId}-pull" data-role="pull-in" type="range" min="${pullRange[0]}" max="${pullRange[1]}" step="1" value="${pullValue}"></div></div></div>`;
     const css = [
       `#${domId} .pg-lv-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-lv-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:center}`,
@@ -4143,7 +6034,7 @@ armIn.addEventListener('input',redraw);
 pullIn.addEventListener('input',redraw);
 redraw();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4210,7 +6101,7 @@ var sortable_priority_default = {
     const rows = items.map(
       (it, i) => `<li class="pg-sp-row" draggable="true" tabindex="0" data-role="row" data-idx="${i}" aria-label="${esc(it.label)}, position ${i + 1} of ${items.length}. Use arrow keys to move."><span class="pg-sp-rank" data-role="rank">${i + 1}</span><span class="pg-sp-body"><span class="pg-sp-label">${esc(it.label)}</span>` + (it.note ? `<span class="pg-sp-note">${esc(it.note)}</span>` : "") + `</span><span class="pg-sp-moves"><button type="button" class="pg-sp-mv" data-role="up" aria-label="Move ${esc(it.label)} up">\u25B2</button><button type="button" class="pg-sp-mv" data-role="down" aria-label="Move ${esc(it.label)} down">\u25BC</button></span></li>`
     ).join("");
-    const html = `<div class="pg-stage">${title}${prompt}<ol class="pg-sp-list" data-role="list" aria-label="Reorderable priority list">${rows}</ol><div class="pg-readout pg-sp-readout" data-role="readout" aria-live="polite"></div></div>`;
+    const html2 = `<div class="pg-stage">${title}${prompt}<ol class="pg-sp-list" data-role="list" aria-label="Reorderable priority list">${rows}</ol><div class="pg-readout pg-sp-readout" data-role="readout" aria-live="polite"></div></div>`;
     const css = [
       `#${domId} .pg-sp-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .5rem}`,
       `#${domId} .pg-sp-prompt{color:var(--ink-faint,#717d99);font-size:.85rem;margin:0 0 .9rem}`,
@@ -4288,7 +6179,7 @@ list.addEventListener('dragover',function(e){
 });
 renumber();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4326,9 +6217,9 @@ var quiz_reveal_default = {
         title: "Spot the error \u2014 myth or reality?",
         revealLabel: "Reveal the reality",
         cards: [
-          { prompt: "A dislocated shoulder should be relocated as fast as possible, by anyone to hand.", answer: "Reality: relocate promptly, but only after assessing for fracture and neurovascular injury.", detail: "Yanking a fracture-dislocation can turn a reducible joint into a surgical one." },
-          { prompt: "A normal X-ray rules out a scaphoid fracture.", answer: "Reality: early scaphoid fractures are often invisible on day-one films.", detail: "Treat the clinical suspicion; re-image or use MRI if tenderness persists." },
-          { prompt: "RICE \u2014 rest, ice, compression, elevation \u2014 is the gold standard for every soft-tissue injury.", answer: "Reality: prolonged rest and icing are now questioned; early controlled loading aids recovery.", detail: "The acronym outlived much of its evidence." }
+          { prompt: "Searing a steak seals in the juices.", answer: "Reality: searing browns the surface for flavour, but it does not seal anything in.", detail: "The crust tastes better; the moisture loss is much the same either way." },
+          { prompt: "Adding oil to the water stops pasta sticking together.", answer: "Reality: the oil floats on top and mostly runs off; stirring is what keeps pasta apart.", detail: "Save the oil for the sauce, where it actually helps." },
+          { prompt: "Alcohol all cooks off once the dish reaches a simmer.", answer: "Reality: some lingers \u2014 even after long cooking a small fraction can remain.", detail: "How much depends on time, heat, and the size of the pan." }
         ]
       }
     },
@@ -4339,9 +6230,9 @@ var quiz_reveal_default = {
         revealLabel: "Show answer",
         scoreLabel: "I got it",
         cards: [
-          { prompt: "Which nerve is most at risk in a surgical neck fracture of the humerus?", answer: "The axillary nerve.", detail: "Test the regimental badge area for sensation and deltoid for power." },
-          { prompt: "What is the unhappy triad of the knee?", answer: "ACL, MCL, and medial meniscus injury.", detail: "Classically from a lateral blow to a planted, flexed knee." },
-          { prompt: "Name the three-column concept used to assess thoracolumbar spine stability.", answer: "The Denis three-column model: anterior, middle, and posterior columns.", detail: "Two or more disrupted columns suggests instability." }
+          { prompt: "Which is the largest planet in the Solar System?", answer: "Jupiter.", detail: "It is more than twice as massive as all the other planets combined." },
+          { prompt: "What are the three primary colours of light?", answer: "Red, green, and blue.", detail: "Mixed at full strength they make white \u2014 the basis of every screen." },
+          { prompt: "Which river is the longest in the world?", answer: "It depends who you ask \u2014 the Nile and the Amazon both have a claim.", detail: "Measuring a river is harder than it sounds; the source is rarely a single point." }
         ]
       }
     }
@@ -4355,7 +6246,7 @@ var quiz_reveal_default = {
     const scoreLabel = esc(params.scoreLabel || "");
     const scoreBtn = hasScore ? `<button type="button" data-role="score" class="pg-qz-btn pg-qz-score">${scoreLabel}</button>` : "";
     const scoreOut = hasScore ? `<span class="pg-qz-tally">got <b data-role="gotcount">0</b>/<b data-role="seencount">0</b></span>` : `<span class="pg-qz-tally">seen <b data-role="seencount">0</b> of <b data-role="total">${n}</b></span>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-readout pg-qz-status"><span>card <b data-role="idx">1</b> of <b data-role="count">${n}</b></span>${scoreOut}</div><div class="pg-qz-card" data-role="card" aria-live="polite"><div class="pg-qz-prompt" data-role="prompt"></div><button type="button" data-role="reveal" class="pg-qz-btn pg-qz-reveal">${revealLabel}</button><div class="pg-qz-answer" data-role="answer" hidden><div class="pg-qz-ans-text" data-role="anstext"></div><div class="pg-qz-detail" data-role="detail"></div></div></div><div class="pg-controls pg-qz-controls"><div class="pg-qz-nav" role="group" aria-label="Step through cards"><button type="button" data-role="prev" class="pg-qz-btn">\u2039 Prev</button><button type="button" data-role="next" class="pg-qz-btn">Next \u203A</button></div>${scoreBtn}</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-readout pg-qz-status"><span>card <b data-role="idx">1</b> of <b data-role="count">${n}</b></span>${scoreOut}</div><div class="pg-qz-card" data-role="card" aria-live="polite"><div class="pg-qz-prompt" data-role="prompt"></div><button type="button" data-role="reveal" class="pg-qz-btn pg-qz-reveal">${revealLabel}</button><div class="pg-qz-answer" data-role="answer" hidden><div class="pg-qz-ans-text" data-role="anstext"></div><div class="pg-qz-detail" data-role="detail"></div></div></div><div class="pg-controls pg-qz-controls"><div class="pg-qz-nav" role="group" aria-label="Step through cards"><button type="button" data-role="prev" class="pg-qz-btn">\u2039 Prev</button><button type="button" data-role="next" class="pg-qz-btn">Next \u203A</button></div>${scoreBtn}</div></div>`;
     const css = [
       `#${domId} .pg-qz-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-qz-status{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.8rem}`,
@@ -4424,7 +6315,7 @@ if(scoreBtn)scoreBtn.addEventListener('click',function(){
 });
 go(0);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4498,7 +6389,7 @@ var chart_data_default = {
     const title = params.title ? `<div class="pg-ch-title">${esc(params.title)}</div>` : "";
     const xLabel = params.xLabel ? `<div class="pg-ch-xlabel">${esc(params.xLabel)}</div>` : "";
     const yLabel = params.yLabel ? `<text class="pg-ch-ylabel" x="14" y="20" fill="#717d99" font-size="11" transform="rotate(-90 14 20)" text-anchor="end">${esc(params.yLabel)}</text>` : "";
-    const html = `<div class="pg-stage">${title}<svg viewBox="0 0 380 230" role="img" aria-label="${esc((params.title || "Data") + " chart")}" class="pg-ch-svg"><line x1="44" y1="200" x2="364" y2="200" stroke="#3a4866"/><line x1="44" y1="14" x2="44" y2="200" stroke="#3a4866"/><g data-role="gridlabels"></g>` + yLabel + `<g data-role="plot"></g><g data-role="xticks"></g></svg>${xLabel}<div class="pg-readout pg-ch-readout" data-role="readout" aria-live="polite">Hover or tap a point to read its value.</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<svg viewBox="0 0 380 230" role="img" aria-label="${esc((params.title || "Data") + " chart")}" class="pg-ch-svg"><line x1="44" y1="200" x2="364" y2="200" stroke="#3a4866"/><line x1="44" y1="14" x2="44" y2="200" stroke="#3a4866"/><g data-role="gridlabels"></g>` + yLabel + `<g data-role="plot"></g><g data-role="xticks"></g></svg>${xLabel}<div class="pg-readout pg-ch-readout" data-role="readout" aria-live="polite">Hover or tap a point to read its value.</div></div>`;
     const css = [
       `#${domId} .pg-ch-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-ch-svg{width:100%;height:auto;display:block}`,
@@ -4601,7 +6492,7 @@ if(kind==='bar'){
   });
 }
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4652,7 +6543,7 @@ var before_after_default = {
     const afterLabel = params.afterLabel || "After";
     const beforeInner = params.beforeImg ? `<img src="${esc(params.beforeImg)}" alt="${esc(beforeLabel)}" class="pg-bw-img">` : params.beforeHtml || '<svg viewBox="0 0 200 200" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Before"><rect width="200" height="200" fill="#1e293b"/></svg>';
     const afterInner = params.afterImg ? `<img src="${esc(params.afterImg)}" alt="${esc(afterLabel)}" class="pg-bw-img">` : params.afterHtml || '<svg viewBox="0 0 200 200" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="After"><rect width="200" height="200" fill="#0f2d2a"/></svg>';
-    const html = `<div class="pg-stage">${title}<div class="pg-bw-frame" data-role="frame"><div class="pg-bw-after">${afterInner}<span class="pg-bw-tag pg-bw-tag-r">${esc(afterLabel)}</span></div><div class="pg-bw-before" data-role="before"><div class="pg-bw-beforeinner" data-role="beforeinner">${beforeInner}<span class="pg-bw-tag pg-bw-tag-l">${esc(beforeLabel)}</span></div></div><div class="pg-bw-handle" data-role="handle" aria-hidden="true"><span class="pg-bw-grip"></span></div></div><div class="pg-controls pg-bw-controls"><div class="pg-field"><label for="${domId}-wipe">Wipe position <b data-role="pctval">50%</b></label><input id="${domId}-wipe" data-role="wipe" type="range" min="0" max="100" step="1" value="50" aria-label="Wipe position"></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-bw-frame" data-role="frame"><div class="pg-bw-after">${afterInner}<span class="pg-bw-tag pg-bw-tag-r">${esc(afterLabel)}</span></div><div class="pg-bw-before" data-role="before"><div class="pg-bw-beforeinner" data-role="beforeinner">${beforeInner}<span class="pg-bw-tag pg-bw-tag-l">${esc(beforeLabel)}</span></div></div><div class="pg-bw-handle" data-role="handle" aria-hidden="true"><span class="pg-bw-grip"></span></div></div><div class="pg-controls pg-bw-controls"><div class="pg-field"><label for="${domId}-wipe">Wipe position <b data-role="pctval">50%</b></label><input id="${domId}-wipe" data-role="wipe" type="range" min="0" max="100" step="1" value="50" aria-label="Wipe position"></div></div></div>`;
     const css = [
       `#${domId} .pg-bw-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-bw-frame{position:relative;width:100%;aspect-ratio:16/10;border:1px solid var(--line,#23304a);border-radius:12px;overflow:hidden;background:#04060c;touch-action:none;user-select:none;cursor:ew-resize}`,
@@ -4703,7 +6594,7 @@ wipe.addEventListener('input',function(){set(parseFloat(wipe.value)||0);});
 window.addEventListener('resize',function(){set(parseFloat(wipe.value)||50);});
 set(50);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4750,15 +6641,15 @@ var hotspots_default = {
       }
     },
     {
-      name: "Anatomy points",
+      name: "Parts of a flower",
       params: {
-        title: "A stylised joint \u2014 tap the labelled points",
+        title: "A flower \u2014 tap the labelled parts",
         viewBox: "0 0 400 300",
         spots: [
-          { x: 150, y: 90, label: "Head", note: "The rounded articular surface that sits in the socket." },
-          { x: 250, y: 120, label: "Socket", note: "The shallow cup the head rotates within; depth aids stability." },
-          { x: 130, y: 200, label: "Shaft", note: "The long bone that transmits load away from the joint." },
-          { x: 280, y: 210, label: "Soft-tissue envelope", note: "Capsule and surrounding tissue that guide and restrain motion." }
+          { x: 150, y: 90, label: "Petal", note: "The showy petals whose colour and scent draw pollinators in." },
+          { x: 250, y: 120, label: "Stamen", note: "The stamen holds the pollen at the tip of a slender filament." },
+          { x: 130, y: 200, label: "Stem", note: "The stem carries water up from the roots and holds the bloom aloft." },
+          { x: 280, y: 210, label: "Leaf", note: "The leaf turns sunlight, water and air into sugar for the plant." }
         ]
       }
     }
@@ -4769,7 +6660,7 @@ var hotspots_default = {
     const defaultSvg = `<rect x="40" y="40" width="320" height="220" rx="24" fill="#0d1626" stroke="#23304a" stroke-width="2"/><circle cx="200" cy="150" r="70" fill="none" stroke="#1c4f4a" stroke-width="2" stroke-dasharray="5 6"/><line x1="40" y1="150" x2="360" y2="150" stroke="#23304a" stroke-width="1"/><line x1="200" y1="40" x2="200" y2="260" stroke="#23304a" stroke-width="1"/>`;
     const backdrop = params.svg != null ? String(params.svg) : defaultSvg;
     const diagram = `<svg viewBox="${esc(viewBox2)}" role="img" aria-label="A diagram with tappable hotspots" class="pg-hs-svg" data-role="svg"><g data-role="backdrop">${backdrop}</g><g data-role="markers"></g></svg>`;
-    const html = `<div class="pg-stage">${title}<div class="pg-hs-grid">${diagram}<div class="pg-hs-side"><div class="pg-hs-tally"><b data-role="explored">0</b> of <b data-role="total">0</b> explored</div><div class="pg-hs-readout" data-role="readout" aria-live="polite"><div class="pg-hs-label" data-role="label">Tap a marker</div><div class="pg-hs-note" data-role="note">Each point reveals a short note here.</div></div></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-hs-grid">${diagram}<div class="pg-hs-side"><div class="pg-hs-tally"><b data-role="explored">0</b> of <b data-role="total">0</b> explored</div><div class="pg-hs-readout" data-role="readout" aria-live="polite"><div class="pg-hs-label" data-role="label">Tap a marker</div><div class="pg-hs-note" data-role="note">Each point reveals a short note here.</div></div></div></div></div>`;
     const css = [
       `#${domId} .pg-hs-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-hs-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:1.2rem;align-items:center}`,
@@ -4820,7 +6711,7 @@ spots.forEach(function(sp,i){
 });
 tally();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4839,7 +6730,7 @@ var risk_grid_default = {
       total: { type: "number", title: "Total dots", default: 100, minimum: 10, maximum: 400 },
       affected: { type: "number", title: "Starting affected count", default: 5, minimum: 0 },
       columns: { type: "number", title: "Columns", default: 10, minimum: 4, maximum: 25 },
-      unit: { type: "string", title: "Unit (e.g. people, patients)", default: "people" },
+      unit: { type: "string", title: "Unit (e.g. people, items)", default: "people" },
       affectedColour: { type: "string", title: "Affected colour (hex)", default: "#f472b6" },
       interactive: { type: "boolean", title: "Show the slider", default: true },
       caption: { type: "string", title: "One-line caption" }
@@ -4847,13 +6738,13 @@ var risk_grid_default = {
   },
   presets: [
     {
-      name: "Surgical-site infection",
+      name: "Left-handers in a room",
       params: {
-        title: "Surgical-site infection after a clean elective case",
+        title: "Roughly 1 in 10 people are left-handed",
         total: 100,
-        affected: 2,
+        affected: 10,
         columns: 10,
-        unit: "operations",
+        unit: "people",
         affectedColour: "#f472b6",
         interactive: true,
         caption: "Illustrative \u2014 drag to see how the picture changes with the rate."
@@ -4884,7 +6775,7 @@ var risk_grid_default = {
     const caption = params.caption ? `<div class="pg-readout" data-role="cap">${esc(params.caption)}</div>` : "";
     const slider = interactive ? `<div class="pg-row"><label style="flex:1">Affected
            <input type="range" data-role="slider" min="0" max="${total}" value="${affected}" step="1" aria-label="Affected count"></label></div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-rg-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-rg-grid" data-role="grid" role="img"></div>` + slider + caption + `</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-rg-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-rg-grid" data-role="grid" role="img"></div>` + slider + caption + `</div>`;
     const css = [
       `#${domId} .pg-rg-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .7rem}`,
       `#${domId} .pg-rg-out{margin-bottom:.8rem;font-size:1rem}`,
@@ -4911,7 +6802,7 @@ function paint(n){
 if(slider)slider.addEventListener('input',function(){paint(parseInt(slider.value,10)||0);});
 paint(${affected});
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -4947,27 +6838,27 @@ var gauge_dial_default = {
   },
   presets: [
     {
-      name: "Risk score",
+      name: "Trail grade",
       params: {
-        title: "A made-up risk score",
+        title: "A walking-trail difficulty grade",
         min: 0,
         max: 10,
         value: 3,
         unit: "",
-        zones: [{ from: 0, to: 3, colour: "#2dd4bf", label: "low" }, { from: 3, to: 7, colour: "#fbbf24", label: "watch" }, { from: 7, to: 10, colour: "#f472b6", label: "high" }],
-        caption: "Drag the needle \u2014 note how the same number lands in a different zone."
+        zones: [{ from: 0, to: 3, colour: "#2dd4bf", label: "easy" }, { from: 3, to: 7, colour: "#fbbf24", label: "moderate" }, { from: 7, to: 10, colour: "#f472b6", label: "tough" }],
+        caption: "Drag the needle \u2014 note how the same number lands in a different band."
       }
     },
     {
-      name: "Saturation",
+      name: "Battery charge",
       params: {
-        title: "Oxygen saturation",
+        title: "Laptop battery charge",
         min: 80,
         max: 100,
         value: 97,
         unit: "%",
-        zones: [{ from: 80, to: 92, colour: "#f472b6", label: "low" }, { from: 92, to: 95, colour: "#fbbf24", label: "borderline" }, { from: 95, to: 100, colour: "#2dd4bf", label: "fine" }],
-        caption: "Illustrative zones, not clinical advice."
+        zones: [{ from: 80, to: 92, colour: "#f472b6", label: "topping up" }, { from: 92, to: 95, colour: "#fbbf24", label: "nearly full" }, { from: 95, to: 100, colour: "#2dd4bf", label: "full" }],
+        caption: "Illustrative zones, not a real reading."
       }
     }
   ],
@@ -4977,7 +6868,7 @@ var gauge_dial_default = {
     const unit = esc(params.unit || "");
     const title = params.title ? `<div class="pg-gd-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-readout" data-role="cap">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<svg class="pg-gd-svg" viewBox="0 0 200 120" data-role="svg" role="img" aria-label="gauge"><path d="M 16 100 A 84 84 0 0 1 184 100" fill="none" stroke="rgba(140,160,200,.18)" stroke-width="12" stroke-linecap="round"></path><g data-role="zones"></g><line data-role="needle" x1="100" y1="100" x2="100" y2="20" stroke="#e9eef8" stroke-width="3" stroke-linecap="round"></line><circle cx="100" cy="100" r="7" fill="#e9eef8"></circle></svg><div class="pg-gd-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-row"><label style="flex:1">Value
+    const html2 = `<div class="pg-stage">${title}<svg class="pg-gd-svg" viewBox="0 0 200 120" data-role="svg" role="img" aria-label="gauge"><path d="M 16 100 A 84 84 0 0 1 184 100" fill="none" stroke="rgba(140,160,200,.18)" stroke-width="12" stroke-linecap="round"></path><g data-role="zones"></g><line data-role="needle" x1="100" y1="100" x2="100" y2="20" stroke="#e9eef8" stroke-width="3" stroke-linecap="round"></line><circle cx="100" cy="100" r="7" fill="#e9eef8"></circle></svg><div class="pg-gd-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-row"><label style="flex:1">Value
          <input type="range" data-role="slider" min="${min}" max="${max}" value="${value}" step="${max - min > 20 ? 1 : "any"}" aria-label="Value"></label></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-gd-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .5rem}`,
@@ -5014,7 +6905,7 @@ function set(v){
 if(slider)slider.addEventListener('input',function(){set(parseFloat(slider.value));});
 set(${value});
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5054,26 +6945,26 @@ var flip_cards_default = {
     {
       name: "Myth-buster",
       params: {
-        title: "Three things people get wrong about fractures",
+        title: "Three things people get wrong about bread",
         columns: 3,
         accent: "#22d3ee",
         cards: [
-          { front: "\u201CIf you can move it, it isn\u2019t broken.\u201D", back: "You can often move a broken bone \u2014 the muscles still work. Movement rules nothing out.", tag: "Myth" },
-          { front: "\u201CA hairline crack will heal on its own.\u201D", back: "Usually, yes \u2014 but position and load matter. Some need fixing to heal straight.", tag: "Mostly" },
-          { front: "\u201COnce the cast is off, you\u2019re better.\u201D", back: "The bone is united, not finished. Stiffness and weakness take longer than the cast.", tag: "Myth" }
+          { front: "\u201CKneading longer always makes a better loaf.\u201D", back: "Past a point it does little \u2014 time and folding build the same structure with less effort.", tag: "Myth" },
+          { front: "\u201CA loaf is done when the top looks golden.\u201D", back: "Usually a good sign \u2014 but colour and doneness differ. A tap or a probe tells you more.", tag: "Mostly" },
+          { front: "\u201CFresh from the oven is the best time to slice.\u201D", back: "The crumb is still setting. Cutting too soon leaves it gummy; let it cool first.", tag: "Myth" }
         ]
       }
     },
     {
       name: "Term \u2192 meaning",
       params: {
-        title: "Three words surgeons use",
+        title: "Three words typographers use",
         columns: 3,
         accent: "#818cf8",
         cards: [
-          { front: "Reduction", back: "Putting the broken ends back where they belong \u2014 closed (by hand) or open (surgery).", tag: "Term" },
-          { front: "Non-union", back: "A fracture that has stopped trying to heal. Different from one that is simply slow.", tag: "Term" },
-          { front: "Arthroplasty", back: "Replacing a joint surface with an implant \u2014 \u201Cplasty\u201D = reshaping.", tag: "Term" }
+          { front: "Kerning", back: "Adjusting the space between two particular letters so the word looks even.", tag: "Term" },
+          { front: "Leading", back: "The vertical space between lines of type. Named after the strips of lead once used.", tag: "Term" },
+          { front: "Ligature", back: "Two letters drawn as one shape \u2014 like \u201Cfi\u201D \u2014 to avoid an awkward collision.", tag: "Term" }
         ]
       }
     }
@@ -5084,7 +6975,7 @@ var flip_cards_default = {
     const accent = /^#[0-9a-fA-F]{3,8}$/.test(params.accent || "") ? params.accent : "#22d3ee";
     const title = params.title ? `<div class="pg-fc-title">${esc(params.title)}</div>` : "";
     const cardsHtml = cards.map((c, i) => `<button type="button" class="pg-fc-card" data-role="card" aria-pressed="false"><span class="pg-fc-face pg-fc-front">${esc(c.front)}<span class="pg-fc-hint">tap to reveal</span></span><span class="pg-fc-face pg-fc-back">${c.tag ? `<span class="pg-fc-tag">${esc(c.tag)}</span>` : ""}<span>${esc(c.back)}</span></span></button>`).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-fc-grid" data-role="grid">${cardsHtml}</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-fc-grid" data-role="grid">${cardsHtml}</div></div>`;
     const css = [
       `#${domId} .pg-fc-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .8rem}`,
       `#${domId} .pg-fc-grid{display:grid;grid-template-columns:1fr;gap:.7rem}`,
@@ -5108,7 +6999,7 @@ $$('[data-role=card]').forEach(function(card){
   });
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5117,7 +7008,7 @@ var layer_peel_default = {
   id: "layer-peel",
   name: "Layer peel",
   category: "diagram",
-  description: "Concentric layers you toggle to peel down to the core (tissue planes, scan layers, a stack of abstractions).",
+  description: "Concentric layers you toggle to peel down to the core (a forest canopy, map layers, a stack of abstractions).",
   paramsSchema: {
     type: "object",
     additionalProperties: false,
@@ -5141,15 +7032,15 @@ var layer_peel_default = {
   },
   presets: [
     {
-      name: "Tissue planes",
+      name: "Forest layers",
       params: {
-        title: "What the scalpel goes through",
+        title: "Peel down through the canopy",
         caption: "Peel a layer off to see what is underneath.",
         layers: [
-          { name: "Skin", colour: "#f472b6", note: "Skin \u2014 the bit everyone sees, and the bit that scars." },
-          { name: "Fat", colour: "#fbbf24", note: "Subcutaneous fat \u2014 variable, and it bleeds." },
-          { name: "Muscle", colour: "#fb7185", note: "Muscle \u2014 split along its fibres where you can." },
-          { name: "Bone", colour: "#e9eef8", note: "Bone \u2014 the thing we actually came for." }
+          { name: "Canopy", colour: "#2dd4bf", note: "Canopy \u2014 the sunlit roof, where most of the leaves are." },
+          { name: "Understory", colour: "#22d3ee", note: "Understory \u2014 young trees waiting for a gap to open." },
+          { name: "Shrubs", colour: "#818cf8", note: "Shrub layer \u2014 ferns, brambles and berries." },
+          { name: "Forest floor", colour: "#e9eef8", note: "Forest floor \u2014 where everything is quietly recycled." }
         ]
       }
     },
@@ -5171,7 +7062,7 @@ var layer_peel_default = {
     const layers = (Array.isArray(params.layers) ? params.layers : []).slice(0, 6);
     const title = params.title ? `<div class="pg-lp-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-lp-cap-static pg-readout">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<svg class="pg-lp-svg" viewBox="0 0 260 170" data-role="svg" role="img" aria-label="layered figure"></svg><div class="pg-lp-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-lp-legend" data-role="legend" role="group" aria-label="Toggle layers"></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">${title}<svg class="pg-lp-svg" viewBox="0 0 260 170" data-role="svg" role="img" aria-label="layered figure"></svg><div class="pg-lp-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-lp-legend" data-role="legend" role="group" aria-label="Toggle layers"></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-lp-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .6rem}`,
       `#${domId} .pg-lp-svg{display:block;width:100%;max-width:380px;margin-inline:auto}`,
@@ -5230,7 +7121,7 @@ L.forEach(function(layer,i){
 });
 refresh();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5260,7 +7151,7 @@ var dice_roller_default = {
     const sides = Math.max(2, Math.min(20, Math.round(params.sides || 6)));
     const colour = /^#[0-9a-fA-F]{3,8}$/.test(params.colour || "") ? params.colour : "#22d3ee";
     const title = params.title ? `<div class="pg-dr-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-controls"><div class="pg-row"><button type="button" class="pg-dr-btn" data-role="once">Roll once</button><button type="button" class="pg-dr-btn pg-dr-batch" data-role="batch">Roll \xD71000</button><button type="button" class="pg-dr-btn pg-dr-reset" data-role="reset">Reset</button></div></div><div class="pg-readout">Last roll: <b data-role="last">\u2014</b> \xB7 Rolls so far: <b data-role="total">0</b></div><div class="pg-dr-chart" data-role="chart"></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-controls"><div class="pg-row"><button type="button" class="pg-dr-btn" data-role="once">Roll once</button><button type="button" class="pg-dr-btn pg-dr-batch" data-role="batch">Roll \xD71000</button><button type="button" class="pg-dr-btn pg-dr-reset" data-role="reset">Reset</button></div></div><div class="pg-readout">Last roll: <b data-role="last">\u2014</b> \xB7 Rolls so far: <b data-role="total">0</b></div><div class="pg-dr-chart" data-role="chart"></div></div>`;
     const css = [
       `#${domId} .pg-dr-title{font-weight:700;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-dr-btn{font:inherit;font-weight:600;cursor:pointer;border:1px solid ${colour}66;background:rgba(34,211,238,.08);color:var(--ink,#e9eef8);padding:.45rem .8rem;border-radius:9px;transition:background .15s,border-color .15s}`,
@@ -5326,7 +7217,7 @@ if(resetBtn)resetBtn.addEventListener('click',function(){
 
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5350,7 +7241,7 @@ var reaction_timer_default = {
   ],
   build(params, domId) {
     const title = params.title ? `<div class="pg-rt-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-rt-pad" data-role="pad" role="button" tabindex="0" aria-live="polite">Tap to start</div><div class="pg-readout pg-rt-out" data-role="out">Tap the pad and wait for green.</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-rt-pad" data-role="pad" role="button" tabindex="0" aria-live="polite">Tap to start</div><div class="pg-readout pg-rt-out" data-role="out">Tap the pad and wait for green.</div></div>`;
     const css = [
       `#${domId} .pg-rt-title{font-weight:600;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-rt-pad{display:flex;align-items:center;justify-content:center;text-align:center;min-height:200px;padding:1.2rem;border-radius:14px;border:1px solid var(--line,#23304a);background:rgba(140,160,200,.08);color:var(--ink,#e9eef8);font-size:1.4rem;font-weight:700;cursor:pointer;user-select:none;transition:background .15s,border-color .15s,color .15s}`,
@@ -5412,7 +7303,7 @@ pad.addEventListener('keydown',function(e){
   if(e.key===' '||e.key==='Enter'){ e.preventDefault(); handle(); }
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5448,7 +7339,7 @@ var tip_split_default = {
     const people = Math.round(clamp(params.people, 1, 12, 2));
     const currency = typeof params.currency === "string" && params.currency ? params.currency.slice(0, 3) : "\xA3";
     const title = params.title ? `<div class="pg-ts-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-controls"><div class="pg-field"><label>Bill <b data-role="bill-val">${esc(currency)}${bill.toFixed(2)}</b></label><input type="range" data-role="bill" min="0" max="300" step="1" value="${bill}"></div><div class="pg-field"><label>Tip <b data-role="tip-val">${tipPct}%</b></label><input type="range" data-role="tip" min="0" max="30" step="0.5" value="${tipPct}"></div><div class="pg-field"><label>People <b data-role="people-val">${people}</b></label><input type="range" data-role="people" min="1" max="12" step="1" value="${people}"></div></div><div class="pg-readout"><div class="pg-ts-line"><span>Tip amount</span><b data-role="tip-amt">\u2014</b></div><div class="pg-ts-line"><span>Total</span><b data-role="total">\u2014</b></div><div class="pg-ts-line pg-ts-per"><span>Per person</span><b data-role="per">\u2014</b></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-controls"><div class="pg-field"><label>Bill <b data-role="bill-val">${esc(currency)}${bill.toFixed(2)}</b></label><input type="range" data-role="bill" min="0" max="300" step="1" value="${bill}"></div><div class="pg-field"><label>Tip <b data-role="tip-val">${tipPct}%</b></label><input type="range" data-role="tip" min="0" max="30" step="0.5" value="${tipPct}"></div><div class="pg-field"><label>People <b data-role="people-val">${people}</b></label><input type="range" data-role="people" min="1" max="12" step="1" value="${people}"></div></div><div class="pg-readout"><div class="pg-ts-line"><span>Tip amount</span><b data-role="tip-amt">\u2014</b></div><div class="pg-ts-line"><span>Total</span><b data-role="total">\u2014</b></div><div class="pg-ts-line pg-ts-per"><span>Per person</span><b data-role="per">\u2014</b></div></div></div>`;
     const css = [
       `#${domId} .pg-ts-title{font-weight:600;color:#e9eef8;margin-bottom:.8rem}`,
       `#${domId} .pg-controls{display:grid;gap:.9rem;margin-bottom:1rem}`,
@@ -5487,7 +7378,7 @@ function recompute(){
 [billEl, tipEl, peopleEl].forEach(function(el){ el.addEventListener('input', recompute); });
 recompute();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5523,7 +7414,7 @@ var compound_growth_default = {
     const years = Math.round(clamp(params.years, 1, 40, 30));
     const currency = typeof params.currency === "string" && params.currency.trim() ? params.currency.trim().slice(0, 3) : "\xA3";
     const title = params.title ? `<div class="pg-cg-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}
+    const html2 = `<div class="pg-stage">${title}
 <div class="pg-controls">
   <div class="pg-row pg-field"><label><b>Monthly saving</b> <span class="pg-readout" data-role="out-monthly"></span></label>
     <input type="range" data-role="monthly" min="0" max="500" step="5" value="${monthly}"></div>
@@ -5599,7 +7490,7 @@ function recompute(){
 [mEl,rEl,yEl].forEach(function(el){ el.addEventListener('input', recompute); });
 recompute();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5633,7 +7524,7 @@ var countdown_default = {
       ["mins", "Minutes"],
       ["secs", "Seconds"]
     ].map(([role, label2]) => `<div class="pg-cd-cell"><span class="pg-cd-num pg-readout" data-role="${role}">\u2013</span><span class="pg-cd-label">${label2}</span></div>`).join("");
-    const html = `<div class="pg-stage" data-target="${target}" data-done="${doneText}">${title}<div class="pg-cd-grid" data-role="grid">${cells}</div><div class="pg-cd-done" data-role="done" hidden></div></div>`;
+    const html2 = `<div class="pg-stage" data-target="${target}" data-done="${doneText}">${title}<div class="pg-cd-grid" data-role="grid">${cells}</div><div class="pg-cd-done" data-role="done" hidden></div></div>`;
     const css = [
       `#${domId} .pg-cd-title{font-weight:600;margin-bottom:.8rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-cd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem}`,
@@ -5666,7 +7557,7 @@ if(isNaN(target.getTime())){show('Set a target date');return;}
 tick();
 root._cdTimer=setInterval(tick,1000);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5690,7 +7581,7 @@ var bpm_tap_default = {
   ],
   build(params, domId) {
     const title = params.title ? `<div class="pg-bt-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-bt-wrap"><button type="button" class="pg-bt-tap" data-role="tap"><span class="pg-bt-dot" data-role="dot"></span><span class="pg-bt-label">Tap</span></button><div class="pg-readout pg-bt-readout"><div class="pg-bt-bpm"><b data-role="bpm">\u2014</b> <span class="pg-bt-unit">BPM</span></div><div class="pg-bt-meta" data-role="meta">Keep tapping\u2026</div></div></div><div class="pg-controls"><button type="button" class="pg-bt-reset" data-role="reset">Reset</button></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-bt-wrap"><button type="button" class="pg-bt-tap" data-role="tap"><span class="pg-bt-dot" data-role="dot"></span><span class="pg-bt-label">Tap</span></button><div class="pg-readout pg-bt-readout"><div class="pg-bt-bpm"><b data-role="bpm">\u2014</b> <span class="pg-bt-unit">BPM</span></div><div class="pg-bt-meta" data-role="meta">Keep tapping\u2026</div></div></div><div class="pg-controls"><button type="button" class="pg-bt-reset" data-role="reset">Reset</button></div></div>`;
     const css = [
       `#${domId} .pg-bt-title{font-weight:600;margin-bottom:.7rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-bt-wrap{display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap}`,
@@ -5751,7 +7642,7 @@ tap.addEventListener('click',onTap);
 if(reset)reset.addEventListener('click',clear);
 clear();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5783,7 +7674,7 @@ var word_stats_default = {
     const wpm = Math.round(clamp(params.wpm, 50, 1e3, 200));
     const placeholder = typeof params.placeholder === "string" && params.placeholder ? params.placeholder.slice(0, 120) : "Type or paste anything\u2026";
     const title = params.title ? `<div class="pg-ws-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<textarea class="pg-ws-input" data-role="in" rows="5" placeholder="${esc(placeholder)}"></textarea><div class="pg-readout pg-ws-cells"><div class="pg-ws-cell"><b data-role="words">0</b><span>Words</span></div><div class="pg-ws-cell"><b data-role="chars">0</b><span>Characters</span></div><div class="pg-ws-cell"><b data-role="sentences">0</b><span>Sentences</span></div><div class="pg-ws-cell"><b data-role="reading">&lt;1 min</b><span>Reading time</span></div><div class="pg-ws-cell"><b data-role="speaking">&lt;1 min</b><span>Speaking time</span></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<textarea class="pg-ws-input" data-role="in" rows="5" placeholder="${esc(placeholder)}"></textarea><div class="pg-readout pg-ws-cells"><div class="pg-ws-cell"><b data-role="words">0</b><span>Words</span></div><div class="pg-ws-cell"><b data-role="chars">0</b><span>Characters</span></div><div class="pg-ws-cell"><b data-role="sentences">0</b><span>Sentences</span></div><div class="pg-ws-cell"><b data-role="reading">&lt;1 min</b><span>Reading time</span></div><div class="pg-ws-cell"><b data-role="speaking">&lt;1 min</b><span>Speaking time</span></div></div></div>`;
     const css = [
       `#${domId} .pg-ws-title{font-weight:600;color:#e9eef8;margin-bottom:.8rem}`,
       `#${domId} .pg-ws-input{display:block;width:100%;box-sizing:border-box;min-height:6.5rem;resize:vertical;padding:.7rem .8rem;margin-bottom:1rem;border-radius:12px;border:1px solid #23304a;background:rgba(140,160,200,.06);color:#e9eef8;font:inherit;line-height:1.5}`,
@@ -5826,7 +7717,7 @@ function recompute(){
 inEl.addEventListener('input', recompute);
 recompute();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5854,7 +7745,7 @@ var wheel_spinner_default = {
     const options = all3.slice(0, 8);
     while (options.length < 2) options.push("Option " + (options.length + 1));
     const title = params.title ? `<div class="pg-ws-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-ws-wrap"><svg class="pg-ws-svg" viewBox="0 0 200 200" role="img" aria-label="Decision wheel"><g data-role="wheel" transform="rotate(0 100 100)"></g><polygon class="pg-ws-pointer" points="100,6 92,24 108,24"></polygon><circle class="pg-ws-hub" cx="100" cy="100" r="10"></circle></svg></div><div class="pg-controls"><div class="pg-row"><button type="button" class="pg-ws-btn" data-role="spin">Spin</button></div></div><div class="pg-readout pg-ws-out" data-role="out">Give it a spin.</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-ws-wrap"><svg class="pg-ws-svg" viewBox="0 0 200 200" role="img" aria-label="Decision wheel"><g data-role="wheel" transform="rotate(0 100 100)"></g><polygon class="pg-ws-pointer" points="100,6 92,24 108,24"></polygon><circle class="pg-ws-hub" cx="100" cy="100" r="10"></circle></svg></div><div class="pg-controls"><div class="pg-row"><button type="button" class="pg-ws-btn" data-role="spin">Spin</button></div></div><div class="pg-readout pg-ws-out" data-role="out">Give it a spin.</div></div>`;
     const css = [
       `#${domId} .pg-ws-title{font-weight:700;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-ws-wrap{display:flex;justify-content:center;margin:.2rem 0 .8rem}`,
@@ -5942,7 +7833,7 @@ function spin(){
 
 spinBtn.addEventListener('click',spin);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -5971,7 +7862,7 @@ var memory_match_default = {
     const title = params.title ? `<div class="pg-mm-title">${esc(params.title)}</div>` : "";
     const pairs = symbols.length;
     const cols = pairs <= 3 ? 3 : pairs <= 4 ? 4 : pairs <= 6 ? 4 : 4;
-    const html = `<div class="pg-stage">${title}<div class="pg-readout">Moves: <b data-role="moves">0</b><span class="pg-mm-win" data-role="win" hidden></span></div><div class="pg-mm-grid" data-role="grid" role="grid" aria-label="Memory cards"></div><div class="pg-controls"><div class="pg-row"><button type="button" class="pg-mm-btn" data-role="restart">Restart</button></div></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-readout">Moves: <b data-role="moves">0</b><span class="pg-mm-win" data-role="win" hidden></span></div><div class="pg-mm-grid" data-role="grid" role="grid" aria-label="Memory cards"></div><div class="pg-controls"><div class="pg-row"><button type="button" class="pg-mm-btn" data-role="restart">Restart</button></div></div></div>`;
     const css = [
       `#${domId} .pg-mm-title{font-weight:700;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-readout{margin:.2rem 0 .8rem;color:var(--ink-dim,#cdd6e6)}`,
@@ -6090,7 +7981,7 @@ function onFlip(card){
 if(restartBtn)restartBtn.addEventListener('click',deal);
 deal();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6122,7 +8013,7 @@ var star_rating_default = {
     for (let i = 1; i <= max; i++) {
       stars += `<button type="button" class="pg-sr-star" data-role="star" data-value="${i}" aria-label="Rate ${i} of ${max}" aria-pressed="false">\u2605</button>`;
     }
-    const html = `<div class="pg-stage">${title}<div class="pg-sr-row" data-role="stars" role="radiogroup" aria-label="Star rating">${stars}</div><div class="pg-readout pg-sr-readout" data-role="readout" aria-live="polite">Tap to rate</div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-sr-row" data-role="stars" role="radiogroup" aria-label="Star rating">${stars}</div><div class="pg-readout pg-sr-readout" data-role="readout" aria-live="polite">Tap to rate</div></div>`;
     const css = [
       `#${domId} .pg-sr-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.6rem}`,
       `#${domId} .pg-sr-row{display:flex;gap:.25rem;flex-wrap:wrap}`,
@@ -6167,7 +8058,7 @@ stars.forEach(function(s){
 });
 paint(0);show(0);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6235,7 +8126,7 @@ var emoji_slider_default = {
     while (stops.length < 2) stops.push({ at: 100, emoji: "\u2022", label: "" });
     const start = stops[Math.floor((stops.length - 1) / 2)];
     const title = params.title ? `<div class="pg-es-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-es-readout" aria-live="polite"><div class="pg-es-emoji" data-role="emoji">${esc(start.emoji)}</div><div class="pg-es-label pg-readout" data-role="label">${esc(start.label)}</div></div><div class="pg-row"><label style="flex:1">Slide<input type="range" data-role="slider" min="0" max="100" value="${start.at}" step="1" aria-label="Scale position 0 to 100"></label></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-es-readout" aria-live="polite"><div class="pg-es-emoji" data-role="emoji">${esc(start.emoji)}</div><div class="pg-es-label pg-readout" data-role="label">${esc(start.label)}</div></div><div class="pg-row"><label style="flex:1">Slide<input type="range" data-role="slider" min="0" max="100" value="${start.at}" step="1" aria-label="Scale position 0 to 100"></label></div></div>`;
     const css = [
       `#${domId} .pg-es-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .6rem}`,
       `#${domId} .pg-es-readout{text-align:center;margin:.2rem 0 .8rem}`,
@@ -6273,7 +8164,7 @@ function set(v){
 slider.addEventListener('input',function(){set(parseFloat(slider.value));});
 last=nearest(parseFloat(slider.value));  // sync without popping on first paint
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6307,7 +8198,7 @@ var odometer_default = {
     const duration = Math.max(200, Math.min(1e4, Math.round(params.duration || 1500)));
     const title = params.title ? `<div class="pg-od-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-od-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-od-num" data-role="num" aria-live="polite"><span class="pg-od-fix">${esc(prefix)}</span><span class="pg-od-val">0</span><span class="pg-od-fix">${esc(suffix)}</span></div>${caption}<div class="pg-controls"><button type="button" class="pg-od-go" data-role="go">Reveal again</button></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-od-num" data-role="num" aria-live="polite"><span class="pg-od-fix">${esc(prefix)}</span><span class="pg-od-val">0</span><span class="pg-od-fix">${esc(suffix)}</span></div>${caption}<div class="pg-controls"><button type="button" class="pg-od-go" data-role="go">Reveal again</button></div></div>`;
     const css = [
       `#${domId} .pg-od-title{font-size:.95rem;color:var(--ink-dim,#cdd6e6);margin-bottom:.4rem}`,
       `#${domId} .pg-od-num{display:flex;align-items:baseline;justify-content:center;gap:.05em;font-weight:800;line-height:1;letter-spacing:-.02em;font-size:clamp(2.6rem,11vw,4.6rem);font-variant-numeric:tabular-nums;background:linear-gradient(90deg,#2dd4bf,#22d3ee,#818cf8);-webkit-background-clip:text;background-clip:text;color:transparent}`,
@@ -6340,7 +8231,7 @@ function run(){
 if(go)go.addEventListener('click',run);
 run();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6391,7 +8282,7 @@ var word_scramble_default = {
   build(params, domId) {
     const words = (Array.isArray(params.words) ? params.words : []).filter((w) => w && typeof w.word === "string" && w.word.trim()).slice(0, 12).map((w) => ({ word: String(w.word), hint: String(w.hint == null ? "" : w.hint) }));
     const title = params.title ? `<div class="pg-ws-title">${esc(params.title)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-ws-scramble" data-role="scramble" aria-live="polite"></div><div class="pg-ws-hint"><span class="pg-ws-hint-label">Hint</span> <span data-role="hint"></span></div><div class="pg-row pg-ws-entry"><input type="text" class="pg-ws-input" data-role="input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your answer"><button type="button" class="pg-ws-btn pg-ws-primary" data-role="check">Check</button></div><div class="pg-row pg-ws-actions"><button type="button" class="pg-ws-btn" data-role="reveal">Reveal</button><button type="button" class="pg-ws-btn" data-role="next">Next</button><span class="pg-ws-feedback" data-role="feedback" aria-live="polite"></span></div><div class="pg-readout pg-ws-readout"><span data-role="progress"></span> \xB7 Score <b data-role="score">0</b></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-ws-scramble" data-role="scramble" aria-live="polite"></div><div class="pg-ws-hint"><span class="pg-ws-hint-label">Hint</span> <span data-role="hint"></span></div><div class="pg-row pg-ws-entry"><input type="text" class="pg-ws-input" data-role="input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your answer"><button type="button" class="pg-ws-btn pg-ws-primary" data-role="check">Check</button></div><div class="pg-row pg-ws-actions"><button type="button" class="pg-ws-btn" data-role="reveal">Reveal</button><button type="button" class="pg-ws-btn" data-role="next">Next</button><span class="pg-ws-feedback" data-role="feedback" aria-live="polite"></span></div><div class="pg-readout pg-ws-readout"><span data-role="progress"></span> \xB7 Score <b data-role="score">0</b></div></div>`;
     const css = [
       `#${domId} .pg-ws-title{font-weight:600;margin-bottom:.6rem}`,
       `#${domId} .pg-ws-scramble{font-size:1.8rem;font-weight:700;letter-spacing:.35em;text-transform:uppercase;color:#22d3ee;margin:.2rem 0 .6rem;min-height:1.6em}`,
@@ -6494,7 +8385,7 @@ input.addEventListener('keydown', function(e){
 
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6547,7 +8438,7 @@ var colour_palette_default = {
     const title = params.title ? `<div class="pg-cp-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-cp-caption">${esc(params.caption)}</div>` : "";
     const swatchesHtml = swatches.map((s, i) => `<button type="button" class="pg-cp-swatch" data-role="swatch" data-hex="${esc(s.hex)}" data-name="${esc(s.name)}" style="background:${esc(s.hex)}" aria-pressed="${i === 0 ? "true" : "false"}"><span class="pg-cp-sr">${esc(s.name)}</span></button>`).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-cp-row" role="group">${swatchesHtml}</div><div class="pg-readout pg-cp-readout" data-role="readout" aria-live="polite"></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-cp-row" role="group">${swatchesHtml}</div><div class="pg-readout pg-cp-readout" data-role="readout" aria-live="polite"></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-cp-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.7rem}`,
       `#${domId} .pg-cp-row{display:flex;flex-wrap:wrap;gap:.6rem}`,
@@ -6578,7 +8469,7 @@ swatches.forEach(function(btn){
 var first=swatches.find(function(s){return s.getAttribute('aria-pressed')==='true';})||swatches[0];
 select(first);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6633,7 +8524,7 @@ var world_clocks_default = {
     const title = params.title ? `<div class="pg-wc-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-wc-caption">${esc(params.caption)}</div>` : "";
     const cardsHtml = cities.map((c) => `<div class="pg-wc-card" data-role="card" data-offset="${c.offset}"><div class="pg-wc-name">${esc(c.name)}</div><div class="pg-wc-time"><span class="pg-wc-hm" data-role="hm">--:--</span><span class="pg-wc-sec" data-role="sec">--</span></div><div class="pg-wc-glyph" data-role="glyph" aria-hidden="true">\xB7</div></div>`).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-wc-grid">${cardsHtml}</div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-wc-grid">${cardsHtml}</div>${caption}</div>`;
     const css = [
       `#${domId} .pg-wc-title{font-weight:700;font-size:1.05rem;margin-bottom:.7rem;color:#e9eef8}`,
       `#${domId} .pg-wc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem}`,
@@ -6673,7 +8564,7 @@ tick();
 if(root._wcTimer)clearInterval(root._wcTimer);
 root._wcTimer=setInterval(tick,1000);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6743,7 +8634,7 @@ var book_shelf_default = {
     const spines = books.map(
       (b, i) => `<button type="button" class="pg-bs-spine" data-role="spine" data-i="${i}" aria-pressed="false" style="--spine:${esc(b.colour)}"><span class="pg-bs-spine-text">${esc(b.title)}</span></button>`
     ).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-bs-shelf" role="group" aria-label="Bookshelf"><div class="pg-bs-row">${spines}</div><div class="pg-bs-board" aria-hidden="true"></div></div><div class="pg-bs-detail" data-role="detail" aria-live="polite"><span class="pg-bs-prompt">Pick a book.</span></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-bs-shelf" role="group" aria-label="Bookshelf"><div class="pg-bs-row">${spines}</div><div class="pg-bs-board" aria-hidden="true"></div></div><div class="pg-bs-detail" data-role="detail" aria-live="polite"><span class="pg-bs-prompt">Pick a book.</span></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-bs-title{font-weight:700;font-size:1.05rem;margin-bottom:.7rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-bs-shelf{display:flex;flex-direction:column;align-items:stretch}`,
@@ -6794,7 +8685,7 @@ spines.forEach(function(s){
   });
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -6862,7 +8753,7 @@ var map_route_default = {
     const title = params.title ? `<div class="pg-mr-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-mr-caption">${esc(params.caption)}</div>` : "";
     const dataJson = JSON.stringify(stops);
-    const html = `<div class="pg-stage">
+    const html2 = `<div class="pg-stage">
 ${title}
 <svg class="pg-mr-svg" data-role="svg" viewBox="0 0 100 64" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Route map"></svg>
 <div class="pg-readout" data-role="readout" aria-live="polite"></div>
@@ -7006,7 +8897,7 @@ if(play){ play.addEventListener('click', startPlay); }
 // initial readout: first stop selected, tapping works straight away
 arrive(0);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7067,7 +8958,7 @@ var recipe_scaler_default = {
     const maxServings = 24;
     const start = Math.min(maxServings, Math.max(1, baseServings));
     const rows = ingredients.map((g) => `<li class="pg-rs-row" data-role="ingredient" data-qty="${g.qty}" data-unit="${esc(g.unit)}"><span class="pg-rs-name">${esc(g.name)}</span><span class="pg-rs-amt"><b class="pg-rs-num" data-role="num">${g.qty}</b>` + (g.unit ? `<span class="pg-rs-unit">${esc(g.unit)}</span>` : "") + `</span></li>`).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="pg-controls"><label class="pg-field"><b>Servings</b><input type="range" data-role="servings" min="1" max="${maxServings}" step="1" value="${start}"></label><div class="pg-readout">for <b data-role="count">${start}</b> serving<span data-role="plural">${start === 1 ? "" : "s"}</span></div></div><ul class="pg-rs-list" data-base="${baseServings}">${rows}</ul>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-controls"><label class="pg-field"><b>Servings</b><input type="range" data-role="servings" min="1" max="${maxServings}" step="1" value="${start}"></label><div class="pg-readout">for <b data-role="count">${start}</b> serving<span data-role="plural">${start === 1 ? "" : "s"}</span></div></div><ul class="pg-rs-list" data-base="${baseServings}">${rows}</ul>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-rs-title{font-weight:700;font-size:1.05rem;margin:0 0 .6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-controls{display:flex;flex-direction:column;gap:.5rem;margin-bottom:.9rem}`,
@@ -7110,7 +9001,7 @@ function recompute(){
 slider.addEventListener('input',recompute);
 recompute();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7209,7 +9100,7 @@ var spectrum_scale_default = {
       const share = Math.max(0, (b.to - b.from) / span) * 100;
       return `<span class="pg-ss-seg" data-role="seg" style="flex:0 0 ${share}%;background:${b.colour}"><span class="pg-ss-seglabel">${esc(b.label)}</span></span>`;
     }).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="pg-ss-wrap"><div class="pg-ss-marker" data-role="marker"><span class="pg-ss-tri"></span></div><div class="pg-ss-bar" data-role="bar">${segHtml}</div></div><div class="pg-ss-controls pg-controls"><div class="pg-row pg-ss-scaleends"><span data-role="endmin"></span><span data-role="endmax"></span></div><input type="range" data-role="slider" aria-label="value"></div><div class="pg-readout pg-ss-readout"><span class="pg-ss-num" data-role="readval"></span><span class="pg-ss-band" data-role="readband"></span></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-ss-wrap"><div class="pg-ss-marker" data-role="marker"><span class="pg-ss-tri"></span></div><div class="pg-ss-bar" data-role="bar">${segHtml}</div></div><div class="pg-ss-controls pg-controls"><div class="pg-row pg-ss-scaleends"><span data-role="endmin"></span><span data-role="endmax"></span></div><input type="range" data-role="slider" aria-label="value"></div><div class="pg-readout pg-ss-readout"><span class="pg-ss-num" data-role="readval"></span><span class="pg-ss-band" data-role="readband"></span></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-ss-title{font-weight:700;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-ss-wrap{position:relative;padding-top:18px}`,
@@ -7260,7 +9151,7 @@ function update(){
 slider.addEventListener('input',update);
 update();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7325,7 +9216,7 @@ var guess_slider_default = {
     const start = Math.round((min + max) / 2 / step) * step;
     const title = params.title ? `<div class="pg-gs-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-gs-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-gs-q">${esc(question)}</div><div class="pg-gs-readout" aria-live="polite"><span class="pg-gs-guesslabel">Your guess</span><span class="pg-readout pg-gs-guess" data-role="guess"></span></div><div class="pg-row"><label style="flex:1">Slide to guess<input type="range" data-role="slider" min="${min}" max="${max}" value="${start}" step="${step}" aria-label="Guess slider"></label></div><div class="pg-controls"><button type="button" class="pg-gs-btn" data-role="lock">Lock in my guess</button><button type="button" class="pg-gs-btn pg-gs-again" data-role="again" hidden>Guess again</button></div><div class="pg-gs-result" data-role="result" hidden></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-gs-q">${esc(question)}</div><div class="pg-gs-readout" aria-live="polite"><span class="pg-gs-guesslabel">Your guess</span><span class="pg-readout pg-gs-guess" data-role="guess"></span></div><div class="pg-row"><label style="flex:1">Slide to guess<input type="range" data-role="slider" min="${min}" max="${max}" value="${start}" step="${step}" aria-label="Guess slider"></label></div><div class="pg-controls"><button type="button" class="pg-gs-btn" data-role="lock">Lock in my guess</button><button type="button" class="pg-gs-btn pg-gs-again" data-role="again" hidden>Guess again</button></div><div class="pg-gs-result" data-role="result" hidden></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-gs-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .5rem}`,
       `#${domId} .pg-gs-q{font-size:1.05rem;font-weight:700;color:var(--ink,#e9eef8);margin:0 0 .9rem;line-height:1.35}`,
@@ -7404,7 +9295,7 @@ againBtn.addEventListener('click',function(){
   show(parseFloat(slider.value));
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7444,7 +9335,7 @@ var bracket_default = {
     const title = params.title ? `<div class="pg-bk-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-bk-caption">${esc(params.caption)}</div>` : "";
     const data = JSON.stringify(names);
-    const html = `<div class="pg-stage">${title}<div class="pg-bk-board" data-role="board" data-names='${esc(data)}'></div><div class="pg-bk-champ" data-role="champ" hidden></div><div class="pg-controls"><button type="button" class="pg-bk-reset" data-role="reset">Reset</button></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-bk-board" data-role="board" data-names='${esc(data)}'></div><div class="pg-bk-champ" data-role="champ" hidden></div><div class="pg-controls"><button type="button" class="pg-bk-reset" data-role="reset">Reset</button></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-bk-title{font-weight:700;font-size:1.1rem;margin-bottom:.3rem;color:#e9eef8}`,
       `#${domId} .pg-bk-caption{margin-top:.7rem;font-size:.85rem;color:#9fb0c8}`,
@@ -7583,7 +9474,7 @@ resetBtn.addEventListener('click',function(){fresh();render();});
 fresh();
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7640,7 +9531,7 @@ var chord_diagram_default = {
     const btns = chords.map(
       (c, i) => `<button type="button" class="pg-cd-btn" data-role="chord" data-i="${i}" aria-pressed="${i === 0 ? "true" : "false"}">${esc(c.name)}</button>`
     ).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="pg-controls"><div class="pg-row pg-cd-btns">${btns}</div></div><div class="pg-cd-board"><svg data-role="svg" viewBox="0 0 200 240" role="img" aria-label="Guitar chord diagram"></svg></div><div class="pg-readout" data-role="readout"></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-controls"><div class="pg-row pg-cd-btns">${btns}</div></div><div class="pg-cd-board"><svg data-role="svg" viewBox="0 0 200 240" role="img" aria-label="Guitar chord diagram"></svg></div><div class="pg-readout" data-role="readout"></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-cd-title{font-weight:600;margin-bottom:.5rem}`,
       `#${domId} .pg-cd-btns{flex-wrap:wrap;gap:.4rem}`,
@@ -7722,7 +9613,7 @@ btns.forEach(function(b){
 
 draw(data[0]);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7790,8 +9681,8 @@ var budget_donut_default = {
     const title = params.title ? `<div class="pg-bd-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-bd-cap">${esc(params.caption)}</div>` : "";
     const rows = cats.map((c, i) => `<div class="pg-field pg-bd-row" data-role="row" data-i="${i}" data-colour="${esc(c.colour)}"><label><b><span class="pg-bd-swatch" style="background:${esc(c.colour)}"></span>${esc(c.name)}</b><span class="pg-readout"><span data-role="pct">${c.pct}</span>% \xB7 <span data-role="cash">${currency}0</span></span></label><input type="range" min="0" max="100" step="1" value="${c.pct}" data-role="slider" aria-label="${esc(c.name)} percentage"></div>`).join("");
-    const svg2 = `<svg class="pg-bd-svg" viewBox="0 0 120 120" role="img" aria-label="Budget donut chart"><circle cx="60" cy="60" r="42" class="pg-bd-track"></circle><g data-role="arcs" transform="rotate(-90 60 60)"></g><text x="60" y="56" text-anchor="middle" class="pg-bd-cx" data-role="centre-pct">100%</text><text x="60" y="72" text-anchor="middle" class="pg-bd-cs">allocated</text></svg>`;
-    const html = `<div class="pg-stage">` + title + `<div class="pg-bd-wrap"><div class="pg-bd-chart">${svg2}</div><div class="pg-controls pg-bd-controls">${rows}</div></div><div class="pg-bd-foot"><span class="pg-readout">Income <b data-role="income">${currency}0</b></span><span class="pg-bd-note" data-role="note"></span></div>` + caption + `</div>`;
+    const svg3 = `<svg class="pg-bd-svg" viewBox="0 0 120 120" role="img" aria-label="Budget donut chart"><circle cx="60" cy="60" r="42" class="pg-bd-track"></circle><g data-role="arcs" transform="rotate(-90 60 60)"></g><text x="60" y="56" text-anchor="middle" class="pg-bd-cx" data-role="centre-pct">100%</text><text x="60" y="72" text-anchor="middle" class="pg-bd-cs">allocated</text></svg>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-bd-wrap"><div class="pg-bd-chart">${svg3}</div><div class="pg-controls pg-bd-controls">${rows}</div></div><div class="pg-bd-foot"><span class="pg-readout">Income <b data-role="income">${currency}0</b></span><span class="pg-bd-note" data-role="note"></span></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-bd-title{font-weight:700;font-size:1.05rem;margin-bottom:.6rem}`,
       `#${domId} .pg-bd-wrap{display:flex;flex-direction:column;gap:1rem;align-items:center}`,
@@ -7862,7 +9753,7 @@ rows.forEach(function(row){
 });
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7893,7 +9784,7 @@ var moon_phase_default = {
   build(params, domId) {
     const title = params.title ? `<div class="pg-mp-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-mp-cap pg-readout" data-role="cap">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<svg class="pg-mp-svg" viewBox="0 0 200 200" data-role="svg" role="img" aria-label="The Moon"><defs><clipPath id="${domId}-clip"><circle cx="100" cy="100" r="90"></circle></clipPath></defs><circle cx="100" cy="100" r="90" fill="#0a0f1c" stroke="rgba(140,160,200,.25)" stroke-width="1.5"></circle><g clip-path="url(#${domId}-clip)"><path data-role="lit" d="" fill="#e9eef8"></path></g><circle cx="100" cy="100" r="90" fill="none" stroke="rgba(140,160,200,.25)" stroke-width="1.5"></circle></svg><div class="pg-mp-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-row"><label style="flex:1">Cycle progress<input type="range" data-role="slider" min="0" max="100" value="50" step="any" aria-label="Progress through the lunar cycle"></label></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">${title}<svg class="pg-mp-svg" viewBox="0 0 200 200" data-role="svg" role="img" aria-label="The Moon"><defs><clipPath id="${domId}-clip"><circle cx="100" cy="100" r="90"></circle></clipPath></defs><circle cx="100" cy="100" r="90" fill="#0a0f1c" stroke="rgba(140,160,200,.25)" stroke-width="1.5"></circle><g clip-path="url(#${domId}-clip)"><path data-role="lit" d="" fill="#e9eef8"></path></g><circle cx="100" cy="100" r="90" fill="none" stroke="rgba(140,160,200,.25)" stroke-width="1.5"></circle></svg><div class="pg-mp-out pg-readout" data-role="out" aria-live="polite"></div><div class="pg-row"><label style="flex:1">Cycle progress<input type="range" data-role="slider" min="0" max="100" value="50" step="any" aria-label="Progress through the lunar cycle"></label></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-mp-title{font-size:.9rem;color:var(--ink-dim,#9fb3c8);margin:0 0 .5rem}`,
       `#${domId} .pg-mp-svg{display:block;width:100%;max-width:240px;margin-inline:auto}`,
@@ -7955,7 +9846,7 @@ function set(v){
 slider.addEventListener('input',function(){set(parseFloat(slider.value));});
 set(parseFloat(slider.value));
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -7983,7 +9874,7 @@ var morse_code_default = {
     const placeholder = params.placeholder ? String(params.placeholder) : "Type a message\u2026";
     const title = params.title ? `<div class="pg-mc-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-mc-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">` + title + `<div class="pg-controls"><div class="pg-field"><label><b>Message</b></label><input type="text" data-role="input" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false"></div></div><div class="pg-mc-out" data-role="out" aria-live="polite"></div><div class="pg-mc-row"><button type="button" class="pg-mc-go" data-role="go">Flash it</button><span class="pg-mc-lamp" data-role="lamp" aria-hidden="true"></span></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-controls"><div class="pg-field"><label><b>Message</b></label><input type="text" data-role="input" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false"></div></div><div class="pg-mc-out" data-role="out" aria-live="polite"></div><div class="pg-mc-row"><button type="button" class="pg-mc-go" data-role="go">Flash it</button><span class="pg-mc-lamp" data-role="lamp" aria-hidden="true"></span></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-mc-title{font-weight:700;font-size:1.05rem;margin-bottom:.6rem;color:#e9eef8}`,
       `#${domId} .pg-field input{width:100%;box-sizing:border-box;padding:.55rem .7rem;border-radius:10px;border:1px solid #23304a;background:rgba(140,160,200,.06);color:#e9eef8;font:inherit}`,
@@ -8072,7 +9963,7 @@ if(go&&lamp&&!reduced){
   });
 }
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -8136,7 +10027,7 @@ var timeline_scrubber_default = {
       const pos = (e.year - min) / span * 100;
       return `<button type="button" class="pg-tl-dot" data-role="dot" data-index="${i}" data-year="${e.year}" style="left:${pos}%" aria-label="${esc(e.year + ": " + e.label)}"><span class="pg-tl-dot-year">${esc(String(e.year))}</span></button>`;
     }).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-tl-track"><div class="pg-tl-axis"></div><div class="pg-tl-marker" data-role="marker"></div>` + dots + `</div><div class="pg-controls"><div class="pg-row pg-field"><label><b>Year</b> <span class="pg-readout" data-role="yearout">${esc(String(min))}</span></label><input type="range" data-role="slider" min="${min}" max="${max}" step="1" value="${min}"></div></div><div class="pg-readout pg-tl-readout" data-role="readout" aria-live="polite"></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-tl-track"><div class="pg-tl-axis"></div><div class="pg-tl-marker" data-role="marker"></div>` + dots + `</div><div class="pg-controls"><div class="pg-row pg-field"><label><b>Year</b> <span class="pg-readout" data-role="yearout">${esc(String(min))}</span></label><input type="range" data-role="slider" min="${min}" max="${max}" step="1" value="${min}"></div></div><div class="pg-readout pg-tl-readout" data-role="readout" aria-live="polite"></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-tl-title{font-weight:700;margin-bottom:.4rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-tl-track{position:relative;height:64px;margin:1.4rem .6rem .6rem}`,
@@ -8187,7 +10078,7 @@ dots.forEach(function(d){
 });
 render(MIN);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -8262,7 +10153,7 @@ var higher_lower_default = {
     const unit = typeof params.unit === "string" ? params.unit : "";
     const title = params.title ? `<div class="pg-hl-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-hl-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">` + title + `<div class="pg-hl-scores"><span class="pg-hl-score">Streak <b data-role="streak">0</b></span><span class="pg-hl-score">Best <b data-role="best">0</b></span></div><div class="pg-hl-board"><div class="pg-hl-panel pg-hl-left"><div class="pg-hl-label" data-role="left-label">\u2014</div><div class="pg-hl-value" data-role="left-value">\u2014</div></div><div class="pg-hl-vs">vs</div><div class="pg-hl-panel pg-hl-right"><div class="pg-hl-label" data-role="right-label">\u2014</div><div class="pg-hl-value pg-hl-hidden" data-role="right-value">?</div><div class="pg-hl-buttons" data-role="buttons"><button type="button" class="pg-hl-btn" data-role="higher">\u2191 Higher</button><button type="button" class="pg-hl-btn" data-role="lower">\u2193 Lower</button></div></div></div><div class="pg-hl-msg" data-role="msg" aria-live="polite"></div><div class="pg-hl-over" data-role="over" hidden><button type="button" class="pg-hl-again" data-role="again">Play again</button></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-hl-scores"><span class="pg-hl-score">Streak <b data-role="streak">0</b></span><span class="pg-hl-score">Best <b data-role="best">0</b></span></div><div class="pg-hl-board"><div class="pg-hl-panel pg-hl-left"><div class="pg-hl-label" data-role="left-label">\u2014</div><div class="pg-hl-value" data-role="left-value">\u2014</div></div><div class="pg-hl-vs">vs</div><div class="pg-hl-panel pg-hl-right"><div class="pg-hl-label" data-role="right-label">\u2014</div><div class="pg-hl-value pg-hl-hidden" data-role="right-value">?</div><div class="pg-hl-buttons" data-role="buttons"><button type="button" class="pg-hl-btn" data-role="higher">\u2191 Higher</button><button type="button" class="pg-hl-btn" data-role="lower">\u2193 Lower</button></div></div></div><div class="pg-hl-msg" data-role="msg" aria-live="polite"></div><div class="pg-hl-over" data-role="over" hidden><button type="button" class="pg-hl-again" data-role="again">Play again</button></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-hl-title{font-weight:700;font-size:1.05rem;margin-bottom:.5rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-hl-scores{display:flex;gap:1rem;justify-content:center;margin-bottom:.7rem;color:var(--ink-dim,#cdd6e6);font-size:.9rem}`,
@@ -8419,7 +10310,7 @@ btnAgain.addEventListener('click', start);
 
 start();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -8521,7 +10412,7 @@ var forecast_strip_default = {
     const title = params.title ? `<div class="pg-fs-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-fs-caption">${esc(params.caption)}</div>` : "";
     const cardsHtml = days.map((d, i) => `<button type="button" class="pg-fs-card" data-role="card" data-i="${i}" aria-pressed="false"><span class="pg-fs-day">${esc(d.day)}</span><span class="pg-fs-glyph" aria-hidden="true">${GLYPHS[d.condition]}</span><span class="pg-fs-temps"><b class="pg-fs-high">${esc(String(d.high))}${esc(unit)}</b><span class="pg-fs-low">${esc(String(d.low))}${esc(unit)}</span></span></button>`).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-fs-strip" data-role="strip" role="list">${cardsHtml}</div><div class="pg-readout pg-fs-detail" data-role="detail" aria-live="polite"><span class="pg-fs-hint">Tap a day for the detail.</span></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-fs-strip" data-role="strip" role="list">${cardsHtml}</div><div class="pg-readout pg-fs-detail" data-role="detail" aria-live="polite"><span class="pg-fs-hint">Tap a day for the detail.</span></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-fs-title{font-weight:700;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-fs-strip{display:flex;flex-wrap:wrap;gap:.55rem;overflow-x:auto;padding-bottom:.2rem}`,
@@ -8568,7 +10459,7 @@ cards.forEach(function(c){
   c.addEventListener('click',function(){pick(Number(c.getAttribute('data-i')));});
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -8631,7 +10522,7 @@ var quadrant_plot_default = {
     const markerLabel = esc(params.markerLabel || "You");
     const title = params.title ? `<div class="pg-qp-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-qp-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}
+    const html2 = `<div class="pg-stage">${title}
   <div class="pg-qp-frame">
     <div class="pg-qp-axlabel pg-qp-top">${yTop}</div>
     <div class="pg-qp-mid">
@@ -8712,7 +10603,7 @@ marker.style.left='50%';
 marker.style.top='50%';
 out.textContent=labels.br||'\u2014';
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -8751,7 +10642,7 @@ var checklist_default = {
     const title = params.title ? `<div class="pg-ck-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-ck-caption">${esc(params.caption)}</div>` : "";
     const rows = items.map((label2, i) => `<button type="button" class="pg-ck-row" data-role="row" role="checkbox" aria-checked="false" data-i="${i}"><span class="pg-ck-box" aria-hidden="true"><svg viewBox="0 0 16 16" class="pg-ck-tick"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="pg-ck-label">${esc(label2)}</span></button>`).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="pg-ck-list" data-role="list">${rows}</div><div class="pg-ck-bar"><span class="pg-ck-fill" data-role="fill"></span></div><div class="pg-ck-foot"><span class="pg-readout" data-role="count">0 of ${total} done</span><button type="button" class="pg-ck-reset" data-role="reset">Reset</button></div><div class="pg-ck-done" data-role="done" hidden></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-ck-list" data-role="list">${rows}</div><div class="pg-ck-bar"><span class="pg-ck-fill" data-role="fill"></span></div><div class="pg-ck-foot"><span class="pg-readout" data-role="count">0 of ${total} done</span><button type="button" class="pg-ck-reset" data-role="reset">Reset</button></div><div class="pg-ck-done" data-role="done" hidden></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-ck-title{font-weight:700;font-size:1.05rem;color:var(--ink,#e9eef8);margin-bottom:.7rem}`,
       `#${domId} .pg-ck-list{display:flex;flex-direction:column;gap:.45rem}`,
@@ -8806,7 +10697,7 @@ if(resetBtn)resetBtn.addEventListener('click',function(){
 });
 refresh();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -8869,7 +10760,7 @@ var toggle_switches_default = {
     const title = params.title ? `<div class="pg-ts-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-ts-caption">${esc(params.caption)}</div>` : "";
     const rows = sw.map((s, i) => `<button type="button" class="pg-ts-row${s.on ? " on" : ""}" data-role="switch" role="switch" aria-checked="${s.on ? "true" : "false"}" data-i="${i}"><span class="pg-ts-label">${esc(s.label)}</span><span class="pg-ts-track" aria-hidden="true"><span class="pg-ts-knob"></span></span></button>`).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="pg-ts-list" data-role="list">${rows}</div><div class="pg-ts-foot"><span class="pg-readout" data-role="count">0 of ${total} on</span></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-ts-list" data-role="list">${rows}</div><div class="pg-ts-foot"><span class="pg-readout" data-role="count">0 of ${total} on</span></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-ts-title{font-weight:700;font-size:1.05rem;color:var(--ink,#e9eef8);margin-bottom:.7rem}`,
       `#${domId} .pg-ts-list{display:flex;flex-direction:column;gap:.45rem}`,
@@ -8914,7 +10805,7 @@ rows.forEach(function(r){
 });
 refresh();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -8967,7 +10858,7 @@ var tabs_panel_default = {
     const panelsHtml = tabs.map(
       (t, i) => `<div class="pg-tp-panel${i === 0 ? " active" : ""}" data-role="panel" data-index="${i}" role="tabpanel"${i === 0 ? "" : " hidden"}>${esc(t.body)}</div>`
     ).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-tp-bar" role="tablist">${tabsHtml}</div><div class="pg-tp-body">${panelsHtml}</div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-tp-bar" role="tablist">${tabsHtml}</div><div class="pg-tp-body">${panelsHtml}</div>${caption}</div>`;
     const css = [
       `#${domId} .pg-tp-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.6rem}`,
       `#${domId} .pg-tp-bar{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem}`,
@@ -9000,7 +10891,7 @@ tabs.forEach(function(t){
 });
 select(0);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9041,7 +10932,7 @@ var gradient_maker_default = {
     const title = params.title ? `<div class="pg-gm-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-gm-caption">${esc(params.caption)}</div>` : "";
     const swatches = stops.map((s) => `<span class="pg-gm-swatch" style="background:${esc(s)}" title="${esc(s)}"></span>`).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-gm-preview" data-role="preview"></div><div class="pg-gm-swatches">${swatches}</div><div class="pg-controls"><div class="pg-row"><label><b>Angle</b> <span class="pg-readout" data-role="angle-out">${angle}\xB0</span></label><input type="range" data-role="angle" min="0" max="360" step="1" value="${angle}"></div></div><div class="pg-gm-code"><code data-role="code"></code><button type="button" class="pg-gm-copy" data-role="copy">Copy</button></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-gm-preview" data-role="preview"></div><div class="pg-gm-swatches">${swatches}</div><div class="pg-controls"><div class="pg-row"><label><b>Angle</b> <span class="pg-readout" data-role="angle-out">${angle}\xB0</span></label><input type="range" data-role="angle" min="0" max="360" step="1" value="${angle}"></div></div><div class="pg-gm-code"><code data-role="code"></code><button type="button" class="pg-gm-copy" data-role="copy">Copy</button></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-gm-title{font-weight:700;font-size:1.05rem;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-gm-preview{height:170px;border-radius:14px;border:1px solid var(--line,#23304a)}`,
@@ -9082,7 +10973,7 @@ if(copy){
 }
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9112,7 +11003,7 @@ var colour_harmony_default = {
     hue = Math.max(0, Math.min(360, Math.round(hue)));
     const title = params.title ? `<div class="pg-ch-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-ch-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}
+    const html2 = `<div class="pg-stage">${title}
   <div class="pg-controls">
     <div class="pg-row">
       <label class="pg-field"><b>Hue</b>
@@ -9222,7 +11113,7 @@ function render(){
 slider.addEventListener('input', render);
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9269,7 +11160,7 @@ var beat_sequencer_default = {
       }
       return `<div class="pg-bs-row"><span class="pg-bs-label">${esc(label2)}</span><div class="pg-bs-cells">${cells.join("")}</div></div>`;
     }).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-bs-grid" data-role="grid" style="--steps:${steps}">${rows}</div><div class="pg-controls"><div class="pg-row"><button type="button" class="pg-bs-btn" data-role="play">Play</button><span class="pg-readout pg-bs-bpm">${bpm} BPM</span></div></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-bs-grid" data-role="grid" style="--steps:${steps}">${rows}</div><div class="pg-controls"><div class="pg-row"><button type="button" class="pg-bs-btn" data-role="play">Play</button><span class="pg-readout pg-bs-bpm">${bpm} BPM</span></div></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-bs-title{font-weight:700;font-size:1.05rem;margin-bottom:.6rem;color:#e9eef8}`,
       `#${domId} .pg-bs-grid{display:flex;flex-direction:column;gap:.4rem}`,
@@ -9333,7 +11224,7 @@ btn.addEventListener('click',function(){
   if(root._seqTimer)stop(); else start();
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9379,7 +11270,7 @@ var keyboard_notes_default = {
       const left = (b.after + 1) / WHITES.length * 100;
       return `<button type="button" class="pg-kb-key pg-kb-black${hiSet.has(b.note) ? " on" : ""}" data-role="key" data-note="${esc(b.note)}" aria-pressed="${hiSet.has(b.note) ? "true" : "false"}" style="left:${left.toFixed(4)}%"><span class="pg-kb-name">${esc(b.note)}</span></button>`;
     }).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="pg-kb-readout"><span class="pg-kb-tag">Highlighted</span>` + label2 + `<span class="pg-kb-list" data-role="list">\u2014</span></div><div class="pg-kb-board" data-role="board"><div class="pg-kb-whites">${whiteHtml}</div><div class="pg-kb-blacks">${blackHtml}</div></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-kb-readout"><span class="pg-kb-tag">Highlighted</span>` + label2 + `<span class="pg-kb-list" data-role="list">\u2014</span></div><div class="pg-kb-board" data-role="board"><div class="pg-kb-whites">${whiteHtml}</div><div class="pg-kb-blacks">${blackHtml}</div></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-kb-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.5rem}`,
       `#${domId} .pg-kb-readout{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;margin-bottom:.7rem;font-size:.92rem}`,
@@ -9419,7 +11310,7 @@ $$('[data-role=key]').forEach(function(key){
 });
 refresh();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9445,11 +11336,11 @@ var caesar_cipher_default = {
     { name: "Crack the code", params: { text: "Khoor zruog", shift: 3, caption: "Slide the shift until it reads straight." } }
   ],
   build(params, domId) {
-    const text2 = typeof params.text === "string" ? params.text : "";
+    const text3 = typeof params.text === "string" ? params.text : "";
     const shift = Math.max(0, Math.min(25, Math.round(Number(params.shift) || 0)));
     const title = params.title ? `<div class="pg-cc-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-cc-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}<div class="pg-controls"><div class="pg-field pg-cc-textfield"><label><b>Message</b></label><input type="text" data-role="text" value="${esc(text2)}" placeholder="Type a message\u2026" autocomplete="off" spellcheck="false"></div><div class="pg-row pg-cc-shiftrow"><label><b>Shift</b></label><input type="range" data-role="shift" min="0" max="25" step="1" value="${shift}"><span class="pg-readout" data-role="shiftval">${shift}</span></div></div><div class="pg-cc-out"><label><b>Output</b></label><output class="pg-readout pg-cc-result" data-role="out" aria-live="polite"></output></div><div class="pg-cc-hint">Decode by shifting <span data-role="dec">${(26 - shift) % 26}</span> the other way.</div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-controls"><div class="pg-field pg-cc-textfield"><label><b>Message</b></label><input type="text" data-role="text" value="${esc(text3)}" placeholder="Type a message\u2026" autocomplete="off" spellcheck="false"></div><div class="pg-row pg-cc-shiftrow"><label><b>Shift</b></label><input type="range" data-role="shift" min="0" max="25" step="1" value="${shift}"><span class="pg-readout" data-role="shiftval">${shift}</span></div></div><div class="pg-cc-out"><label><b>Output</b></label><output class="pg-readout pg-cc-result" data-role="out" aria-live="polite"></output></div><div class="pg-cc-hint">Decode by shifting <span data-role="dec">${(26 - shift) % 26}</span> the other way.</div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-cc-title{font-weight:700;margin-bottom:.6rem;color:#e9eef8}`,
       `#${domId} .pg-controls{display:flex;flex-direction:column;gap:.7rem}`,
@@ -9493,7 +11384,7 @@ input.addEventListener('input',render);
 slider.addEventListener('input',render);
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9521,7 +11412,7 @@ var nato_phonetic_default = {
     const title = params.title ? `<div class="pg-nato-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-nato-caption">${esc(params.caption)}</div>` : "";
     const placeholder = esc(params.placeholder || "Type your name\u2026");
-    const html = `<div class="pg-stage">${title}<div class="pg-field"><label><b>Your text</b></label><input type="text" data-role="in" placeholder="${placeholder}" autocomplete="off" spellcheck="false"></div><div class="pg-readout pg-nato-out" data-role="out" aria-live="polite"></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-field"><label><b>Your text</b></label><input type="text" data-role="in" placeholder="${placeholder}" autocomplete="off" spellcheck="false"></div><div class="pg-readout pg-nato-out" data-role="out" aria-live="polite"></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-nato-title{font-weight:700;font-size:1.05rem;margin-bottom:.6rem;color:#e9eef8}`,
       `#${domId} .pg-field input{width:100%;box-sizing:border-box;padding:.6rem .75rem;border-radius:10px;border:1px solid #23304a;background:rgba(140,160,200,.06);color:#e9eef8;font:inherit}`,
@@ -9578,7 +11469,7 @@ function render(){
 input.addEventListener('input',render);
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9635,7 +11526,7 @@ var chronology_game_default = {
     const events = (Array.isArray(params.events) ? params.events : []).filter((e) => e && typeof e.label === "string" && e.label.trim() && Number.isFinite(Number(e.year))).slice(0, 8).map((e) => ({ label: String(e.label), year: Number(e.year) }));
     const title = params.title ? `<div class="pg-cg-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-cg-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}${caption}<ol class="pg-cg-list" data-role="list" aria-live="polite"></ol><div class="pg-row pg-cg-actions"><button type="button" class="pg-cg-btn pg-cg-primary" data-role="check">Check</button><button type="button" class="pg-cg-btn" data-role="shuffle">Shuffle again</button><span class="pg-cg-feedback" data-role="feedback" aria-live="polite"></span></div></div>`;
+    const html2 = `<div class="pg-stage">${title}${caption}<ol class="pg-cg-list" data-role="list" aria-live="polite"></ol><div class="pg-row pg-cg-actions"><button type="button" class="pg-cg-btn pg-cg-primary" data-role="check">Check</button><button type="button" class="pg-cg-btn" data-role="shuffle">Shuffle again</button><span class="pg-cg-feedback" data-role="feedback" aria-live="polite"></span></div></div>`;
     const css = [
       `#${domId} .pg-cg-title{font-weight:600;margin-bottom:.35rem}`,
       `#${domId} .pg-cg-caption{color:var(--ink-dim,#cdd6e6);font-size:.88rem;margin-bottom:.8rem}`,
@@ -9788,7 +11679,7 @@ shuffleBtn.addEventListener('click', reset);
 
 reset();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9818,7 +11709,7 @@ var time_since_default = {
     const event = esc(params.event || "");
     const date = esc(params.date || "");
     const caption = params.caption ? `<div class="pg-ts-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage" data-date="${date}">${title}<div class="pg-ts-event">${event}</div><div class="pg-ts-date" data-role="date"></div><div class="pg-ts-elapsed" data-role="elapsed"><div class="pg-ts-cell"><span class="pg-ts-num pg-readout" data-role="years">\u2013</span><span class="pg-ts-label">Years</span></div><div class="pg-ts-cell"><span class="pg-ts-num pg-readout" data-role="days">\u2013</span><span class="pg-ts-label">Days</span></div><div class="pg-ts-cell pg-ts-clock"><span class="pg-ts-num pg-readout" data-role="clock">\u2013</span><span class="pg-ts-label">Hours \xB7 Mins \xB7 Secs</span></div></div><div class="pg-ts-msg" data-role="msg" hidden></div>${caption}</div>`;
+    const html2 = `<div class="pg-stage" data-date="${date}">${title}<div class="pg-ts-event">${event}</div><div class="pg-ts-date" data-role="date"></div><div class="pg-ts-elapsed" data-role="elapsed"><div class="pg-ts-cell"><span class="pg-ts-num pg-readout" data-role="years">\u2013</span><span class="pg-ts-label">Years</span></div><div class="pg-ts-cell"><span class="pg-ts-num pg-readout" data-role="days">\u2013</span><span class="pg-ts-label">Days</span></div><div class="pg-ts-cell pg-ts-clock"><span class="pg-ts-num pg-readout" data-role="clock">\u2013</span><span class="pg-ts-label">Hours \xB7 Mins \xB7 Secs</span></div></div><div class="pg-ts-msg" data-role="msg" hidden></div>${caption}</div>`;
     const css = [
       `#${domId} .pg-ts-title{font-weight:600;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-ts-event{font-size:clamp(1.1rem,4vw,1.5rem);font-weight:700;color:#22d3ee;line-height:1.2}`,
@@ -9860,7 +11751,7 @@ function tick(){
 tick();
 root._tsTimer=setInterval(tick,1000);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -9902,7 +11793,7 @@ var temp_converter_default = {
     if (start > max) start = max;
     const title = params.title ? `<div class="pg-tc-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-tc-caption">${esc(params.caption)}</div>` : "";
-    const html = `<div class="pg-stage">${title}
+    const html2 = `<div class="pg-stage">${title}
 <div class="pg-tc-readouts">
   <div class="pg-tc-cell pg-tc-c"><span class="pg-readout pg-tc-v" data-role="out-c">\u2013</span><span class="pg-tc-u">\xB0C</span></div>
   <div class="pg-tc-cell pg-tc-f"><span class="pg-readout pg-tc-v" data-role="out-f">\u2013</span><span class="pg-tc-u">\xB0F</span></div>
@@ -9965,7 +11856,7 @@ function recompute(){
 tEl.addEventListener('input', recompute);
 recompute();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -10012,7 +11903,7 @@ var weather_scene_default = {
     const title = params.title ? `<div class="pg-ws-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="pg-ws-caption">${esc(params.caption)}</div>` : "";
     const buttons = scenes.map((s, i) => `<button type="button" class="pg-ws-btn" data-role="btn" data-cond="${esc(s)}" aria-pressed="${i === 0 ? "true" : "false"}">${esc(LABELS[s])}</button>`).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="pg-ws-scene" data-role="scene" aria-live="polite"><svg viewBox="0 0 200 140" width="100%" height="100%" role="img" data-role="svg" aria-label="Weather scene"></svg></div><div class="pg-controls pg-ws-controls" role="group" aria-label="Choose the weather">${buttons}</div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-ws-scene" data-role="scene" aria-live="polite"><svg viewBox="0 0 200 140" width="100%" height="100%" role="img" data-role="svg" aria-label="Weather scene"></svg></div><div class="pg-controls pg-ws-controls" role="group" aria-label="Choose the weather">${buttons}</div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-ws-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.6rem}`,
       `#${domId} .pg-ws-scene{border-radius:14px;border:1px solid var(--line,#23304a);background:linear-gradient(180deg,rgba(34,211,238,.07),rgba(129,140,248,.05));overflow:hidden;aspect-ratio:200/140}`,
@@ -10122,7 +12013,7 @@ btns.forEach(function(b){
 });
 show(btns[0].getAttribute('data-cond'));
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -10179,7 +12070,7 @@ var pros_cons_default = {
     const point = (side, label2, i) => `<button type="button" class="pg-pc-point" data-role="point" data-side="${side}" data-i="${i}" aria-pressed="false"><span class="pg-pc-tick" aria-hidden="true"></span><span class="pg-pc-label">${esc(label2)}</span></button>`;
     const prosHtml = pros.map((p, i) => point("pro", p, i)).join("");
     const consHtml = cons.map((c, i) => point("con", c, i)).join("");
-    const html = `<div class="pg-stage">` + title + subject2 + `<div class="pg-pc-cols"><div class="pg-pc-col pg-pc-col-pro"><div class="pg-pc-head">Pros</div><div class="pg-pc-list">${prosHtml}</div></div><div class="pg-pc-col pg-pc-col-con"><div class="pg-pc-head">Cons</div><div class="pg-pc-list">${consHtml}</div></div></div><div class="pg-pc-balance" role="img" aria-label="Balance of ticked points"><span class="pg-pc-bar pg-pc-bar-pro" data-role="bar-pro" style="width:50%"></span><span class="pg-pc-bar pg-pc-bar-con" data-role="bar-con" style="width:50%"></span></div><div class="pg-pc-foot"><span class="pg-readout pg-pc-tally" data-role="tally">0 pros &middot; 0 cons</span><span class="pg-pc-verdict" data-role="verdict">Too close to call</span></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + subject2 + `<div class="pg-pc-cols"><div class="pg-pc-col pg-pc-col-pro"><div class="pg-pc-head">Pros</div><div class="pg-pc-list">${prosHtml}</div></div><div class="pg-pc-col pg-pc-col-con"><div class="pg-pc-head">Cons</div><div class="pg-pc-list">${consHtml}</div></div></div><div class="pg-pc-balance" role="img" aria-label="Balance of ticked points"><span class="pg-pc-bar pg-pc-bar-pro" data-role="bar-pro" style="width:50%"></span><span class="pg-pc-bar pg-pc-bar-con" data-role="bar-con" style="width:50%"></span></div><div class="pg-pc-foot"><span class="pg-readout pg-pc-tally" data-role="tally">0 pros &middot; 0 cons</span><span class="pg-pc-verdict" data-role="verdict">Too close to call</span></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-pc-title{font-weight:700;font-size:1.05rem;color:var(--ink,#e9eef8);margin-bottom:.2rem}`,
       `#${domId} .pg-pc-subject{font-size:.9rem;color:var(--ink-dim,#8b97ac);margin-bottom:.8rem}`,
@@ -10248,7 +12139,7 @@ points.forEach(function(b){
 });
 refresh();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -10297,7 +12188,7 @@ var accordion_default = {
     const rowsHtml = items.map(
       (it) => `<div class="pg-ac-row" data-role="row"><button type="button" class="pg-ac-head" data-role="head" aria-expanded="false"><span class="pg-ac-q">${esc(it.q)}</span><span class="pg-ac-chev" aria-hidden="true">&#9656;</span></button><div class="pg-ac-panel" data-role="panel"><div class="pg-ac-a">${esc(it.a)}</div></div></div>`
     ).join("");
-    const html = `<div class="pg-stage">${title}<div class="pg-ac-list">${rowsHtml}</div>${caption}</div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-ac-list">${rowsHtml}</div>${caption}</div>`;
     const css = [
       `#${domId} .pg-ac-title{font-weight:600;color:var(--ink,#e9eef8);margin-bottom:.6rem}`,
       `#${domId} .pg-ac-list{display:flex;flex-direction:column;gap:.5rem}`,
@@ -10330,7 +12221,7 @@ rows.forEach(function(row){
   });
 });
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -10409,7 +12300,7 @@ var decision_tree_default = {
     const caption = params.caption ? `<div class="pg-dt-caption">${esc(params.caption)}</div>` : "";
     const nodes = params.nodes && typeof params.nodes === "object" ? params.nodes : {};
     const start = typeof params.start === "string" ? params.start : "";
-    const html = `<div class="pg-stage">` + title + `<div class="pg-dt-crumbs" data-role="crumbs" aria-live="polite"></div><div class="pg-dt-card" data-role="card"></div><div class="pg-dt-actions"><button type="button" class="pg-dt-restart" data-role="restart" hidden>Start over</button></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="pg-dt-crumbs" data-role="crumbs" aria-live="polite"></div><div class="pg-dt-card" data-role="card"></div><div class="pg-dt-actions"><button type="button" class="pg-dt-restart" data-role="restart" hidden>Start over</button></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-dt-title{font-weight:700;font-size:1.05rem;margin-bottom:.6rem;color:var(--ink,#e9eef8)}`,
       `#${domId} .pg-dt-crumbs{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.7rem;min-height:1.1rem;font-size:.78rem;color:var(--ink-dim,#9fb0c8)}`,
@@ -10496,7 +12387,7 @@ function render(){
 restart.addEventListener('click',function(){current=START;path=[];render();});
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -10513,7 +12404,7 @@ var optionSchema = {
 var poll_default = {
   id: "poll",
   name: "Poll",
-  category: "Interactive",
+  category: "interactive",
   description: "A question with tappable options. Tapping marks the reader's pick; optionally reveals an author-supplied distribution as bars (no live voting \u2014 there is no backend).",
   paramsSchema: {
     type: "object",
@@ -10532,20 +12423,20 @@ var poll_default = {
     {
       name: "Reader opinion (pick only)",
       params: {
-        question: "When a shoulder dislocates for the first time, what matters most?",
-        options: ["Speed of relocation", "Ruling out a fracture first", "Pain relief", "Getting an MRI"],
+        question: "When a houseplant starts drooping, what matters most?",
+        options: ["Watering it straight away", "Checking the soil first", "Moving it to more light", "Repotting it"],
         showResults: "none"
       }
     },
     {
       name: "Survey result (bars)",
       params: {
-        question: "Which knee injury is the commonest in contact sport?",
+        question: "What is the commonest way people kill a houseplant?",
         options: [
-          { label: "ACL tear", weight: 46 },
-          { label: "MCL sprain", weight: 31 },
-          { label: "Meniscal tear", weight: 18 },
-          { label: "PCL tear", weight: 5 }
+          { label: "Overwatering", weight: 46 },
+          { label: "Too little light", weight: 31 },
+          { label: "Letting it dry out", weight: 18 },
+          { label: "Pests", weight: 5 }
         ],
         showResults: "bars",
         note: "Illustrative shares \u2014 an author-authored distribution, not a live tally."
@@ -10565,7 +12456,7 @@ var poll_default = {
     opts.forEach((o, i) => {
       rows += `<button type="button" class="pg-poll-opt" role="radio" aria-checked="false" data-role="opt" data-idx="${i}"><span class="pg-poll-bar" data-role="bar" aria-hidden="true"></span><span class="pg-poll-mark" aria-hidden="true"></span><span class="pg-poll-label">${esc(o.label)}</span>` + (showBars ? `<span class="pg-poll-pct" data-role="pct" aria-hidden="true"></span>` : "") + `</button>`;
     });
-    const html = `<div class="pg-stage">${question}<div class="pg-poll-list" role="radiogroup"${params.question ? ` aria-labelledby="${domId}-q"` : ' aria-label="Poll"'} data-role="list">${rows}</div><div class="pg-readout pg-poll-readout" data-role="readout" aria-live="polite">Tap an option to choose.</div>` + note + `</div>`;
+    const html2 = `<div class="pg-stage">${question}<div class="pg-poll-list" role="radiogroup"${params.question ? ` aria-labelledby="${domId}-q"` : ' aria-label="Poll"'} data-role="list">${rows}</div><div class="pg-readout pg-poll-readout" data-role="readout" aria-live="polite">Tap an option to choose.</div>` + note + `</div>`;
     const css = [
       `#${domId} .pg-poll-q{font-weight:600;color:var(--ink,#e9eef8);font-size:1.05rem;margin:0 0 .9rem}`,
       `#${domId} .pg-poll-list{display:flex;flex-direction:column;gap:.6rem}`,
@@ -10642,18 +12533,25 @@ opts.forEach(function(btn){
 });
 paint();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
 // engine/playgrounds/scratch-reveal.js
-function stripUnsafe(html) {
-  return String(html).replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, "").replace(/<\s*script\b[^>]*\/?\s*>/gi, "").replace(/<\s*(iframe|object|embed|foreignObject)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, "").replace(/<\s*(iframe|object|embed)\b[^>]*\/?\s*>/gi, "").replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "").replace(/(href|src)\s*=\s*("\s*(?:javascript|data|vbscript):[^"]*"|'\s*(?:javascript|data|vbscript):[^']*'|\s*(?:javascript|data|vbscript):[^\s>]*)/gi, "");
+function stripUnsafe(html2) {
+  let s = String(html2).replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, "").replace(/<\s*script\b[^>]*\/?\s*>/gi, "").replace(/<\s*(iframe|object|embed|foreignObject)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, "").replace(/<\s*(iframe|object|embed)\b[^>]*\/?\s*>/gi, "");
+  const onAttr = /([\s/"'`])on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(onAttr, (m, d) => /\s/.test(d) ? "" : d);
+  } while (s !== prev);
+  return s.replace(/(href|src)\s*=\s*("\s*(?:javascript|data|vbscript):[^"]*"|'\s*(?:javascript|data|vbscript):[^']*'|\s*(?:javascript|data|vbscript):[^\s>]*)/gi, "");
 }
 var scratch_reveal_default = {
   id: "scratch-reveal",
   name: "Scratch to reveal",
-  category: "Interactive",
+  category: "interactive",
   description: 'A scratch-off cover over hidden content \u2014 drag a finger to scratch it away and reveal the answer, with a "Reveal all" button and a reduced-motion fallback.',
   paramsSchema: {
     type: "object",
@@ -10670,9 +12568,9 @@ var scratch_reveal_default = {
     {
       name: "Reveal the answer",
       params: {
-        title: "Which nerve is most at risk in a surgical neck fracture?",
+        title: "What is the tallest mountain on Earth, base to summit?",
         coverLabel: "Scratch to reveal",
-        revealText: "The axillary nerve \u2014 test the badge area and deltoid.",
+        revealText: "Mauna Kea \u2014 measured from the seabed it beats Everest, which wins only above sea level.",
         color: "#2dd4bf"
       }
     },
@@ -10680,7 +12578,7 @@ var scratch_reveal_default = {
       name: "Spoiler",
       params: {
         coverLabel: "Spoiler \u2014 scratch if you dare",
-        revealHtml: "It was the <strong>scaphoid</strong> all along.",
+        revealHtml: "It was <strong>Colonel Mustard</strong>, in the library, all along.",
         color: "#818cf8"
       }
     }
@@ -10690,7 +12588,7 @@ var scratch_reveal_default = {
     const coverLabel = esc(params.coverLabel || "Scratch here");
     const revealInner = params.revealHtml != null && String(params.revealHtml).trim() !== "" ? stripUnsafe(params.revealHtml) : esc(params.revealText || "");
     const color = /^#[0-9a-fA-F]{3,8}$/.test(String(params.color || "")) ? params.color : "#2dd4bf";
-    const html = `<div class="pg-stage">${title}<div class="pg-scr-frame" data-role="frame"><div class="pg-scr-content" data-role="content">${revealInner}</div><canvas class="pg-scr-canvas" data-role="canvas" aria-hidden="true"></canvas><div class="pg-scr-hint" data-role="hint" aria-hidden="true">${coverLabel}</div></div><div class="pg-controls pg-scr-controls"><button type="button" class="pg-scr-btn" data-role="revealall">Reveal all</button><span class="pg-readout pg-scr-readout" data-role="readout" aria-live="polite">Drag to scratch.</span></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-scr-frame" data-role="frame"><div class="pg-scr-content" data-role="content">${revealInner}</div><canvas class="pg-scr-canvas" data-role="canvas" aria-hidden="true"></canvas><div class="pg-scr-hint" data-role="hint" aria-hidden="true">${coverLabel}</div></div><div class="pg-controls pg-scr-controls"><button type="button" class="pg-scr-btn" data-role="revealall">Reveal all</button><span class="pg-readout pg-scr-readout" data-role="readout" aria-live="polite">Drag to scratch.</span></div></div>`;
     const css = [
       `#${domId} .pg-scr-title{font-weight:600;color:var(--ink,#e9eef8);margin:0 0 .8rem}`,
       `#${domId} .pg-scr-frame{position:relative;width:100%;min-height:120px;border:1px solid var(--line,#23304a);border-radius:12px;overflow:hidden;background:#04060c}`,
@@ -10772,7 +12670,7 @@ if(btn)btn.addEventListener('click',function(){cleared=true;done('Revealed.');})
 var rt;
 window.addEventListener('resize',function(){if(cleared)return;clearTimeout(rt);rt=setTimeout(paintCover,150);});
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -10789,7 +12687,7 @@ var slideSchema = {
 var swipe_carousel_default = {
   id: "swipe-carousel",
   name: "Swipeable carousel",
-  category: "Interactive",
+  category: "interactive",
   description: "A swipeable carousel of cards with dots and prev/next \u2014 touch-swipe, tap, or arrow keys. For step-throughs, tips, and before/after-of-the-week sets.",
   paramsSchema: {
     type: "object",
@@ -10843,7 +12741,7 @@ var swipe_carousel_default = {
     for (let i = 0; i < n; i++) {
       dots += `<button type="button" class="pg-car-dot" data-role="dot" data-idx="${i}" aria-label="Go to slide ${i + 1}"></button>`;
     }
-    const html = `<div class="pg-stage">${title}<div class="pg-car-viewport" data-role="viewport" aria-roledescription="carousel" tabindex="0" aria-label="Swipeable carousel; use the arrow keys"><div class="pg-car-track" data-role="track">${cards}</div></div><div class="pg-controls pg-car-controls"><button type="button" class="pg-car-nav" data-role="prev" aria-label="Previous slide">\u2039</button><div class="pg-car-dots" data-role="dots" role="tablist" aria-label="Slides">${dots}</div><button type="button" class="pg-car-nav" data-role="next" aria-label="Next slide">\u203A</button></div><div class="pg-readout pg-car-readout" data-role="readout" aria-live="polite">Slide <b data-role="idx">1</b> of <b>${n}</b></div></div>`;
+    const html2 = `<div class="pg-stage">${title}<div class="pg-car-viewport" data-role="viewport" aria-roledescription="carousel" tabindex="0" aria-label="Swipeable carousel; use the arrow keys"><div class="pg-car-track" data-role="track">${cards}</div></div><div class="pg-controls pg-car-controls"><button type="button" class="pg-car-nav" data-role="prev" aria-label="Previous slide">\u2039</button><div class="pg-car-dots" data-role="dots" role="tablist" aria-label="Slides">${dots}</div><button type="button" class="pg-car-nav" data-role="next" aria-label="Next slide">\u203A</button></div><div class="pg-readout pg-car-readout" data-role="readout" aria-live="polite">Slide <b data-role="idx">1</b> of <b>${n}</b></div></div>`;
     const css = [
       `#${domId} .pg-car-title{font-weight:600;color:var(--ink,#e9eef8);margin:0 0 .8rem}`,
       `#${domId} .pg-car-viewport{position:relative;overflow:hidden;border:1px solid var(--line,#23304a);border-radius:12px;background:#04060c;touch-action:pan-y;cursor:grab;user-select:none}`,
@@ -10940,7 +12838,7 @@ viewport.addEventListener('pointercancel',onUp);
 window.addEventListener('resize',function(){render(false);});
 render(false);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -10964,10 +12862,10 @@ var keyboard_layout_default = {
     { name: "A tongue-twister", params: { text: "she sells sea shells by the sea shore and the shells she sells are surely seashells", caption: "Longer text pulls the three layouts further apart." } }
   ],
   build(params, domId) {
-    const text2 = typeof params.text === "string" && params.text ? params.text : "the quick brown fox jumps over the lazy dog";
+    const text3 = typeof params.text === "string" && params.text ? params.text : "the quick brown fox jumps over the lazy dog";
     const title = params.title ? `<div class="kl-title">${esc(params.title)}</div>` : "";
     const capText = params.caption ? esc(params.caption) : "";
-    const html = `<div class="pg-stage">` + title + `<svg class="kl-kb" viewBox="0 0 460 170" role="img" aria-label="Keyboard heatmap: each key shaded by how often the current text uses that letter"><g data-role="keys"></g></svg><svg class="kl-cmp" viewBox="0 0 460 110" role="img" aria-label="Total finger reaches off the home row, compared across layouts"><g data-role="cmpg"></g></svg><div class="kl-cap" data-role="cap" aria-live="polite">${capText}</div><label class="kl-lab">Your text<textarea data-role="text" rows="2">${esc(text2)}</textarea></label><div class="kl-row" role="group" aria-label="Keyboard layout"><button type="button" class="kl-lay on" data-role="lay" data-lay="qwerty" aria-pressed="true">QWERTY</button><button type="button" class="kl-lay" data-role="lay" data-lay="dvorak" aria-pressed="false">Dvorak</button><button type="button" class="kl-lay" data-role="lay" data-lay="colemak" aria-pressed="false">Colemak</button></div><div class="kl-readout">reaches off home row <b data-role="reach">0</b> &middot; on home row <b data-role="home">0%</b></div></div>`;
+    const html2 = `<div class="pg-stage">` + title + `<svg class="kl-kb" viewBox="0 0 460 170" role="img" aria-label="Keyboard heatmap: each key shaded by how often the current text uses that letter"><g data-role="keys"></g></svg><svg class="kl-cmp" viewBox="0 0 460 110" role="img" aria-label="Total finger reaches off the home row, compared across layouts"><g data-role="cmpg"></g></svg><div class="kl-cap" data-role="cap" aria-live="polite">${capText}</div><label class="kl-lab">Your text<textarea data-role="text" rows="2">${esc(text3)}</textarea></label><div class="kl-row" role="group" aria-label="Keyboard layout"><button type="button" class="kl-lay on" data-role="lay" data-lay="qwerty" aria-pressed="true">QWERTY</button><button type="button" class="kl-lay" data-role="lay" data-lay="dvorak" aria-pressed="false">Dvorak</button><button type="button" class="kl-lay" data-role="lay" data-lay="colemak" aria-pressed="false">Colemak</button></div><div class="kl-readout">reaches off home row <b data-role="reach">0</b> &middot; on home row <b data-role="home">0%</b></div></div>`;
     const css = [
       `#${domId} .pg-stage{display:grid;gap:.8rem}`,
       `#${domId} .kl-title{font-weight:600;color:var(--ink,#e9eef8)}`,
@@ -11000,7 +12898,7 @@ if(text)text.addEventListener('input',upd);
 $$('[data-role=lay]').forEach(function(b){b.addEventListener('click',function(){lay=b.getAttribute('data-lay');$$('[data-role=lay]').forEach(function(x){var on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});upd();});});
 upd();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11083,7 +12981,7 @@ var doneness_default = {
     const start = Number.isFinite(params.start) ? params.start : Math.round((min + max) / 2);
     const title = params.title ? `<div class="dn-title">${esc(params.title)}</div>` : "";
     const capText = params.caption ? esc(params.caption) : "";
-    const html = `<div class="pg-stage">` + title + `<div class="dn-readout"><b data-role="val">${esc(String(start) + unit)}</b><span class="dn-zone" data-role="zone">\u2014</span></div><div class="dn-track" data-role="track"></div><input class="dn-slider" type="range" data-role="slider" min="${esc(String(min))}" max="${esc(String(max))}" value="${esc(String(start))}" step="1" aria-label="Temperature in ${esc(unit || "degrees")}"/><div class="dn-note" data-role="note" aria-live="polite"></div>` + (capText ? `<div class="dn-cap">${capText}</div>` : "") + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="dn-readout"><b data-role="val">${esc(String(start) + unit)}</b><span class="dn-zone" data-role="zone">\u2014</span></div><div class="dn-track" data-role="track"></div><input class="dn-slider" type="range" data-role="slider" min="${esc(String(min))}" max="${esc(String(max))}" value="${esc(String(start))}" step="1" aria-label="Temperature in ${esc(unit || "degrees")}"/><div class="dn-note" data-role="note" aria-live="polite"></div>` + (capText ? `<div class="dn-cap">${capText}</div>` : "") + `</div>`;
     const css = [
       `#${domId} .pg-stage{display:grid;gap:.7rem}`,
       `#${domId} .dn-title{font-weight:600;color:var(--ink,#e9eef8)}`,
@@ -11112,7 +13010,7 @@ renderSegs();
 if(slider)slider.addEventListener('input',upd);
 upd();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11137,7 +13035,7 @@ var key_change_default = {
     const title = params.title ? `<div class="kc-title">${esc(params.title)}</div>` : "";
     const caption = params.caption ? `<div class="kc-cap">${esc(params.caption)}</div>` : "";
     const pips = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => `<span class="kc-pip" data-role="pip" data-i="${i}"></span>`).join("");
-    const html = `<div class="pg-stage">` + title + `<div class="kc-status" data-role="status" aria-live="polite">Pick a version and press play.</div><div class="kc-pips" role="img" aria-label="Eight chords; the current chord lights as it plays">${pips}</div><div class="kc-row" role="group" aria-label="Play options"><button type="button" class="kc-btn" data-role="play" data-mode="plain">Play the loop (same key)</button><button type="button" class="kc-btn kc-lift" data-role="play" data-mode="lift">Play with the key change</button><button type="button" class="kc-btn kc-stop" data-role="stop">Stop</button></div>` + caption + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="kc-status" data-role="status" aria-live="polite">Pick a version and press play.</div><div class="kc-pips" role="img" aria-label="Eight chords; the current chord lights as it plays">${pips}</div><div class="kc-row" role="group" aria-label="Play options"><button type="button" class="kc-btn" data-role="play" data-mode="plain">Play the loop (same key)</button><button type="button" class="kc-btn kc-lift" data-role="play" data-mode="lift">Play with the key change</button><button type="button" class="kc-btn kc-stop" data-role="stop">Stop</button></div>` + caption + `</div>`;
     const css = [
       `#${domId} .pg-stage{display:grid;gap:.85rem}`,
       `#${domId} .kc-title{font-weight:600;color:var(--ink,#e9edf5)}`,
@@ -11229,7 +13127,7 @@ for(var b=0;b<playBtns.length;b++){
 }
 if(stopBtn)stopBtn.addEventListener('click',function(){stopAll(false);});
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11254,7 +13152,7 @@ var easing_curves_default = {
   build(params, domId) {
     const title = params.title ? `<div class="ec-title">${esc(params.title)}</div>` : "";
     const capText = params.caption ? esc(params.caption) : "";
-    const html = `<div class="pg-stage">` + title + `<div class="ec-row" role="group" aria-label="Easing"><button type="button" class="ec-ease" data-role="ease" data-ease="linear" aria-pressed="false">Linear</button><button type="button" class="ec-ease" data-role="ease" data-ease="in" aria-pressed="false">Ease-in</button><button type="button" class="ec-ease on" data-role="ease" data-ease="out" aria-pressed="true">Ease-out</button><button type="button" class="ec-ease" data-role="ease" data-ease="inout" aria-pressed="false">Ease-in-out</button><button type="button" class="ec-run" data-role="run">Run</button></div><svg class="ec-svg" viewBox="0 0 320 200" role="img" aria-label="The chosen easing curve, with a dot tracking the current position"><g data-role="curve"></g></svg><div class="ec-track" data-role="track"><div class="ec-fill" data-role="fill"></div></div><div class="ec-readout">progress <b data-role="pct" aria-live="polite">0%</b></div>` + (capText ? `<div class="ec-cap">${capText}</div>` : "") + `</div>`;
+    const html2 = `<div class="pg-stage">` + title + `<div class="ec-row" role="group" aria-label="Easing"><button type="button" class="ec-ease" data-role="ease" data-ease="linear" aria-pressed="false">Linear</button><button type="button" class="ec-ease" data-role="ease" data-ease="in" aria-pressed="false">Ease-in</button><button type="button" class="ec-ease on" data-role="ease" data-ease="out" aria-pressed="true">Ease-out</button><button type="button" class="ec-ease" data-role="ease" data-ease="inout" aria-pressed="false">Ease-in-out</button><button type="button" class="ec-run" data-role="run">Run</button></div><svg class="ec-svg" viewBox="0 0 320 200" role="img" aria-label="The chosen easing curve, with a dot tracking the current position"><g data-role="curve"></g></svg><div class="ec-track" data-role="track"><div class="ec-fill" data-role="fill"></div></div><div class="ec-readout">progress <b data-role="pct" aria-live="polite">0%</b></div>` + (capText ? `<div class="ec-cap">${capText}</div>` : "") + `</div>`;
     const css = [
       `#${domId} .pg-stage{display:grid;gap:.8rem}`,
       `#${domId} .ec-title{font-weight:600;color:var(--ink,#e9eef8)}`,
@@ -11333,7 +13231,7 @@ var runBtn=$('[data-role=run]');
 if(runBtn)runBtn.addEventListener('click',run);
 drawCurve();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11341,7 +13239,7 @@ drawCurve();
 var image_annotator_default = {
   id: "image-annotator",
   name: "Image annotator",
-  category: "Diagram",
+  category: "diagram",
   description: "Numbered pins over an image \u2014 tap a pin to reveal its caption. For anatomy, kit photos, maps and annotated screenshots.",
   paramsSchema: {
     type: "object",
@@ -11372,15 +13270,15 @@ var image_annotator_default = {
   },
   presets: [
     {
-      name: "Shoulder landmarks",
+      name: "Parts of a guitar",
       params: {
         alt: "Diagram stage",
         pins: [
-          { x: 30, y: 25, label: "Acromion", note: "The bony roof \u2014 palpable at the point of the shoulder." },
-          { x: 55, y: 45, label: "Glenoid", note: "The shallow socket; depth comes from the labrum." },
-          { x: 70, y: 70, label: "Deltoid tuberosity", note: "Where the deltoid inserts on the humerus." }
+          { x: 30, y: 25, label: "Headstock", note: "Holds the tuning pegs that set the pitch of each string." },
+          { x: 55, y: 45, label: "Soundhole", note: "The opening that lets the body project the sound." },
+          { x: 70, y: 70, label: "Bridge", note: "Anchors the strings and passes their vibration into the top." }
         ],
-        prompt: "Tap a pin to explore the landmarks."
+        prompt: "Tap a pin to explore the parts."
       }
     },
     {
@@ -11407,7 +13305,7 @@ var image_annotator_default = {
     pins.forEach((p, i) => {
       pinHtml += `<button type="button" class="pg-anno-pin" data-role="pin" data-idx="${i}" style="left:${p.x}%;top:${p.y}%" aria-label="${esc(p.label)}">${i + 1}</button>`;
     });
-    const html = `<div class="pg-stage"><div class="pg-anno-stage${params.image ? "" : " is-blank"}" data-role="stage">${img}${pinHtml}</div><div class="pg-anno-panel" data-role="panel" aria-live="polite">${esc(params.prompt || "Tap a pin to explore.")}</div><div class="pg-readout pg-anno-tally" data-role="tally"></div></div>`;
+    const html2 = `<div class="pg-stage"><div class="pg-anno-stage${params.image ? "" : " is-blank"}" data-role="stage">${img}${pinHtml}</div><div class="pg-anno-panel" data-role="panel" aria-live="polite">${esc(params.prompt || "Tap a pin to explore.")}</div><div class="pg-readout pg-anno-tally" data-role="tally"></div></div>`;
     const css = [
       `#${domId} .pg-anno-stage{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line,#23304a)}`,
       `#${domId} .pg-anno-stage.is-blank{min-height:220px;background:linear-gradient(rgba(140,160,200,.06),rgba(140,160,200,.02)),repeating-linear-gradient(0deg,transparent 0 23px,rgba(140,160,200,.08) 23px 24px),repeating-linear-gradient(90deg,transparent 0 23px,rgba(140,160,200,.08) 23px 24px)}`,
@@ -11448,7 +13346,7 @@ pins.forEach(function(btn){
 });
 tallyText();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11456,7 +13354,7 @@ tallyText();
 var step_explainer_default = {
   id: "step-explainer",
   name: "Step-through explainer",
-  category: "Narrative",
+  category: "narrative",
   description: "A Prev/Next walkthrough of titled cards with dots and a step counter \u2014 for build-ups, procedures and arguments that land one step at a time.",
   paramsSchema: {
     type: "object",
@@ -11483,13 +13381,13 @@ var step_explainer_default = {
   },
   presets: [
     {
-      name: "How a fracture heals",
+      name: "How bread rises",
       params: {
         steps: [
-          { heading: "Haematoma", body: "Bleeding at the fracture forms a clot \u2014 the scaffold everything else builds on." },
-          { heading: "Soft callus", body: "Fibroblasts and chondroblasts bridge the gap with cartilage over 2\u20133 weeks." },
-          { heading: "Hard callus", body: "Osteoblasts mineralise the bridge into woven bone \u2014 visibly \u201Chealing\u201D on an x-ray." },
-          { heading: "Remodelling", body: "Months to years: woven bone becomes lamellar bone along the lines of stress." }
+          { heading: "Mixing", body: "Flour and water form gluten \u2014 the stretchy network everything else builds on." },
+          { heading: "First prove", body: "Yeast feeds on the sugars and gives off gas, so the dough slowly swells over a few hours." },
+          { heading: "Shaping", body: "Knocking back and folding builds tension in the surface so the loaf holds its form." },
+          { heading: "Bake", body: "A last burst of oven spring sets the crumb and browns the crust." }
         ]
       }
     },
@@ -11511,7 +13409,7 @@ var step_explainer_default = {
     steps.forEach((s, i) => {
       dots += `<button type="button" class="pg-sx-dot" data-role="dot" data-idx="${i}" aria-label="Step ${i + 1}: ${esc(s.heading)}"></button>`;
     });
-    const html = `<div class="pg-stage"><div class="pg-sx-card" data-role="card" aria-live="polite"><div class="pg-sx-h" data-role="h"></div><div class="pg-sx-b" data-role="b"></div></div><div class="pg-row pg-sx-nav"><button type="button" class="pg-sx-btn" data-role="prev">\u2039 Back</button><div class="pg-sx-dots" data-role="dots">${dots}</div><button type="button" class="pg-sx-btn" data-role="next">${esc(params.startLabel || "Start")}</button></div><div class="pg-readout pg-sx-count" data-role="count"></div></div>`;
+    const html2 = `<div class="pg-stage"><div class="pg-sx-card" data-role="card" aria-live="polite"><div class="pg-sx-h" data-role="h"></div><div class="pg-sx-b" data-role="b"></div></div><div class="pg-row pg-sx-nav"><button type="button" class="pg-sx-btn" data-role="prev">\u2039 Back</button><div class="pg-sx-dots" data-role="dots">${dots}</div><button type="button" class="pg-sx-btn" data-role="next">${esc(params.startLabel || "Start")}</button></div><div class="pg-readout pg-sx-count" data-role="count"></div></div>`;
     const css = [
       `#${domId} .pg-sx-card{border:1px solid var(--line,#23304a);border-radius:10px;padding:1rem 1.1rem;min-height:6em;background:rgba(140,160,200,.05);transition:opacity .25s}`,
       `#${domId}.pg-sx-reduce .pg-sx-card{transition:none}`,
@@ -11564,7 +13462,7 @@ dots.forEach(function(d){
 });
 show(0,true);
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11572,7 +13470,7 @@ show(0,true);
 var scored_quiz_default = {
   id: "scored-quiz",
   name: "Scored quiz",
-  category: "Game",
+  category: "game",
   description: "A short multi-question quiz \u2014 answers are marked as you go, and the score lands on a verdict you write. For test-yourself posts.",
   paramsSchema: {
     type: "object",
@@ -11615,12 +13513,12 @@ var scored_quiz_default = {
   },
   presets: [
     {
-      name: "Fracture first principles",
+      name: "Everyday science quiz",
       params: {
         questions: [
-          { q: "The commonest direction of shoulder dislocation?", options: ["Anterior", "Posterior", "Inferior"], answer: 0, explain: "Roughly 95% \u2014 posterior is rare and classically missed." },
-          { q: "First imaging for a suspected scaphoid fracture?", options: ["MRI", "Plain radiographs", "CT"], answer: 1, explain: "X-ray first; MRI when clinical suspicion persists with normal films." },
-          { q: "An open fracture needs antibiotics\u2026", options: ["Within an hour", "Within a day", "Only if contaminated"], answer: 0, explain: "As soon as possible \u2014 ideally within the hour." }
+          { q: "Which reaches you first in a storm?", options: ["The lightning", "The thunder", "They arrive together"], answer: 0, explain: "Light travels far faster than sound, so you see the flash before you hear the thunder." },
+          { q: "What makes bread dough rise?", options: ["Baking the flour", "Yeast giving off gas", "Adding cold water"], answer: 1, explain: "Yeast ferments the sugars and releases carbon dioxide, which the gluten traps as bubbles." },
+          { q: "Why does the sky look blue?", options: ["The sea reflects up", "Air scatters blue light most", "The sun is blue"], answer: 1, explain: "Shorter blue wavelengths scatter more in the atmosphere than the longer red ones." }
         ],
         verdicts: [
           { min: 0, text: "Worth a re-read \u2014 the basics bite hardest." },
@@ -11637,7 +13535,7 @@ var scored_quiz_default = {
       answer: Math.max(0, Number(it && it.answer) || 0),
       explain: String(it && it.explain || "")
     })).filter((it) => it.q !== "" && it.options.length >= 2);
-    const html = `<div class="pg-stage"><div class="pg-readout pg-sq-progress" data-role="progress"></div><div class="pg-sq-q" data-role="q"></div><div class="pg-sq-opts" data-role="opts"></div><div class="pg-sq-explain" data-role="explain" aria-live="polite"></div><div class="pg-row pg-sq-nav"><button type="button" class="pg-sq-next" data-role="next" style="display:none">Next question \u203A</button></div></div>`;
+    const html2 = `<div class="pg-stage"><div class="pg-readout pg-sq-progress" data-role="progress"></div><div class="pg-sq-q" data-role="q"></div><div class="pg-sq-opts" data-role="opts"></div><div class="pg-sq-explain" data-role="explain" aria-live="polite"></div><div class="pg-row pg-sq-nav"><button type="button" class="pg-sq-next" data-role="next" style="display:none">Next question \u203A</button></div></div>`;
     const css = [
       `#${domId} .pg-sq-progress{font-size:.82rem;color:var(--ink-faint,#717d99);margin:0 0 .55rem}`,
       `#${domId} .pg-sq-q{font-weight:650;color:#fff;font-size:1.02rem;margin:0 0 .8rem;line-height:1.4}`,
@@ -11708,7 +13606,7 @@ next.addEventListener('click',function(){
 });
 showQ();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11716,7 +13614,7 @@ showQ();
 var sortable_table_default = {
   id: "sortable-table",
   name: "Sortable table",
-  category: "Data",
+  category: "data",
   description: "A table the reader can sort by any column (numbers sort numerically) and filter live \u2014 for evidence and comparison tables.",
   paramsSchema: {
     type: "object",
@@ -11736,14 +13634,14 @@ var sortable_table_default = {
   },
   presets: [
     {
-      name: "Landmark shoulder trials",
+      name: "Coffee brewing methods",
       params: {
-        columns: ["Trial", "Year", "N", "Verdict"],
+        columns: ["Method", "Minutes", "Faff", "Verdict"],
         rows: [
-          ["ProFHER", "2015", "250", "Surgery no better for displaced proximal humerus"],
-          ["UKUFF", "2017", "460", "Open \u2248 arthroscopic cuff repair"],
-          ["CSAW", "2018", "313", "Decompression \u2248 placebo surgery"],
-          ["FISH", "2019", "210", "Operative \u2248 functional bracing for humeral shaft"]
+          ["French press", "4", "Low", "Full-bodied and forgiving of a rough grind"],
+          ["AeroPress", "2", "Low", "Quick, clean and easy to travel with"],
+          ["Pour-over", "3", "Medium", "Bright and clear; rewards a steady pour"],
+          ["Moka pot", "5", "Medium", "Strong and stovetop; watch the heat"]
         ],
         filterable: true
       }
@@ -11773,7 +13671,7 @@ var sortable_table_default = {
     rows.forEach((r) => {
       tbody += "<tr>" + cols.map((_, i) => `<td>${esc(r[i] == null ? "" : r[i])}</td>`).join("") + "</tr>";
     });
-    const html = `<div class="pg-stage">${filter}<div class="pg-st-scroll"><table class="pg-st" data-role="table"><thead><tr>${thead}</tr></thead><tbody data-role="tbody">${tbody}</tbody></table></div><div class="pg-readout pg-st-count" data-role="count" aria-live="polite"></div></div>`;
+    const html2 = `<div class="pg-stage">${filter}<div class="pg-st-scroll"><table class="pg-st" data-role="table"><thead><tr>${thead}</tr></thead><tbody data-role="tbody">${tbody}</tbody></table></div><div class="pg-readout pg-st-count" data-role="count" aria-live="polite"></div></div>`;
     const css = [
       `#${domId} .pg-st-filter{width:100%;box-sizing:border-box;min-height:44px;margin:0 0 .6rem;background:rgba(140,160,200,.05);border:1px solid var(--line,#23304a);border-radius:9px;color:var(--ink,#e9eef8);padding:.55rem .75rem;font:inherit;font-size:16px}`,
       `#${domId} .pg-st-filter:focus{outline:none;border-color:#22d3ee}`,
@@ -11834,7 +13732,7 @@ ths.forEach(function(th){
 if(filter)filter.addEventListener('input',function(){query=filter.value;paint();});
 paint();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -11842,7 +13740,7 @@ paint();
 var self_assessment_default = {
   id: "self-assessment",
   name: "Self-assessment",
-  category: "Game",
+  category: "game",
   description: "A profile or recommendation quiz \u2014 answers add to outcome bands, then the reader receives the closest result. For reflective and advisory posts.",
   paramsSchema: {
     type: "object",
@@ -11932,7 +13830,7 @@ var self_assessment_default = {
     const questions = (Array.isArray(params.questions) ? params.questions : []).slice(0, 12);
     const outcomes = (Array.isArray(params.outcomes) ? params.outcomes : []).slice(0, 6);
     const intro = params.intro ? `<div class="pg-sa-intro">${esc(params.intro)}</div>` : "";
-    const html = `<div class="pg-stage">${intro}<div class="pg-readout pg-sa-progress" data-role="progress"></div><div class="pg-sa-q" data-role="q"></div><div class="pg-sa-options" data-role="options"></div><div class="pg-sa-result" data-role="result" aria-live="polite" hidden></div><div class="pg-sa-actions"><button type="button" data-role="back" hidden>\u2039 Back</button><button type="button" data-role="restart" hidden>Try again \u21BA</button></div></div>`;
+    const html2 = `<div class="pg-stage">${intro}<div class="pg-readout pg-sa-progress" data-role="progress"></div><div class="pg-sa-q" data-role="q"></div><div class="pg-sa-options" data-role="options"></div><div class="pg-sa-result" data-role="result" aria-live="polite" hidden></div><div class="pg-sa-actions"><button type="button" data-role="back" hidden>\u2039 Back</button><button type="button" data-role="restart" hidden>Try again \u21BA</button></div></div>`;
     const css = [
       `#${domId} .pg-sa-intro{color:var(--ink-dim,#9fb3c8);font-size:.9rem;line-height:1.5;margin-bottom:.8rem}`,
       `#${domId} .pg-sa-progress{font-size:.8rem;color:var(--ink-faint,#717d99);margin-bottom:.45rem}`,
@@ -11980,7 +13878,7 @@ back.addEventListener('click',function(){if(at>0){at--;answers.length=at;show();
 restart.addEventListener('click',function(){at=0;answers=[];show();});
 show();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -12062,7 +13960,7 @@ var formula_calculator_default = {
       (o, i) => `<div class="pg-fc-out"><span>${esc(o.label || `Output ${i + 1}`)}</span><strong data-role="out" data-idx="${i}">\u2013</strong></div>`
     ).join("");
     const note = params.note ? `<div class="pg-fc-note">${esc(params.note)}</div>` : "";
-    const html = `<div class="pg-stage">${prompt}<div class="pg-fc-grid"><div class="pg-fc-controls">${controls}</div><div class="pg-fc-results">${cards}</div></div>${note}<div class="pg-fc-status" data-role="status" aria-live="polite"></div></div>`;
+    const html2 = `<div class="pg-stage">${prompt}<div class="pg-fc-grid"><div class="pg-fc-controls">${controls}</div><div class="pg-fc-results">${cards}</div></div>${note}<div class="pg-fc-status" data-role="status" aria-live="polite"></div></div>`;
     const css = [
       `#${domId} .pg-fc-prompt{color:var(--ink-dim,#9fb3c8);margin-bottom:.85rem}`,
       `#${domId} .pg-fc-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(12rem,.8fr);gap:1rem}`,
@@ -12102,7 +14000,7 @@ ranges.forEach(function(r){r.addEventListener('input',function(){sync(r,nums);})
 nums.forEach(function(n){n.addEventListener('input',function(){sync(n,ranges);});});
 draw();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -12110,7 +14008,7 @@ draw();
 var branching_scenario_default = {
   id: "branching-scenario",
   name: "Branching scenario",
-  category: "Narrative",
+  category: "narrative",
   description: "A choose-your-path case study \u2014 decisions move through authored scenes, optionally changing a score before an outcome.",
   paramsSchema: {
     type: "object",
@@ -12187,7 +14085,7 @@ var branching_scenario_default = {
   build(params, domId) {
     const nodes = (Array.isArray(params.nodes) ? params.nodes : []).slice(0, 30);
     const intro = params.intro ? `<div class="pg-bs-intro">${esc(params.intro)}</div>` : "";
-    const html = `<div class="pg-stage">${intro}<div class="pg-bs-top"><div class="pg-readout" data-role="progress"></div><div class="pg-bs-score" data-role="score"></div></div><div class="pg-bs-trail" data-role="trail" aria-label="Choices made"></div><div class="pg-bs-card" data-role="card" aria-live="polite"></div><div class="pg-bs-actions"><button type="button" data-role="back" hidden>\u2039 Back</button><button type="button" data-role="restart" hidden>Start over \u21BA</button></div></div>`;
+    const html2 = `<div class="pg-stage">${intro}<div class="pg-bs-top"><div class="pg-readout" data-role="progress"></div><div class="pg-bs-score" data-role="score"></div></div><div class="pg-bs-trail" data-role="trail" aria-label="Choices made"></div><div class="pg-bs-card" data-role="card" aria-live="polite"></div><div class="pg-bs-actions"><button type="button" data-role="back" hidden>\u2039 Back</button><button type="button" data-role="restart" hidden>Start over \u21BA</button></div></div>`;
     const css = [
       `#${domId} .pg-bs-intro{color:var(--ink-dim,#cdd6e6);line-height:1.55;margin-bottom:.8rem}`,
       `#${domId} .pg-bs-top{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem}`,
@@ -12230,7 +14128,7 @@ back.addEventListener('click',function(){var h=history.pop();if(!h)return;curren
 restart.addEventListener('click',function(){current=String(CONFIG.start||'');score=0;history=[];render();});
 render();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -12238,7 +14136,7 @@ render();
 var dataset_explorer_default = {
   id: "dataset-explorer",
   name: "Dataset explorer",
-  category: "Data",
+  category: "data",
   description: "Search, filter, sort and chart a small inline dataset. For comparisons, ranked lists and evidence-led posts.",
   paramsSchema: {
     type: "object",
@@ -12286,7 +14184,7 @@ var dataset_explorer_default = {
     );
     const heads = cols.map((c, i) => `<th scope="col" aria-sort="none" data-role="th" data-idx="${i}"><button type="button">${esc(c)}<span aria-hidden="true"></span></button></th>`).join("");
     const body = rows.map((r) => `<tr>${cols.map((_, i) => `<td>${esc(r[i] || "")}</td>`).join("")}</tr>`).join("");
-    const html = `<div class="pg-stage"><div class="pg-de-tools"><input type="search" data-role="search" placeholder="Search rows\u2026" aria-label="Search dataset"><select data-role="category" aria-label="Filter category"><option value="">All categories</option></select><div class="pg-de-tabs" role="group" aria-label="Dataset view"><button type="button" data-view="table">Table</button><button type="button" data-view="bars">Bars</button></div></div><div class="pg-de-tablewrap" data-role="tableview"><table><thead><tr>${heads}</tr></thead><tbody data-role="tbody">${body}</tbody></table></div><div class="pg-de-bars" data-role="bars" hidden></div><div class="pg-readout pg-de-count" data-role="count" aria-live="polite"></div></div>`;
+    const html2 = `<div class="pg-stage"><div class="pg-de-tools"><input type="search" data-role="search" placeholder="Search rows\u2026" aria-label="Search dataset"><select data-role="category" aria-label="Filter category"><option value="">All categories</option></select><div class="pg-de-tabs" role="group" aria-label="Dataset view"><button type="button" data-view="table">Table</button><button type="button" data-view="bars">Bars</button></div></div><div class="pg-de-tablewrap" data-role="tableview"><table><thead><tr>${heads}</tr></thead><tbody data-role="tbody">${body}</tbody></table></div><div class="pg-de-bars" data-role="bars" hidden></div><div class="pg-readout pg-de-count" data-role="count" aria-live="polite"></div></div>`;
     const css = [
       `#${domId} .pg-de-tools{display:grid;grid-template-columns:minmax(9rem,1fr) minmax(9rem,.7fr) auto;gap:.5rem;margin-bottom:.65rem}`,
       `#${domId} .pg-de-tools input,#${domId} .pg-de-tools select{min-height:44px;border:1px solid var(--line,#23304a);border-radius:9px;background:rgba(140,160,200,.05);color:var(--ink,#e9eef8);font:inherit;font-size:16px;padding:.45rem .65rem}`,
@@ -12339,7 +14237,7 @@ ths.forEach(function(th){th.querySelector('button').addEventListener('click',fun
 tabs.forEach(function(t){t.addEventListener('click',function(){view=t.getAttribute('data-view');paint();});});
 paint();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -12347,7 +14245,7 @@ paint();
 var drag_to_label_default = {
   id: "drag-to-label",
   name: "Drag to label",
-  category: "Game",
+  category: "game",
   description: "Place labels on an image or diagram, then check the answers. Works by drag, tap or keyboard.",
   paramsSchema: {
     type: "object",
@@ -12408,7 +14306,7 @@ var drag_to_label_default = {
     const labels = targets.map((t, i) => ({ ...t, i })).reverse().map(
       (t) => `<button type="button" class="pg-dl-label" data-role="label" data-idx="${t.i}" draggable="true" aria-pressed="false">${esc(t.label)}</button>`
     ).join("");
-    const html = `<div class="pg-stage"><div class="pg-dl-prompt">${esc(params.prompt || "Place each label on its target.")}</div><div class="pg-dl-layout"><div class="pg-dl-palette" data-role="palette" aria-label="Labels">${labels}</div><div class="pg-dl-board${params.image ? "" : " is-blank"}" data-role="board">${image}${spots}</div></div><div class="pg-dl-actions"><button type="button" data-role="check">Check labels</button><button type="button" data-role="hint">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-dl-status" data-role="status" aria-live="polite"></div></div>`;
+    const html2 = `<div class="pg-stage"><div class="pg-dl-prompt">${esc(params.prompt || "Place each label on its target.")}</div><div class="pg-dl-layout"><div class="pg-dl-palette" data-role="palette" aria-label="Labels">${labels}</div><div class="pg-dl-board${params.image ? "" : " is-blank"}" data-role="board">${image}${spots}</div></div><div class="pg-dl-actions"><button type="button" data-role="check">Check labels</button><button type="button" data-role="hint">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-dl-status" data-role="status" aria-live="polite"></div></div>`;
     const css = [
       `#${domId} .pg-dl-prompt{color:var(--ink-dim,#9fb3c8);font-size:.9rem;margin-bottom:.7rem}`,
       `#${domId} .pg-dl-layout{display:grid;grid-template-columns:minmax(8rem,.65fr) minmax(15rem,1.6fr);gap:.75rem;align-items:start}`,
@@ -12446,7 +14344,7 @@ $('[data-role=hint]').addEventListener('click',function(){targets.forEach(functi
 $('[data-role=reset]').addEventListener('click',function(){targets.forEach(function(t){t.removeAttribute('data-placed');t.classList.remove('is-right','is-wrong');});selected=null;labels.forEach(function(b){b.setAttribute('aria-pressed','false');});refresh();status.textContent='Labels reset.';});
 refresh();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -12455,7 +14353,7 @@ var SHAPES = ["start", "process", "decision", "input", "end"];
 var algorithm_builder_default = {
   id: "algorithm-builder",
   name: "Algorithm builder",
-  category: "Diagram",
+  category: "diagram",
   description: "Arrange flowchart shapes into a working algorithm, then check the flow. Drag, buttons and keyboard all work.",
   paramsSchema: {
     type: "object",
@@ -12515,7 +14413,7 @@ var algorithm_builder_default = {
     const rows = shifted.map(
       (s, i) => `<li class="pg-ab-node" data-role="node" data-id="${esc(s.id)}" draggable="true" tabindex="0" aria-label="${esc(s.label)}, position ${i + 1} of ${steps.length}. Use arrow keys to move."><span class="pg-ab-shape is-${s.shape}" aria-hidden="true"></span><span class="pg-ab-label">${esc(s.label)}</span><span class="pg-ab-moves"><button type="button" data-role="up" aria-label="Move ${esc(s.label)} up">\u25B2</button><button type="button" data-role="down" aria-label="Move ${esc(s.label)} down">\u25BC</button></span></li>`
     ).join("");
-    const html = `<div class="pg-stage"><div class="pg-ab-prompt">${esc(params.prompt || "Arrange the flowchart into the correct order.")}</div><ol class="pg-ab-flow" data-role="flow" aria-label="Flowchart workspace">${rows}</ol><div class="pg-ab-actions"><button type="button" data-role="check">Check flow</button><button type="button" data-role="hint">Hint</button><button type="button" data-role="solution">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-ab-status" data-role="status" aria-live="polite"></div></div>`;
+    const html2 = `<div class="pg-stage"><div class="pg-ab-prompt">${esc(params.prompt || "Arrange the flowchart into the correct order.")}</div><ol class="pg-ab-flow" data-role="flow" aria-label="Flowchart workspace">${rows}</ol><div class="pg-ab-actions"><button type="button" data-role="check">Check flow</button><button type="button" data-role="hint">Hint</button><button type="button" data-role="solution">Show solution</button><button type="button" data-role="reset">Reset</button></div><div class="pg-readout pg-ab-status" data-role="status" aria-live="polite"></div></div>`;
     const css = [
       `#${domId} .pg-ab-prompt{color:var(--ink-dim,#9fb3c8);line-height:1.5;margin-bottom:.8rem}`,
       `#${domId} .pg-ab-flow{list-style:none;margin:0;padding:0;display:grid;gap:1rem;max-width:38rem}`,
@@ -12556,7 +14454,7 @@ $('[data-role=solution]').addEventListener('click',function(){arrange(solution);
 $('[data-role=reset]').addEventListener('click',function(){arrange(initial);nodes().forEach(function(n){n.classList.remove('is-right','is-wrong');});status.textContent='Flow reset.';});
 renumber();
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
@@ -12564,7 +14462,7 @@ renumber();
 var relationship_network_default = {
   id: "relationship-network",
   name: "Relationship network",
-  category: "Diagram",
+  category: "diagram",
   description: "Explore connections between people, ideas, events or organisations through a selectable network and textual relationship list.",
   paramsSchema: {
     type: "object",
@@ -12649,7 +14547,7 @@ var relationship_network_default = {
       const a = nodes.find((n) => n.id === l.from), b = nodes.find((n) => n.id === l.to);
       return `<li><b>${esc(a ? a.label : l.from)}</b> \u2192 <b>${esc(b ? b.label : l.to)}</b>${l.label ? `: ${esc(l.label)}` : ""}</li>`;
     }).join("");
-    const html = `<div class="pg-stage"><div class="pg-rn-prompt">${esc(params.prompt || "Select a node to explore its relationships.")}</div><div class="pg-rn-stage"><svg viewBox="0 0 100 100" aria-hidden="true">${lines}</svg>${buttons}</div><div class="pg-rn-panel" data-role="panel" aria-live="polite">Select a node to highlight its direct connections.</div><details class="pg-rn-details"><summary>All relationships</summary><ul>${textList}</ul></details></div>`;
+    const html2 = `<div class="pg-stage"><div class="pg-rn-prompt">${esc(params.prompt || "Select a node to explore its relationships.")}</div><div class="pg-rn-stage"><svg viewBox="0 0 100 100" aria-hidden="true">${lines}</svg>${buttons}</div><div class="pg-rn-panel" data-role="panel" aria-live="polite">Select a node to highlight its direct connections.</div><details class="pg-rn-details"><summary>All relationships</summary><ul>${textList}</ul></details></div>`;
     const css = [
       `#${domId} .pg-rn-prompt{color:var(--ink-dim,#9fb3c8);margin-bottom:.65rem}`,
       `#${domId} .pg-rn-stage{position:relative;min-height:360px;border:1px solid var(--line,#23304a);border-radius:13px;background:radial-gradient(circle at center,rgba(34,211,238,.08),rgba(4,6,12,.08) 60%)}`,
@@ -12676,12 +14574,12 @@ buttons.forEach(function(btn){btn.addEventListener('click',function(){var id=btn
   panel.innerHTML='<b>'+clean(n.label||id)+'</b>'+(n.note?' \u2014 '+clean(n.note):'')+(related.length?'<ul>'+related.map(function(r){return '<li><b>'+clean(r.other.label||'Unknown')+'</b>'+(r.label?' \xB7 '+clean(r.label):'')+'</li>';}).join('')+'</ul>':'<div>No direct relationships are configured.</div>');
 });});
 `;
-    return { html, css, jsBody };
+    return { html: html2, css, jsBody };
   }
 };
 
 // engine/playgrounds/registry.js
-var all = [
+var all = () => [
   toggle_ab_default,
   function_explorer_default,
   stepper_timeline_default,
@@ -12763,10 +14661,14 @@ var all = [
   algorithm_builder_default,
   relationship_network_default
 ];
-var families = all.reduce((m, f) => {
-  m[f.id] = f;
-  return m;
-}, {});
+var _families = null;
+function getFamilies() {
+  if (!_families) _families = all().reduce((m, f) => {
+    m[f.id] = f;
+    return m;
+  }, {});
+  return _families;
+}
 
 // engine/playgrounds/accent.js
 var SRC = {
@@ -12863,13 +14765,13 @@ function frameParams(params = {}) {
     maxHeight: params.maxHeight || "auto"
   };
 }
-function frameWrap({ html, domId, title, subtitle, caption, maxHeight }) {
+function frameWrap({ html: html2, domId, title, subtitle, caption, maxHeight }) {
   const hasHead = !!(title || subtitle);
   const hasCap = !!caption;
   const capPx = CLIP_HEIGHTS[maxHeight];
-  if (!hasHead && !hasCap && !capPx) return { html: String(html || ""), css: "", js: "" };
+  if (!hasHead && !hasCap && !capPx) return { html: String(html2 || ""), css: "", js: "" };
   const head = hasHead ? '<div class="pg-frame-head">' + (title ? `<div class="pg-frame-title">${esc2(title)}</div>` : "") + (subtitle ? `<div class="pg-frame-sub">${esc2(subtitle)}</div>` : "") + "</div>" : "";
-  const body = `<div class="pg-frame-body">${String(html || "")}</div>`;
+  const body = `<div class="pg-frame-body">${String(html2 || "")}</div>`;
   const mid = capPx ? `<div class="pg-frame-clip" data-role="pg-clip">${body}</div>` : body;
   const more = capPx ? '<button type="button" class="pg-frame-more" data-role="pg-more">Show all \u25BE</button>' : "";
   const cap = hasCap ? `<div class="pg-frame-cap">${esc2(caption)}</div>` : "";
@@ -12895,7 +14797,7 @@ function frameWrap({ html, domId, title, subtitle, caption, maxHeight }) {
 
 // engine/playgrounds/index.js
 function listFamilies() {
-  return Object.values(families).map((f) => ({
+  return Object.values(getFamilies()).map((f) => ({
     id: f.id,
     name: f.name,
     category: f.category,
@@ -12905,7 +14807,7 @@ function listFamilies() {
   }));
 }
 function getFamily(id) {
-  const f = families[id];
+  const f = getFamilies()[id];
   if (!f) throw Object.assign(new Error(`Unknown playground family: ${id}`), { code: "PG_FAMILY", status: 400 });
   return f;
 }
@@ -12918,9 +14820,9 @@ var SAFE_ID = /^[a-zA-Z][\w-]*$/;
 function buildInstance(familyId, params = {}, domId) {
   const f = getFamily(familyId);
   const id = domId && SAFE_ID.test(domId) ? domId : `pg-${familyId}-${idHash(JSON.stringify(params))}`;
-  const { html, css, jsBody } = f.build(params, id);
+  const { html: html2, css, jsBody } = f.build(params, id);
   const fp = frameParams(params);
-  const framed = frameWrap({ html, domId: id, title: fp.title, subtitle: fp.subtitle, caption: fp.caption, maxHeight: fp.maxHeight });
+  const framed = frameWrap({ html: html2, domId: id, title: fp.title, subtitle: fp.subtitle, caption: fp.caption, maxHeight: fp.maxHeight });
   const mergedCss = framed.css ? framed.css + "\n" + String(css || "") : String(css || "");
   const finalCss = applyAccent(mergedCss, fp.accent, fp.accentCustom, id);
   const config2 = JSON.stringify({ domId: id, ...params });
@@ -13030,12 +14932,12 @@ function baseShape(shape) {
   ].join(" ");
   return path(d, { class: "fig-stroke", width: 2 });
 }
-function labelledAnchor(text2, anchor) {
+function labelledAnchor(text3, anchor) {
   const [ax, ay] = anchor;
   const onRight = ax >= CX;
   const lx = onRight ? Math.min(ax + 60, VB_W - 8) : Math.max(ax - 60, 8);
   const ly = ay;
-  const txt = label(text2, lx, ly + 4, {
+  const txt = label(text3, lx, ly + 4, {
     anchor: onRight ? "start" : "end",
     size: 13
   });
@@ -13052,8 +14954,8 @@ function build(params = {}, opts = { animate: "draw" }) {
     parts.push(labelledAnchor(l.text ?? "", anchor));
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(VB_W, VB_H), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB_W, VB_H), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/step-flow.js
@@ -13091,25 +14993,25 @@ var meta2 = {
   },
   presets: [
     {
-      name: "Reduce \u2192 Review",
+      name: "A proper cuppa",
       params: {
         orientation: "h",
         steps: [
-          { title: "Reduce" },
-          { title: "Immobilise" },
-          { title: "Image" },
-          { title: "Review" }
+          { title: "Boil" },
+          { title: "Steep" },
+          { title: "Pour" },
+          { title: "Sip" }
         ]
       }
     },
     {
-      name: "Vertical pathway",
+      name: "Plan a trip",
       params: {
         orientation: "v",
         steps: [
-          { title: "Assess", note: "history + exam" },
-          { title: "Investigate", note: "bloods, imaging" },
-          { title: "Treat" }
+          { title: "Research", note: "dates + budget" },
+          { title: "Book", note: "travel, rooms" },
+          { title: "Pack" }
         ]
       }
     }
@@ -13160,8 +15062,8 @@ function build2(params = {}, opts = { animate: "draw" }) {
   const W4 = horizontal ? PAD * 2 + n * NODE_W + (n - 1) * GAP : PAD * 2 + NODE_W + 70;
   const H5 = horizontal ? PAD * 2 + NODE_H + noteRoom + 8 : PAD * 2 + n * NODE_H + (n - 1) * GAP + noteRoom;
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/cross-section.js
@@ -13200,15 +15102,15 @@ var meta3 = {
   },
   presets: [
     {
-      name: "Soft-tissue to bone",
+      name: "Earth\u2019s layers",
       params: {
         orientation: "v",
         layers: [
-          { label: "skin" },
-          { label: "fat", hatch: true },
-          { label: "muscle" },
-          { label: "periosteum" },
-          { label: "bone" }
+          { label: "crust" },
+          { label: "upper mantle", hatch: true },
+          { label: "lower mantle" },
+          { label: "outer core" },
+          { label: "inner core" }
         ]
       }
     }
@@ -13303,8 +15205,8 @@ function build3(params = {}, opts = { animate: "draw" }) {
     }
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(VB_W2, VB_H2), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB_W2, VB_H2), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/annotation-arrows.js
@@ -13431,8 +15333,8 @@ function build4(params = {}, opts = { animate: "draw" }) {
   if (frame2) parts.push(panel({ x: 1, y: 1, w: W4 - 2, h: H5 - 2, rx: 4 }));
   for (const a of list) parts.push(annotated(a));
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/timeline.js
@@ -13472,13 +15374,13 @@ var meta5 = {
   },
   presets: [
     {
-      name: "Fracture healing",
+      name: "From bean to cup",
       params: {
         events: [
-          { label: "Injury" },
-          { label: "Reduction" },
-          { label: "Union" },
-          { label: "Remodelling" }
+          { label: "Harvest" },
+          { label: "Roast" },
+          { label: "Grind" },
+          { label: "Brew" }
         ]
       }
     }
@@ -13538,8 +15440,8 @@ function build5(params = {}, opts = { animate: "draw" }) {
     parts.push(label(ev.label ?? "", x, textY, { anchor: "middle", size: 12 }));
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(VB_W3, VB_H3), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB_W3, VB_H3), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/cycle.js
@@ -13578,13 +15480,13 @@ var meta6 = {
   },
   presets: [
     {
-      name: "Bone remodelling",
+      name: "Water cycle",
       params: {
         steps: [
-          { title: "Resorption" },
-          { title: "Reversal" },
-          { title: "Formation" },
-          { title: "Mineralisation" }
+          { title: "Evaporation" },
+          { title: "Condensation" },
+          { title: "Precipitation" },
+          { title: "Collection" }
         ]
       }
     }
@@ -13662,8 +15564,8 @@ function build6(params = {}, opts = { animate: "draw" }) {
     parts.push(label(list[i].title ?? "", lx, ly + 4, { anchor, size: 13 }));
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(VB, VB), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB, VB), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/flow-decision.js
@@ -13716,14 +15618,14 @@ var meta7 = {
   },
   presets: [
     {
-      name: "Fracture algorithm",
+      name: "Seed to seedling",
       params: {
         nodes: [
-          { id: "a", text: "Fracture", kind: "start" },
-          { id: "b", text: "Displaced?", kind: "decision" },
-          { id: "c", text: "Reduce", kind: "action" },
-          { id: "d", text: "Immobilise", kind: "action" },
-          { id: "e", text: "Review", kind: "end" }
+          { id: "a", text: "Seed sown", kind: "start" },
+          { id: "b", text: "Sprouted?", kind: "decision" },
+          { id: "c", text: "Move to light", kind: "action" },
+          { id: "d", text: "Keep warm", kind: "action" },
+          { id: "e", text: "Seedling", kind: "end" }
         ],
         edges: [
           { from: "a", to: "b" },
@@ -13880,8 +15782,8 @@ function build7(params = {}, opts = { animate: "draw" }) {
   const W4 = PAD4 * 2 + fullW;
   const H5 = PAD4 * 2 + rowKeys.length * NODE_H2 + Math.max(0, rowKeys.length - 1) * ROW_GAP;
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(round4(W4), round4(H5)), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(round4(W4), round4(H5)), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/before-after.js
@@ -13921,12 +15823,12 @@ var meta8 = {
   },
   presets: [
     {
-      name: "Reduction",
+      name: "Edit pass",
       params: {
         divider: "arrow",
         panels: [
-          { label: "Displaced", note: "pre-reduction" },
-          { label: "Reduced", note: "post-reduction" }
+          { label: "As shot", note: "before" },
+          { label: "Edited", note: "after" }
         ]
       }
     }
@@ -13981,8 +15883,8 @@ function build8(params = {}, opts = { animate: "draw" }) {
   const W4 = PAD5 * 2 + n * PANEL_W + Math.max(0, n - 1) * DIVIDER;
   const H5 = PAD5 * 2 + LABEL_H + PANEL_H;
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/comparison-matrix.js
@@ -14024,12 +15926,12 @@ var meta9 = {
   },
   presets: [
     {
-      name: "Plate vs cast",
+      name: "Cafeti\xE8re vs AeroPress",
       params: {
-        cols: ["Strength", "Speed", "Cost"],
+        cols: ["Body", "Speed", "Cleanup"],
         rows: [
-          { label: "Plate", cells: ["yes", "no", "no"] },
-          { label: "Cast", cells: ["no", "yes", "yes"] }
+          { label: "Cafeti\xE8re", cells: ["yes", "no", "no"] },
+          { label: "AeroPress", cells: ["no", "yes", "yes"] }
         ]
       }
     }
@@ -14125,8 +16027,8 @@ function build9(params = {}, opts = { animate: "draw" }) {
   const W4 = PAD6 * 2 + gridW;
   const H5 = PAD6 * 2 + gridH;
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/venn-overlap.js
@@ -14173,12 +16075,12 @@ var meta10 = {
   },
   presets: [
     {
-      name: "Symptoms",
+      name: "A day at the beach",
       params: {
-        sets: [{ label: "Pain" }, { label: "Swelling" }, { label: "Deformity" }],
+        sets: [{ label: "Sun" }, { label: "Sea" }, { label: "Sand" }],
         overlaps: [
-          { between: [0, 1], label: "sprain" },
-          { between: [0, 1, 2], label: "fracture" }
+          { between: [0, 1], label: "a swim" },
+          { between: [0, 1, 2], label: "the beach" }
         ]
       }
     }
@@ -14248,8 +16150,8 @@ function build10(params = {}, opts = { animate: "draw" }) {
     }
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(VB_W4, VB_H4), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB_W4, VB_H4), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/hierarchy.js
@@ -14286,17 +16188,17 @@ var meta11 = {
   },
   presets: [
     {
-      name: "Fracture taxonomy",
+      name: "Instrument families",
       params: {
         root: {
-          label: "Fracture",
+          label: "Instruments",
           children: [
-            { label: "Open" },
+            { label: "Percussion" },
             {
-              label: "Closed",
+              label: "Strings",
               children: [
-                { label: "Displaced" },
-                { label: "Undisplaced" }
+                { label: "Plucked" },
+                { label: "Bowed" }
               ]
             }
           ]
@@ -14373,8 +16275,8 @@ function build11(params = {}, opts = { animate: "draw" }) {
   const W4 = PAD7 * 2 + leafCount * SLOT - COL_GAP2;
   const H5 = PAD7 * 2 + (state.maxDepth + 1) * NODE_H3 + state.maxDepth * ROW_GAP2;
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(round8(W4), round8(H5)), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(round8(W4), round8(H5)), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/bar-compare.js
@@ -14422,23 +16324,23 @@ var meta12 = {
   },
   presets: [
     {
-      name: "Union rate",
+      name: "Rainy days",
       params: {
         bars: [
-          { label: "Plate", value: 92 },
-          { label: "Cast", value: 68 }
+          { label: "London", value: 95 },
+          { label: "Rome", value: 63 }
         ],
-        note: "union rate (%)"
+        note: "rainy days per year"
       }
     },
     {
-      name: "Vertical counts",
+      name: "Books by season",
       params: {
         orientation: "v",
         bars: [
-          { label: "Stable", value: 14 },
-          { label: "Unstable", value: 6 },
-          { label: "Revised", value: 2 }
+          { label: "Spring", value: 5 },
+          { label: "Summer", value: 9 },
+          { label: "Autumn", value: 4 }
         ]
       }
     }
@@ -14486,8 +16388,8 @@ function build12(params = {}, opts = { animate: "draw" }) {
       parts.push(label(note, PAD8, round9(H6 - PAD8 + 4), { size: 12, fill: "var(--ink-dim)" }));
     }
     const styleCss2 = animate === "draw" ? drawCss(".fig-stroke") : "";
-    const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W5, H6), styleCss2));
-    return { svg: svg3, supportsDraw: true, motion: null };
+    const svg4 = sanitise(svgWrap(parts.join(""), viewBox(W5, H6), styleCss2));
+    return { svg: svg4, supportsDraw: true, motion: null };
   }
   const ox = PAD8;
   const baselineY = PAD8 + V_VALUE_H + V_TRACK;
@@ -14529,8 +16431,8 @@ function build12(params = {}, opts = { animate: "draw" }) {
     parts.push(label(note, PAD8, round9(H5 - PAD8 + 4), { size: 12, fill: "var(--ink-dim)" }));
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/part-to-whole.js
@@ -14569,21 +16471,21 @@ var meta13 = {
   },
   presets: [
     {
-      name: "Outcomes (waffle)",
+      name: "A week\u2019s weather (waffle)",
       params: {
         segments: [
-          { label: "Union", value: 7 },
-          { label: "Delayed", value: 1 }
+          { label: "Sunny", value: 7 },
+          { label: "Grey", value: 1 }
         ],
         style: "waffle"
       }
     },
     {
-      name: "Outcomes (donut)",
+      name: "A week\u2019s weather (donut)",
       params: {
         segments: [
-          { label: "Union", value: 7 },
-          { label: "Delayed", value: 1 }
+          { label: "Sunny", value: 7 },
+          { label: "Grey", value: 1 }
         ],
         style: "donut"
       }
@@ -14748,8 +16650,8 @@ function build13(params = {}, opts = { animate: "draw" }) {
   else if (style === "waffle") parts = buildWaffle(segs);
   else parts = buildDonut(segs);
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(VB_W5, VB_H5), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB_W5, VB_H5), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/range-scale.js
@@ -14804,13 +16706,13 @@ var meta14 = {
   },
   presets: [
     {
-      name: "Range of motion",
+      name: "Tyre pressure",
       params: {
         min: 0,
-        max: 180,
-        unit: "\xB0",
-        bands: [{ from: 0, to: 30, label: "normal" }],
-        markers: [{ value: 45, label: "this patient" }]
+        max: 120,
+        unit: " psi",
+        bands: [{ from: 80, to: 100, label: "road" }],
+        markers: [{ value: 65, label: "this tyre" }]
       }
     }
   ]
@@ -14879,8 +16781,8 @@ function build14(params = {}, opts = { animate: "draw" }) {
     }
   }
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(VB_W6, VB_H6), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(VB_W6, VB_H6), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/small-multiples.js
@@ -14972,8 +16874,8 @@ function build15(params = {}, opts = { animate: "draw" }) {
   const W4 = PAD9 * 2 + usedCols * CELL_W2 + (usedCols - 1) * GAP2;
   const H5 = PAD9 * 2 + nRows * CELL_H2 + (nRows - 1) * GAP2;
   const styleCss = animate === "draw" ? drawCss(".fig-stroke") : "";
-  const svg2 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
-  return { svg: svg2, supportsDraw: true, motion: null };
+  const svg3 = sanitise(svgWrap(parts.join(""), viewBox(W4, H5), styleCss));
+  return { svg: svg3, supportsDraw: true, motion: null };
 }
 
 // engine/figures/pulse.js
@@ -15016,8 +16918,8 @@ function build16(params = {}, opts = { animate: "motion" }) {
     styleCss = `${motionCss("pulse", frames)}
 .fig-pulse { transform-origin: center; transform-box: fill-box; animation: pulse ${rate}s ease-in-out infinite; }`;
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(240, 240), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "pulse" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(240, 240), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "pulse" };
 }
 
 // engine/figures/rotate.js
@@ -15104,8 +17006,8 @@ function build17(params = {}, opts = { animate: "motion" }) {
     styleCss = `${motionCss("rotate", frames)}
 .fig-spin { transform-origin: center; transform-box: fill-box; animation: rotate ${speed}s linear infinite; }`;
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(240, 240), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "rotate" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(240, 240), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "rotate" };
 }
 
 // engine/figures/oscillate.js
@@ -15158,8 +17060,8 @@ function build18(params = {}, opts = { animate: "motion" }) {
     styleCss = `${motionCss("oscillate", frames)}
 .fig-swing { transform-box: fill-box; transform-origin: ${px}px ${py}px; animation: oscillate ${period}s ease-in-out infinite; }`;
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(240, 240), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "oscillate" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(240, 240), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "oscillate" };
 }
 
 // engine/figures/flow.js
@@ -15203,8 +17105,8 @@ function build19(params = {}, opts = { animate: "motion" }) {
   } else {
     styleCss = ".fig-flow { stroke-dasharray: 10 8; }";
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(360, 180), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "flow" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(360, 180), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "flow" };
 }
 
 // engine/figures/wave.js
@@ -15267,8 +17169,8 @@ function build20(params = {}, opts = { animate: "motion" }) {
     styleCss = `${motionCss("wave", frames)}
 .fig-wave { animation: wave ${speed}s linear infinite; }`;
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(W, H), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "wave" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(W, H), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "wave" };
 }
 
 // engine/figures/fill.js
@@ -15358,8 +17260,8 @@ function build21(params = {}, opts = { animate: "motion" }) {
   } else {
     styleCss = `.fig-fill { transform-origin: bottom; transform-box: fill-box; opacity: 0.5; transform: scaleY(${t}); }`;
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(W2, H2), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "fill" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(W2, H2), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "fill" };
 }
 
 // engine/figures/morph.js
@@ -15384,7 +17286,7 @@ var meta22 = {
   id: "morph",
   name: "Morph",
   category: "Motion",
-  description: "A subject transitioning between two states (displaced <-> reduced), looping.",
+  description: "A subject transitioning between two states (crooked <-> level), looping.",
   paramsSchema: {
     type: "object",
     properties: {
@@ -15412,7 +17314,7 @@ var meta22 = {
     }
   },
   presets: [
-    { name: "Displaced to reduced", params: { labelA: "Displaced", labelB: "Reduced", period: 3 } }
+    { name: "Crooked to level", params: { labelA: "Crooked", labelB: "Level", period: 3 } }
   ]
 };
 function reference() {
@@ -15464,8 +17366,8 @@ function build22(params = {}, opts = { animate: "motion" }) {
   } else {
     styleCss = `.fig-morph { transform-box: fill-box; transform-origin: center; transform: translate(${from.dx}px,${from.dy}px) rotate(${from.rotate}deg); }`;
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(W3, H3), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "morph" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(W3, H3), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "morph" };
 }
 
 // engine/figures/stages.js
@@ -15502,13 +17404,13 @@ var meta23 = {
   },
   presets: [
     {
-      name: "Fracture healing",
+      name: "Sourdough starter",
       params: {
         stages: [
-          { label: "Haematoma" },
-          { label: "Soft callus" },
-          { label: "Hard callus" },
-          { label: "Remodelling" }
+          { label: "Fed" },
+          { label: "Bubbling" },
+          { label: "Risen" },
+          { label: "Ripe" }
         ]
       }
     }
@@ -15545,7 +17447,7 @@ function build23(params = {}, opts = { animate: "motion" }) {
       width: 2,
       fill: "none"
     });
-    const text2 = label(stage.label, cx, PANEL_Y + PANEL_H2 + 22, {
+    const text3 = label(stage.label, cx, PANEL_Y + PANEL_H2 + 22, {
       anchor: "middle",
       size: 13,
       fill: "var(--ink)"
@@ -15563,7 +17465,7 @@ function build23(params = {}, opts = { animate: "motion" }) {
       }));
     }
     const cls = animate !== "none" ? `fig-stage fig-stage-${i}` : "fig-stage";
-    els.push(el("g", { class: cls }, [panel2, marker, text2, ...connectors]));
+    els.push(el("g", { class: cls }, [panel2, marker, text3, ...connectors]));
   });
   const inner = els.join("");
   let styleCss = "";
@@ -15580,8 +17482,8 @@ function build23(params = {}, opts = { animate: "motion" }) {
     styleCss = `${motionCss("stages-in", frames)}
 ${rules.join("\n")}`;
   }
-  const svg2 = sanitise(svgWrap(inner, viewBox(W4, H4), styleCss));
-  return { svg: svg2, supportsDraw: false, motion: "stages" };
+  const svg3 = sanitise(svgWrap(inner, viewBox(W4, H4), styleCss));
+  return { svg: svg3, supportsDraw: false, motion: "stages" };
 }
 
 // engine/figures/registry.js
@@ -15636,15 +17538,8 @@ var DEFAULT_PROFILE = Object.freeze({
   writesAbout: "across their own interests",
   voiceNotes: "",
   // factGuard: the thing the model must never fabricate. Generic by default;
-  // a clinical author re-adds the medical emphasis via this field (or voiceNotes).
+  // a specialist author re-adds a domain emphasis via this field (or voiceNotes).
   factGuard: "facts, statistics or studies"
-});
-var INAYAT_PROFILE = Object.freeze({
-  name: "Mr Inayat Panda",
-  role: "an FRCS (Tr & Orth) trauma & orthopaedic surgeon with a subspecialty interest in shoulder surgery, who also builds clinical software",
-  writesAbout: "orthopaedics, medicine, the arts, history, and technology",
-  voiceNotes: "",
-  factGuard: "clinical facts, statistics or studies"
 });
 function normaliseProfile(p) {
   const src = p && typeof p === "object" ? p : {};
@@ -15716,8 +17611,8 @@ function profileFromAnswers(answers = {}) {
     role: answers.role,
     writesAbout: answers.writesAbout,
     voiceNotes: answers.voiceNotes
-    // factGuard is not asked in onboarding — keep the generic default. A clinical
-    // user can add medical emphasis through voiceNotes / role, or edit it in Settings.
+    // factGuard is not asked in onboarding — keep the generic default. A specialist
+    // user can add a domain emphasis through voiceNotes / role, or edit it in Settings.
   });
 }
 
@@ -15765,8 +17660,8 @@ Raw idea / topic:
 """${idea}"""
 ${extra ? `Extra context: ${extra}
 ` : ""}${voiceExamplesBlock(voicePosts)}Write ONE finished post in their voice for this platform. Then, on a new line after a literal "---HOOKS---" separator, give 2 alternative opening hook lines (one per line), each a different angle. Do not number them. No preamble, no commentary.`;
-  const { text: text2 } = await ai.generateText({ provider, system: styleFor(profile), prompt: user, maxTokens: 900 });
-  const [post, hookBlock = ""] = String(text2).split("---HOOKS---");
+  const { text: text3 } = await ai.generateText({ provider, system: styleFor(profile), prompt: user, maxTokens: 900 });
+  const [post, hookBlock = ""] = String(text3).split("---HOOKS---");
   const hooks = hookBlock.split("\n").map((h) => h.replace(/^[-*\d.\s]+/, "").trim()).filter(Boolean).slice(0, 3);
   return { post: post.trim(), hooks };
 }
@@ -15936,8 +17831,8 @@ For each finding give: category, severity (must-fix | consider | nit), the offen
 Do NOT invent facts, statistics or studies in your suggestions \u2014 only tighten what they already wrote; never add a claim they did not make.
 "summary" is one or two sentences on the draft overall. "score" is 0\u2013100: higher means closer to their voice and more ready to publish. British spelling throughout your notes.`;
 async function editorPass({ doc, profile, provider } = {}, ai) {
-  const text2 = docToPlainText(doc);
-  const prose = text2.replace(/^##\s+/gm, "").replace(/^\[[^\]]*\]$/gm, "").trim();
+  const text3 = docToPlainText(doc);
+  const prose = text3.replace(/^##\s+/gm, "").replace(/^\[[^\]]*\]$/gm, "").trim();
   if (prose.length < 40) {
     throw Object.assign(new Error("There isn\u2019t enough written yet to critique \u2014 write a paragraph or two, then run the editor pass."), { status: 400 });
   }
@@ -15967,7 +17862,7 @@ async function editorPass({ doc, profile, provider } = {}, ai) {
   const user = `Critique this draft. Return ONLY the JSON the schema requires.
 
 DRAFT (plain text; "## " marks a heading):
-"""${text2.slice(0, 12e3)}"""`;
+"""${text3.slice(0, 12e3)}"""`;
   const { json } = await ai.generateText({ provider, system: styleFor(profile) + "\n" + EDITOR_RUBRIC, prompt: user, maxTokens: 2800, json: schema, effort: "medium" });
   const summary = String(json && json.summary || "").trim();
   const rawScore = json == null ? null : json.score;
@@ -16019,14 +17914,14 @@ Notes:
   return doc;
 }
 async function altText({ imageBase64, mimeType = "image/jpeg", provider } = {}, ai) {
-  const { text: text2 } = await ai.describeImage({
+  const { text: text3 } = await ai.describeImage({
     provider,
     imageBase64,
     mimeType,
     maxTokens: 120,
     prompt: 'Write a single concise alt-text sentence (max 140 characters) describing this image factually for a blog. Do not start with "image of" or "photo of". British spelling. Return only the sentence.'
   });
-  return { alt: String(text2 || "").trim().replace(/^["']|["']$/g, "").slice(0, 200) };
+  return { alt: String(text3 || "").trim().replace(/^["']|["']$/g, "").slice(0, 200) };
 }
 var REWRITE_ACTIONS = {
   rewrite: "Rewrite this passage more clearly and naturally, keeping the meaning and roughly the same length.",
@@ -16036,8 +17931,8 @@ var REWRITE_ACTIONS = {
   expand: "Expand this passage by one or two sentences with a concrete example or specific detail. Do not pad or add hype.",
   simplify: "Rewrite this passage so a reader with no background in the subject understands it, without dumbing down or losing the facts."
 };
-async function rewriteText({ text: text2, action = "rewrite", profile, provider } = {}, ai) {
-  const t = capInput(String(text2 || "").trim());
+async function rewriteText({ text: text3, action = "rewrite", profile, provider } = {}, ai) {
+  const t = capInput(String(text3 || "").trim());
   if (t.length < 2) throw Object.assign(new Error("Select some text to rewrite."), { status: 400 });
   const instr = REWRITE_ACTIONS[action] || REWRITE_ACTIONS.rewrite;
   const user = `${instr}
@@ -16094,9 +17989,9 @@ Return JSON {"text": "<the one formatted reference>"}. Use ONLY the details pres
 REFERENCE (messy, as given):
 """${input}"""`;
   const { json } = await ai.generateText({ provider, system: CITATION_SYSTEM, prompt: user, maxTokens: 400, json: schema });
-  const text2 = String(json && json.text || "").trim().replace(/^["']|["']$/g, "").replace(/\s+/g, " ");
-  if (!text2) throw Object.assign(new Error("Could not format that reference."), { code: "AI_REFUSAL", status: 422 });
-  return { text: text2 };
+  const text3 = String(json && json.text || "").trim().replace(/^["']|["']$/g, "").replace(/\s+/g, " ");
+  if (!text3) throw Object.assign(new Error("Could not format that reference."), { code: "AI_REFUSAL", status: 422 });
+  return { text: text3 };
 }
 async function importDocument({ fileBase64, mimeType, provider } = {}, ai) {
   const schema = {
@@ -16242,8 +18137,8 @@ The author wants: "${String(description).slice(0, 600)}".
 Return the params object that best realises this with the ${fam.name} family.`
   });
   const params = filled && filled.json || {};
-  const { svg: svg2 } = build24(familyId, params, { animate });
-  return { familyId, params, block: { type: "figure", svg: svg2, animation: animate } };
+  const { svg: svg3 } = build24(familyId, params, { animate });
+  return { familyId, params, block: { type: "figure", svg: svg3, animation: animate } };
 }
 async function tweakFigure({ familyId, params = {}, instruction, animate = "draw", profile, provider } = {}, ai) {
   const fams = listFamilies2();
@@ -16265,8 +18160,8 @@ Apply this change: "${instr.slice(0, 600)}".
 Return the full updated params object.`
   });
   const updatedParams = filled && filled.json || params;
-  const { svg: svg2 } = build24(familyId, updatedParams, { animate });
-  return { familyId, params: updatedParams, block: { type: "figure", svg: svg2, animation: animate } };
+  const { svg: svg3 } = build24(familyId, updatedParams, { animate });
+  return { familyId, params: updatedParams, block: { type: "figure", svg: svg3, animation: animate } };
 }
 async function inventInteractive({ description, base, profile, provider } = {}, ai) {
   const desc = String(description || "").trim();
@@ -16455,7 +18350,7 @@ Return ONLY the JSON the schema requires; put a one-line plain-language summary 
     notes: out.notes || ""
   };
 }
-async function suggestLabels({ description = "", svg: svg2 = "", profile, provider } = {}, ai) {
+async function suggestLabels({ description = "", svg: svg3 = "", profile, provider } = {}, ai) {
   const schema = {
     type: "object",
     additionalProperties: false,
@@ -16469,9 +18364,9 @@ async function suggestLabels({ description = "", svg: svg2 = "", profile, provid
   };
   const system = `You suggest short candidate labels a reader might want annotated on a diagram (e.g. key parts, features). British spelling. Suggest only plausible, well-known labels for the subject \u2014 never invent ${profile && profile.factGuard || DEFAULT_PROFILE.factGuard}, specific measurements, or details you cannot be confident about. Keep each label to a few words. Return ONLY the JSON the schema requires.`;
   const user = `Suggest up to 8 candidate labels for this figure.
-Description: "${String(description).slice(0, 600)}"${svg2 ? `
+Description: "${String(description).slice(0, 600)}"${svg3 ? `
 Figure SVG (context):
-${String(svg2).slice(0, 2e3)}` : ""}`;
+${String(svg3).slice(0, 2e3)}` : ""}`;
   const r = await ai.generateText({ provider, system, prompt: user, maxTokens: 500, json: schema });
   const src = Array.isArray(r?.json?.labels) ? r.json.labels : [];
   const labels = src.map((l) => ({ text: String((l && l.text) ?? l ?? "").trim() })).filter((l) => l.text).slice(0, 8);
@@ -16517,26 +18412,53 @@ function leadingWidth(ln) {
 }
 function rawHtmlRisks(content) {
   const out = [];
-  const text2 = String(content || "");
-  if (!/<\w/.test(text2)) return out;
-  const lines = text2.split("\n");
+  const text3 = String(content || "");
+  if (!/<\w/.test(text3)) return out;
+  const lines = text3.split("\n");
   if (lines.some((ln, i) => i > 0 && i < lines.length - 1 && ln.trim() === ""))
     out.push("contains a blank line \u2014 markdown cuts the HTML block off there, so the rest of the post renders as escaped text");
   if (lines.some((ln) => ln.trim() && leadingWidth(ln) >= 4))
     out.push("has a line indented 4+ spaces \u2014 markdown turns it into a code block");
   return out;
 }
+function decodeRefsAndStrip(raw) {
+  return String(raw || "").replace(/&#x([0-9a-f]+);?/gi, (_m, h) => {
+    try {
+      return String.fromCodePoint(parseInt(h, 16));
+    } catch {
+      return "";
+    }
+  }).replace(/&#(\d+);?/g, (_m, n) => {
+    try {
+      return String.fromCodePoint(parseInt(n, 10));
+    } catch {
+      return "";
+    }
+  }).replace(/&colon;/gi, ":").replace(/&(?:tab|newline|nbsp);/gi, " ").replace(/[\u0000-\u0020]+/g, "").toLowerCase();
+}
+var ATTR_URL_RE = /(?:(?:xlink:)?href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))/gi;
+function* attrUrlValues(s) {
+  ATTR_URL_RE.lastIndex = 0;
+  let m;
+  while (m = ATTR_URL_RE.exec(s)) yield (m[1] !== void 0 ? m[1] : m[2] !== void 0 ? m[2] : m[3]) || "";
+}
 function rawHtmlUnsafe(content) {
   const s = String(content || "");
   if (/<script\b/i.test(s)) return "a <script> tag";
   if (/<(?:iframe|object|embed)\b/i.test(s)) return "an <iframe>, <object> or <embed> element";
-  if (/\son\w+\s*=/i.test(s)) return "an inline event handler (on\u2026=)";
-  if (/javascript:/i.test(s)) return "a javascript: URL";
+  if (/(?:^|[\s/"'`])on\w+\s*=/i.test(s)) return "an inline event handler (on\u2026=)";
+  const norm2 = decodeRefsAndStrip(s);
+  if (/javascript:/.test(norm2)) return "a javascript: URL";
+  if (/vbscript:/.test(norm2)) return "a vbscript: URL";
+  for (const raw of attrUrlValues(s)) {
+    const v = decodeRefsAndStrip(raw);
+    if (/^data:/.test(v) && !SAFE_IMAGE_DATA_URL.test(v)) return "an unsafe data: URL (href/src)";
+  }
   return null;
 }
 var PLACEHOLDER_HREF = /href\s*=\s*["'](\s*|#|#TODO[^"']*)["']/i;
-function plainText(html) {
-  return String(html || "").replace(/<[^>]*>/g, " ").replace(/&[a-z#0-9]+;/gi, " ");
+function plainText(html2) {
+  return String(html2 || "").replace(/<[^>]*>/g, " ").replace(/&[a-z#0-9]+;/gi, " ");
 }
 function countSyllables(word) {
   word = word.toLowerCase().replace(/[^a-z]/g, "");
@@ -16545,8 +18467,8 @@ function countSyllables(word) {
   const m = word.match(/[aeiouy]{1,2}/g);
   return m ? m.length : 1;
 }
-function readingLevel(text2) {
-  const body = String(text2 || "");
+function readingLevel(text3) {
+  const body = String(text3 || "");
   const words = body.match(/[A-Za-z0-9'’-]+/g) || [];
   const wordCount = words.length;
   const sentences = body.match(/[^.!?]+[.!?]+/g) || (body.trim() ? [body] : []);
@@ -16614,19 +18536,17 @@ var AME_TO_BRE = {
   aluminum: "aluminium",
   anesthesia: "anaesthesia",
   pediatric: "paediatric",
-  orthopedic: "orthopaedic",
-  orthopedics: "orthopaedics",
   esophagus: "oesophagus",
   edema: "oedema",
   fetal: "foetal",
   hemoglobin: "haemoglobin"
 };
 var AME_RE = new RegExp("\\b(" + Object.keys(AME_TO_BRE).join("|") + ")\\b", "gi");
-function findAmericanisms(text2) {
+function findAmericanisms(text3) {
   const found = /* @__PURE__ */ new Map();
   let m;
   AME_RE.lastIndex = 0;
-  while (m = AME_RE.exec(text2)) {
+  while (m = AME_RE.exec(text3)) {
     const hit = m[1].toLowerCase();
     const bre = AME_TO_BRE[hit];
     if (bre && !found.has(hit)) found.set(hit, `${hit}\u2192${bre}`);
@@ -16671,10 +18591,10 @@ function collectLinks(blocks) {
   const hrefs = /* @__PURE__ */ new Set();
   const re = /href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))/gi;
   for (const b of blocks) {
-    const html = b.type === "text" ? b.html : b.type === "raw" ? b.content : "";
-    if (!html) continue;
+    const html2 = b.type === "text" ? b.html : b.type === "raw" ? b.content : "";
+    if (!html2) continue;
     let m;
-    while (m = re.exec(String(html))) {
+    while (m = re.exec(String(html2))) {
       const v = (m[1] ?? m[2] ?? m[3] ?? "").trim();
       if (!v || v.startsWith("#") || /^mailto:/i.test(v) || /^javascript:/i.test(v)) continue;
       hrefs.add(v);
@@ -16691,18 +18611,17 @@ function classifyLinks(links) {
   }
   return { internal, external };
 }
-function figureSvgRisk(svg2) {
-  const s = String(svg2 || "");
+function figureSvgRisk(svg3) {
+  const s = String(svg3 || "");
   if (/<script\b/i.test(s)) return "a <script> tag";
   if (/<foreignObject\b/i.test(s)) return "a <foreignObject> element";
   if (/<(?:animate|set|animateTransform|animateMotion)\b/i.test(s)) return "a SMIL animation element (animate/set/\u2026)";
-  if (/\son[a-z-]+\s*=/i.test(s)) return "an inline event handler (on\u2026=)";
-  if (/(?:xlink:)?href\s*=\s*["']?\s*(?:https?:|\/\/)/i.test(s)) return "an external link (href)";
-  const dataHref = /(?:xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))/gi;
-  let m;
-  while (m = dataHref.exec(s)) {
-    const v = ((m[1] !== void 0 ? m[1] : m[2] !== void 0 ? m[2] : m[3]) || "").trim();
-    if (/^data:/i.test(v) && !SAFE_IMAGE_DATA_URL.test(v)) return "an unsafe data: link (href)";
+  if (/(?:^|[\s/"'`])on\w+\s*=/i.test(s)) return "an inline event handler (on\u2026=)";
+  if (/(?:(?:xlink:)?href|src)\s*=\s*["']?\s*(?:https?:|\/\/)/i.test(s)) return "an external link (href)";
+  for (const raw of attrUrlValues(s)) {
+    const v = decodeRefsAndStrip(raw);
+    if (/^(?:javascript|vbscript):/.test(v)) return "a javascript: link (href/src)";
+    if (/^data:/.test(v) && !SAFE_IMAGE_DATA_URL.test(v)) return "an unsafe data: link (href)";
   }
   return null;
 }
@@ -16715,7 +18634,7 @@ function checkDoc({ doc, meta: meta24 = {}, slug = "post", knownSlugs = null } =
   if (!desc) warnings.push({ message: "No description \u2014 search results and share cards will fall back to the first line of the post." });
   else if (desc.length > 155) warnings.push({ message: `Description is ${desc.length} characters \u2014 it will be trimmed to 155 in the post\u2019s metadata.` });
   if (meta24.date && !/^\d{4}-\d{2}-\d{2}$/.test(String(meta24.date))) warnings.push({ message: `Date \u201C${meta24.date}\u201D isn\u2019t in YYYY-MM-DD form.` });
-  const topics = (meta24.tags || []).filter((t) => t && t !== "interactive");
+  const topics = (meta24.tags || []).filter(Boolean);
   if (!topics.length) warnings.push({ message: "No topic selected \u2014 the post won\u2019t appear under any topic on the Writing page." });
   if (!blocks.length) errors.push({ message: "The post has no content blocks." });
   let hasText = false;
@@ -16742,18 +18661,18 @@ function checkDoc({ doc, meta: meta24 = {}, slug = "post", knownSlugs = null } =
         break;
       }
       case "figure": {
-        const svg2 = String(b.svg || "");
-        if (!svg2.trim()) {
+        const svg3 = String(b.svg || "");
+        if (!svg3.trim()) {
           errors.push({ message: "Figure block has no SVG.", blockIndex: i });
           break;
         }
-        const risk = figureSvgRisk(svg2);
+        const risk = figureSvgRisk(svg3);
         if (risk) errors.push({ message: `Figure SVG is unsafe \u2014 it contains ${risk}.`, blockIndex: i });
-        if (!/<svg[\s>]/i.test(svg2) || !/<\/svg\s*>/i.test(svg2))
+        if (!/<svg[\s>]/i.test(svg3) || !/<\/svg\s*>/i.test(svg3))
           errors.push({ message: "Figure SVG looks malformed (missing an <svg> \u2026 </svg> wrapper).", blockIndex: i });
         if (!String(b.alt || "").trim())
           warnings.push({ message: "Figure has no alt text (hurts accessibility and SEO).", blockIndex: i });
-        if (/#[0-9a-f]{3,8}\b/i.test(svg2))
+        if (/#[0-9a-f]{3,8}\b/i.test(svg3))
           warnings.push({ message: "Figure SVG uses a # hex colour \u2014 it won\u2019t follow the site theme. Use CSS variables (e.g. var(--ink)) instead.", blockIndex: i });
         break;
       }
@@ -16772,8 +18691,8 @@ function checkDoc({ doc, meta: meta24 = {}, slug = "post", knownSlugs = null } =
         break;
       }
     }
-    const html = b.html != null ? String(b.html) : b.type === "raw" ? String(b.content || "") : "";
-    if (html && PLACEHOLDER_HREF.test(html))
+    const html2 = b.html != null ? String(b.html) : b.type === "raw" ? String(b.content || "") : "";
+    if (html2 && PLACEHOLDER_HREF.test(html2))
       warnings.push({ message: "A link has an empty or placeholder (#) href.", blockIndex: i });
   });
   if (blocks.length && !hasText) warnings.push({ message: "The post has no body text." });
@@ -16959,11 +18878,19 @@ ${catalogue}` : ""
   ].filter(Boolean).join("\n\n");
 }
 async function gatherContext(posts, style, profile) {
-  const index = await posts.listPosts();
+  let index = [];
+  try {
+    index = await posts.listPosts() || [];
+  } catch {
+    index = [];
+  }
   const voicePosts = [];
   for (const p of index.slice(0, 2)) {
-    const full = await posts.getPost(p.slug);
-    if (full) voicePosts.push({ title: full.data.title, body: full.body });
+    try {
+      const full = await posts.getPost(p.slug);
+      if (full) voicePosts.push({ title: full.data.title, body: full.body });
+    } catch {
+    }
   }
   return assembleContext({ style, factGuard: factGuardLine(profile), voicePosts, index: index.map((p) => ({ title: p.title, tags: p.tags, date: p.date })) });
 }
@@ -17019,16 +18946,23 @@ async function runTurn({ session, message }, deps = {}) {
     "Respond with the JSON {reply, doc, meta} for the updated post."
   ].join("\n\n");
   const ask = async () => {
-    const { text: text2 } = await ai.generateText({ system: context, prompt, maxTokens: 16e3, effort: "medium" });
-    return looseJson(text2);
+    const { text: text3 } = await ai.generateText({ system: context, prompt, maxTokens: 16e3, effort: "medium" });
+    return looseJson(text3);
   };
+  const hadContent = !!(session.doc && Array.isArray(session.doc.blocks) && session.doc.blocks.length > 0);
   const attempt = async () => {
     const out = await ask();
+    if (hadContent && (!out.doc || !Array.isArray(out.doc.blocks) || out.doc.blocks.length === 0)) {
+      throw Object.assign(new Error("turn omitted the document \u2014 refusing to wipe the draft"), { code: "PT_DOC_DROPPED" });
+    }
     const rawDoc = out.doc || { blocks: [] };
     const meta24 = { ...session.meta, ...out.meta || {} };
     const filled = await fill(rawDoc, meta24);
     const doc = filled.doc || rawDoc;
     validateDoc(doc);
+    if (hadContent && (!Array.isArray(doc.blocks) || doc.blocks.length === 0)) {
+      throw Object.assign(new Error("turn produced an empty document \u2014 refusing to wipe the draft"), { code: "PT_DOC_DROPPED" });
+    }
     return { reply: out.reply || "", doc, meta: filled.meta || meta24 };
   };
   let result = null;
@@ -17113,6 +19047,152 @@ async function putTopicsConfig(gh, data, sha) {
   return gh.putFile(PATH3, JSON.stringify(data, null, 2) + "\n", "studio: update topics", sha || void 0);
 }
 
+// src/core/thread.js
+var thread_exports = {};
+__export(thread_exports, {
+  MAX_TURN_TEXT_CHARS: () => MAX_TURN_TEXT_CHARS,
+  acceptTurn: () => acceptTurn,
+  addScratch: () => addScratch,
+  appendTurn: () => appendTurn,
+  buildAskPrompt: () => buildAskPrompt,
+  createThread: () => createThread,
+  dismissTurn: () => dismissTurn,
+  parseThread: () => parseThread,
+  parseTitleOptions: () => parseTitleOptions,
+  removeScratch: () => removeScratch,
+  serializeThread: () => serializeThread,
+  summarizeReactions: () => summarizeReactions,
+  turnsFor: () => turnsFor
+});
+var ROLES = /* @__PURE__ */ new Set(["aside", "assistant"]);
+var KINDS = /* @__PURE__ */ new Set(["guidance", "insertable"]);
+var STATES = /* @__PURE__ */ new Set(["open", "accepted", "dismissed"]);
+var _c = 0;
+var MAX_TURN_TEXT_CHARS = 256 * 1024;
+function createThread() {
+  return { v: 1, mode: "doc", turns: [], scratch: [] };
+}
+var validRoleKind = (role, kind) => ROLES.has(role) && KINDS.has(kind) && !(role === "aside" && kind === "insertable");
+function appendTurn(thread, { role, kind, text: text3, blockRef = null }, now) {
+  if (!validRoleKind(role, kind)) return null;
+  const turn = {
+    id: "t" + Number(now).toString(36) + "-" + _c++,
+    role,
+    kind,
+    text: String(text3 || "").slice(0, MAX_TURN_TEXT_CHARS),
+    blockRef,
+    ts: now,
+    state: "open"
+  };
+  thread.turns.push(turn);
+  return turn;
+}
+var find = (thread, id) => thread.turns.find((t) => t.id === id) || null;
+function acceptTurn(thread, id) {
+  const t = find(thread, id);
+  if (!t || t.kind !== "insertable") return null;
+  t.state = "accepted";
+  return t;
+}
+function dismissTurn(thread, id) {
+  const t = find(thread, id);
+  if (!t) return null;
+  t.state = "dismissed";
+  return t;
+}
+function turnsFor(thread, blockRef) {
+  return thread.turns.filter((t) => t.blockRef === blockRef && t.state !== "dismissed");
+}
+function addScratch(thread, text3, now) {
+  const t = String(text3 == null ? "" : text3).trim();
+  if (!t) return null;
+  const jot = { id: "s" + Number(now).toString(36) + "-" + _c++, text: t, ts: now };
+  if (!Array.isArray(thread.scratch)) thread.scratch = [];
+  thread.scratch.unshift(jot);
+  return jot;
+}
+function removeScratch(thread, id) {
+  if (!Array.isArray(thread.scratch)) return null;
+  const i = thread.scratch.findIndex((s) => s && s.id === id);
+  if (i < 0) return null;
+  return thread.scratch.splice(i, 1)[0];
+}
+function serializeThread(thread) {
+  return JSON.stringify(thread);
+}
+var validTurn = (t) => t && typeof t === "object" && typeof t.id === "string" && validRoleKind(t.role, t.kind) && typeof t.text === "string" && t.text.length <= MAX_TURN_TEXT_CHARS && // size cap — see MAX_TURN_TEXT_CHARS
+(t.blockRef === null || typeof t.blockRef === "string") && typeof t.ts === "number" && STATES.has(t.state);
+var validJot = (s) => s && typeof s === "object" && typeof s.id === "string" && typeof s.text === "string" && typeof s.ts === "number";
+function parseThread(json) {
+  let raw;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return createThread();
+  }
+  if (!raw || typeof raw !== "object" || raw.v !== 1) return createThread();
+  return {
+    v: 1,
+    mode: raw.mode === "chat" ? "chat" : "doc",
+    // saved modes honoured exactly; anything else falls to the Doc default
+    turns: Array.isArray(raw.turns) ? raw.turns.filter(validTurn) : [],
+    scratch: Array.isArray(raw.scratch) ? raw.scratch.filter(validJot) : []
+  };
+}
+var INSERTABLE_ASKS = /* @__PURE__ */ new Set(["tighten", "continue", "title"]);
+var blockText = (b) => !b ? "" : (b.text || b.caption || b.alt || "").slice(0, 2e3);
+var FIELD_NOTES = {
+  heading: " The author is working on a heading: offer one variation or a sharpening suggestion they can take or leave, and touch nothing else.",
+  text: " The author is in a body paragraph: respond with encouragement, a conversational reaction, or one small suggestion. Never rewrite their text; rewriting only happens when they explicitly ask to tighten or continue."
+};
+var TITLE_FORMAT = "Reply with exactly three options, one per line - no numbering, no bullets, no quotes, nothing else.";
+function buildAskPrompt({ ask, text: text3 = "", field = null, block = null, title = "", prevBlock = null, nextBlock = null, profile = null, recentReactions = null }) {
+  const wantsInsertable = INSERTABLE_ASKS.has(ask);
+  const voice = profile && profile.voice ? `
+Author voice notes: ${String(profile.voice).slice(0, 500)}` : "";
+  const steer = recentReactions ? `
+The author reacted to some of your earlier guidance - lean toward what the author liked and away from what they disliked:
+${String(recentReactions).slice(0, 1200)}` : "";
+  const system = wantsInsertable ? `You help an author write a blog post. Reply ONLY with the requested text, ready to drop into the post. No preamble, no quotes around it.${voice}${steer}` : `You are a writing guide inside the author's composer. Respond with a short question, nudge, or piece of feedback that moves their thinking forward.${FIELD_NOTES[field] || ""} Do not write or draft post text for them; guide, do not ghostwrite.${voice}${steer}`;
+  const ctx = [];
+  if (title) ctx.push(`Post title: ${title}`);
+  if (prevBlock) ctx.push(`Previous block: ${blockText(prevBlock)}`);
+  if (block) ctx.push(`Focus block (${block.type}): ${blockText(block)}`);
+  if (nextBlock) ctx.push(`Next block: ${blockText(nextBlock)}`);
+  const asks = {
+    aside: `The author says: ${text3}`,
+    reply: `The author asks about the focus block: ${text3 || "(no message - give your reaction to the block)"}`,
+    tighten: "Tighten the focus block: same meaning, fewer words, keep the author voice.",
+    continue: "Continue the post from the focus block with one natural next paragraph.",
+    // Title workshop: a post that already has a title gets THREE short variations of
+    // it - offers the author can take or leave, never an imposition; a titleless post
+    // gets three fresh candidates. One AI call either way; the chips re-parse the lines.
+    title: title ? `Offer THREE short variations of the current title - alternatives the author can take or leave. ${TITLE_FORMAT}` : `Suggest three strong titles for this post - offers the author can take or leave. ${TITLE_FORMAT}`
+  };
+  return { system, user: ctx.concat([asks[ask] || asks.aside]).join("\n\n"), wantsInsertable };
+}
+function parseTitleOptions(text3) {
+  const out = [], seen = /* @__PURE__ */ new Set();
+  for (const line3 of String(text3 == null ? "" : text3).split(/\r?\n/)) {
+    const t = line3.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, "").replace(/^["'“‘]+|["'”’]+$/g, "").trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length === 3) break;
+  }
+  return out;
+}
+function summarizeReactions(turns) {
+  const reacted = (Array.isArray(turns) ? turns : []).filter((t) => t && t.role === "assistant" && t.kind === "guidance" && !t.error && (t.reaction === "up" || t.reaction === "down"));
+  if (!reacted.length) return null;
+  return reacted.slice(-10).map((t) => {
+    const s = String(t.text || "").replace(/\s+/g, " ").trim();
+    return `The author ${t.reaction === "up" ? "liked" : "disliked"}: "${s.slice(0, 80)}${s.length > 80 ? "\u2026" : ""}"`;
+  }).join("\n");
+}
+
 // src/router.js
 function makeRouter(deps) {
   const { posts, partner, ai, storage: storage2, studio, playgrounds, figures, stencils, stickers, blocks, prepublish, templates: templates2, config: config2, gh } = deps;
@@ -17149,14 +19229,20 @@ function makeRouter(deps) {
     const method = (opts.method || "GET").toUpperCase();
     const body = opts.body && typeof opts.body === "string" ? JSON.parse(opts.body) : opts.body || {};
     const query = qp(rawPath);
-    const seg = clean(rawPath).replace(/^\/+|\/+$/g, "").split("/");
+    const seg = clean(rawPath).replace(/^\/+|\/+$/g, "").split("/").map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    });
     const [a, b, c, d] = seg;
     if (a === "playgrounds" && !b) return playgrounds.listFamilies();
     if (a === "playgrounds" && c === "preset") return { params: playgrounds.getPreset(b, d) };
     if (a === "playgrounds" && b === "build") return { block: playgrounds.buildInstance(body.familyId, body.params || {}, body.domId) };
     if (a === "playgrounds" && b === "suggest") return studio.suggestInteractive({ description: body.description, profile: profile() }, ai);
     if (a === "playgrounds" && b === "tweak") return studio.tweakInteractive({ familyId: body.familyId, params: body.params || {}, instruction: body.instruction, profile: profile() }, ai);
-    if (a === "playgrounds" && b === "invent") return studio.inventInteractive({ description: body.description, profile: profile() }, ai);
+    if (a === "playgrounds" && b === "invent") return studio.inventInteractive({ description: body.description, base: body.base, profile: profile() }, ai);
     if (a === "figures" && !b) return { families: figures.listFamilies() };
     if (a === "figures" && b === "stencils") return { stencils: stencils.listStencils() };
     if (a === "figures" && b === "stickers") return { stickers: stickers.listStickers() };
@@ -17164,8 +19250,8 @@ function makeRouter(deps) {
       return studio.generateSticker({ description: body.description, genre: body.genre, profile: profile() }, ai);
     if (a === "figures" && b === "build") {
       const animate = body.animate || "draw";
-      const { svg: svg2 } = figures.build(body.familyId, body.params || {}, { animate });
-      return { block: { type: "figure", svg: svg2, animation: animate } };
+      const { svg: svg3 } = figures.build(body.familyId, body.params || {}, { animate });
+      return { block: { type: "figure", svg: svg3, animation: animate } };
     }
     if (a === "figures" && b === "suggest") return studio.suggestFigure({ description: body.description, animate: body.animate || "draw", profile: profile() }, ai);
     if (a === "figures" && b === "tweak") return studio.tweakFigure({ familyId: body.familyId, params: body.params || {}, instruction: body.instruction, animate: body.animate || "draw", profile: profile() }, ai);
@@ -17188,6 +19274,7 @@ function makeRouter(deps) {
       if (b === "generate-image") return studio.genImage(body, ai);
       if (b === "read-document") return studio.importDocument(body, ai);
     }
+    if (a === "draft") return studio.draftPost({ ...body, profile: profile(), voicePosts: await voicePosts() }, ai);
     if (a === "posts" && c === "preview") return { html: blocks.renderPreviewHtml(body.doc?.blocks || [], { slug: b }) };
     if (a === "posts" && c === "check") {
       let knownSlugs = null;
@@ -17328,6 +19415,24 @@ function makeRouter(deps) {
       await storage2.del("drafts", b);
       return { deleted: b };
     }
+    if (a === "thread" && b === "turn" && method === "POST") {
+      const { system, user, wantsInsertable } = buildAskPrompt(body || {});
+      const { text: text3 } = await ai.generateText({ system, prompt: user, maxTokens: 900 });
+      return { text: text3, insertable: wantsInsertable, promptChars: system.length + user.length };
+    }
+    if (a === "thread" && b && method === "GET") {
+      const raw = await storage2.get("threads", b);
+      return raw ? parseThread(typeof raw === "string" ? raw : JSON.stringify(raw)) : null;
+    }
+    if (a === "thread" && b && method === "PUT") {
+      const cleaned = parseThread(serializeThread(body || {}));
+      await storage2.put("threads", { id: b, ...cleaned });
+      return { ok: true };
+    }
+    if (a === "thread" && b && method === "DELETE") {
+      await storage2.del("threads", b);
+      return { ok: true };
+    }
     if (a === "figures" && b === "shapes" && !c && method === "GET") return { shapes: (await storage2.all("shapes")).sort((x, y) => (y.id || "").localeCompare(x.id || "")) };
     if (a === "figures" && b === "shapes" && !c && method === "POST") {
       const id = "s-" + (globalThis.crypto?.randomUUID?.() || Date.now());
@@ -17339,19 +19444,35 @@ function makeRouter(deps) {
       await storage2.del("shapes", c);
       return { deleted: c };
     }
-    if (a === "settings" && b === "ai" && c === "models") return [];
-    if (a === "settings" && b === "ai" && method === "GET") {
-      const ai_ = config2.getAi();
-      return { default: ai_.provider, providers: { [ai_.provider]: { configured: !!ai_.key, model: ai_.model } } };
+    if (a === "settings" && b === "ai" && c === "models" && method === "GET") {
+      try {
+        return { models: ai && ai.listModels ? await ai.listModels(query.provider) : [] };
+      } catch {
+        return { models: [] };
+      }
     }
+    if (a === "settings" && b === "ai" && c === "latest-model" && method === "GET") {
+      try {
+        return { model: ai && ai.resolveLatestModel ? await ai.resolveLatestModel(query.provider) : "" };
+      } catch {
+        return { model: "" };
+      }
+    }
+    const aiStatus = () => {
+      const ai_ = config2.getAi();
+      const caps = ai && ai.capabilities ? ai.capabilities() : {};
+      return { default: ai_.provider, providers: { [ai_.provider]: { configured: !!ai_.key, model: ai_.model, capabilities: caps } } };
+    };
+    if (a === "settings" && b === "ai" && method === "GET") return aiStatus();
     if (a === "settings" && b === "ai" && method === "PUT") {
       const patch = {};
       if (body.default) patch.aiProvider = body.default;
       const p = body.providers && body.default && body.providers[body.default];
       if (p?.apiKey) patch.aiKey = p.apiKey;
+      else if (body.default && body.default !== config2.getAi().provider) patch.aiKey = "";
       if (p?.model) patch.aiModel = p.model;
       config2.save(patch);
-      return { ok: true };
+      return aiStatus();
     }
     if (a === "settings" && b === "profile") {
       if (method === "PUT") {
@@ -17400,6 +19521,16 @@ function arc(cx, cy, rx, ry, a0, a1, n = 18) {
   return out;
 }
 var TAU = Math.PI * 2;
+function star(cx, cy, rOuter, rInner, points = 5, rot = -Math.PI / 2) {
+  const pts = [];
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? rOuter : rInner;
+    const a = rot + i * Math.PI / points;
+    pts.push([round13(cx + r * Math.cos(a)), round13(cy + r * Math.sin(a))]);
+  }
+  if (pts.length) pts.push([pts[0][0], pts[0][1]]);
+  return pts;
+}
 function genericStencils() {
   return [
     {
@@ -17488,107 +19619,80 @@ function genericStencils() {
     }
   ];
 }
-function clinicalStencils() {
+function symbolStencils() {
+  const rays = [];
+  for (let k = 0; k < 8; k++) {
+    const a = k * Math.PI / 4;
+    rays.push([
+      [round13(50 + 28 * Math.cos(a)), round13(50 + 28 * Math.sin(a))],
+      [round13(50 + 44 * Math.cos(a)), round13(50 + 44 * Math.sin(a))]
+    ]);
+  }
   return [
     {
-      // Long bone: two parallel shafts joined by rounded ends (top + bottom).
-      id: "long-bone",
-      name: "Long bone",
-      category: "Clinical",
-      viewBox: [80, 200],
+      // Star: a classic 5-point star drawn as one closed polyline.
+      id: "star",
+      name: "Star",
+      category: "Symbols",
+      viewBox: [100, 100],
       strokes: [
-        // left shaft + rounded top end curving across to the right shaft
+        star(50, 50, 46, 18, 5)
+      ]
+    },
+    {
+      // Heart: bottom point, up the sides, two bumps over the top.
+      id: "heart",
+      name: "Heart",
+      category: "Symbols",
+      viewBox: [100, 92],
+      strokes: [
         [
-          [26, 28],
-          [26, 172],
-          ...arc(40, 176, 14, 16, Math.PI, TAU, 10).slice(1),
-          // bottom rounded end (left→right)
-          [54, 28],
-          ...arc(40, 24, 14, 16, 0, -Math.PI, 10).slice(1)
-          // top rounded end (right→left)
+          [50, 84],
+          [12, 44],
+          ...arc(31, 44, 19, 19, Math.PI, TAU, 12).slice(1),
+          // left bump (up and over)
+          ...arc(69, 44, 19, 19, Math.PI, TAU, 12).slice(1),
+          // right bump (up and over)
+          [50, 84]
         ]
       ]
     },
     {
-      // Joint: two opposing condyle curves facing each other across a gap.
-      id: "joint",
-      name: "Joint",
-      category: "Clinical",
-      viewBox: [120, 120],
+      // Sun: a small disc with eight radiating spokes.
+      id: "sun",
+      name: "Sun",
+      category: "Symbols",
+      viewBox: [100, 100],
       strokes: [
-        // upper bone end: shaft sides + a convex (downward) condyle
-        [[40, 8], [40, 40], ...arc(60, 40, 30, 18, Math.PI, TAU, 14).slice(1), [80, 8]],
-        // lower bone end: shaft sides + a concave (upward) socket
-        [[40, 112], [40, 78], ...arc(60, 78, 30, 16, Math.PI, 0, 14).slice(1), [80, 112]]
+        arc(50, 50, 20, 20, 0, TAU, 24),
+        // disc
+        ...rays
       ]
     },
     {
-      // Vertebra: rounded body + a posterior arch with spinous + transverse spikes.
-      id: "vertebra",
-      name: "Vertebra",
-      category: "Clinical",
-      viewBox: [120, 100],
+      // Speech bubble: a rounded rectangle with a small tail off the bottom-left.
+      id: "speech-bubble",
+      name: "Speech bubble",
+      category: "Symbols",
+      viewBox: [120, 90],
       strokes: [
-        ring2([[24, 18], [96, 18], [100, 50], [96, 70], [24, 70], [20, 50]]),
-        // body (rounded box)
-        arc(60, 78, 26, 16, Math.PI, TAU, 16),
-        // posterior arch (down)
-        [[60, 90], [60, 96]],
-        // spinous process
-        [[34, 78], [16, 84]],
-        // left transverse
-        [[86, 78], [104, 84]]
-        // right transverse
+        ring2([[10, 8], [110, 8], [110, 58], [46, 58], [30, 80], [38, 58], [10, 58]])
       ]
     },
     {
-      // Screw: round head, straight shaft, a few angled thread ticks.
-      id: "screw",
-      name: "Screw",
-      category: "Clinical",
-      viewBox: [60, 160],
+      // Lightning bolt: a single jagged closed zig-zag.
+      id: "bolt",
+      name: "Lightning bolt",
+      category: "Symbols",
+      viewBox: [60, 120],
       strokes: [
-        ring2([[14, 8], [46, 8], [40, 24], [20, 24]]),
-        // head (trapezoid)
-        [[26, 24], [26, 132], [30, 144], [34, 132], [34, 24]],
-        // shaft → pointed tip
-        [[26, 44], [34, 38]],
-        // thread ticks
-        [[26, 62], [34, 56]],
-        [[26, 80], [34, 74]],
-        [[26, 98], [34, 92]],
-        [[26, 116], [34, 110]]
-      ]
-    },
-    {
-      // Plate: rounded bar with 4 screw holes (small rings) along it.
-      id: "plate",
-      name: "Plate",
-      category: "Clinical",
-      viewBox: [200, 50],
-      strokes: [
-        ring2([
-          ...arc(20, 25, 16, 18, Math.PI / 2, 3 * Math.PI / 2, 8),
-          // rounded left end
-          [180, 7],
-          ...arc(180, 25, 16, 18, -Math.PI / 2, Math.PI / 2, 8),
-          // rounded right end
-          [20, 43]
-        ]),
-        arc(40, 25, 7, 7, 0, TAU, 12),
-        // hole 1
-        arc(80, 25, 7, 7, 0, TAU, 12),
-        // hole 2
-        arc(120, 25, 7, 7, 0, TAU, 12),
-        // hole 3
-        arc(160, 25, 7, 7, 0, TAU, 12)
-        // hole 4
+        ring2([[34, 6], [12, 64], [28, 64], [20, 114], [50, 50], [34, 50]])
       ]
     }
   ];
 }
 function listStencils() {
-  return [...genericStencils(), ...clinicalStencils()];
+  return [...genericStencils(), ...symbolStencils()];
 }
 
 // engine/figures/stickers.js
@@ -17628,7 +19732,7 @@ function escText2(s) {
 function escAttr3(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-function svg(viewBox2, inner) {
+function svg2(viewBox2, inner) {
   const vb = Array.isArray(viewBox2) ? `0 0 ${viewBox2[0]} ${viewBox2[1]}` : String(viewBox2);
   const kids = Array.isArray(inner) ? inner.join("") : inner ?? "";
   return `<svg viewBox="${escAttr3(vb)}" xmlns="http://www.w3.org/2000/svg" role="img">${kids}</svg>`;
@@ -17656,7 +19760,7 @@ function rect2({ x, y, w, h, rx, fill = "none", stroke = RETRO.ink, width = LINE
 function line2({ x1, y1, x2, y2, stroke = RETRO.ink, width = LINE, ...rest } = {}) {
   return `<line ${attrs({ x1, y1, x2, y2, stroke, "stroke-width": width, ...rest })}/>`;
 }
-function text(str, x, y, { size = 13, anchor = "middle", fill = RETRO.ink, weight = 700, font = "Georgia, serif", ...rest } = {}) {
+function text2(str, x, y, { size = 13, anchor = "middle", fill = RETRO.ink, weight = 700, font = "Georgia, serif", ...rest } = {}) {
   return `<text ${attrs({ x, y, "text-anchor": anchor, "font-family": font, "font-weight": weight, "font-size": size, fill, ...rest })}>${escText2(str)}</text>`;
 }
 function disc(cx, cy, r, fill) {
@@ -17696,12 +19800,12 @@ function frame(inner, opts = {}) {
   } else if (ring3) {
     back = rect2({ x: pad, y: pad, w: w - pad * 2, h: h - pad * 2, rx, fill: RETRO.paper, stroke: RETRO.ink, width: OUT });
   }
-  return svg(vb, back + kids);
+  return svg2(vb, back + kids);
 }
 function mkSticker(id, name, inner, opts = {}) {
   const { viewBox: viewBox2 = [120, 120], frame: useFrame = false, ...frameOpts } = opts;
   const wantFrame = useFrame || frameOpts.badge || frameOpts.ring;
-  const out = wantFrame ? frame(inner, { viewBox: viewBox2, ...frameOpts }) : svg(viewBox2, inner);
+  const out = wantFrame ? frame(inner, { viewBox: viewBox2, ...frameOpts }) : svg2(viewBox2, inner);
   assertClean(id, out);
   return { id, name, svg: out };
 }
@@ -17710,8 +19814,8 @@ function assertClean(id, out) {
   if (/\swidth=|\sheight=/.test(head)) {
     throw new Error(`sticker "${id}": root <svg> must not set pixel width/height`);
   }
-  if (/<script|<foreignObject|\son\w+\s*=|href|url\s*\(|xlink|<animate|<set\b/i.test(out)) {
-    throw new Error(`sticker "${id}": svg contains an unsafe construct (script/href/url/xlink/SMIL/on*)`);
+  if (/<script|<foreignObject|[\s/"'`]on\w+\s*=|href|[\s/"'`]src\s*=|url\s*\(|xlink|<animate|<set\b/i.test(out)) {
+    throw new Error(`sticker "${id}": svg contains an unsafe construct (script/href/src/url/xlink/SMIL/on*)`);
   }
   if (sanitise(out) !== out) {
     throw new Error(`sticker "${id}": svg is altered by sanitise() \u2014 it is not self-contained/clean`);
@@ -18515,7 +20619,7 @@ var sport_games_default = {
       line2({ x1: 60, y1: 22, x2: 60, y2: 52, stroke: RETRO.paper, width: 3 }),
       // medal
       disc(60, 82, 24, RETRO.gold),
-      text("1", 60, 90, { size: 24, fill: RETRO.ink })
+      text2("1", 60, 90, { size: 24, fill: RETRO.ink })
     ].join(""), { viewBox: [120, 120] }),
     mkSticker("dumbbell", "Dumbbell", [
       rect2({ x: 44, y: 52, w: 32, h: 16, rx: 4, fill: RETRO.navy, stroke: RETRO.ink, width: OUT }),
@@ -19605,8 +21709,8 @@ function listStickers() {
 function getSticker(id) {
   return listStickers().find((s) => s.id === id) || null;
 }
-function viewBoxOf(svg2) {
-  const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(String(svg2 || ""));
+function viewBoxOf(svg3) {
+  const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(String(svg3 || ""));
   return m ? [Number(m[1]), Number(m[2])] : [120, 120];
 }
 
@@ -20628,13 +22732,16 @@ var DEFAULT_ORIGIN = "https://inayatpanda.com";
 function normaliseOrigin(origin) {
   const raw = String(origin || "").trim();
   if (!raw) return DEFAULT_ORIGIN;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) return DEFAULT_ORIGIN;
   let u;
   try {
     u = new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw);
   } catch {
     return DEFAULT_ORIGIN;
   }
-  return u.origin && u.origin !== "null" ? u.origin : DEFAULT_ORIGIN;
+  if (!u.origin || u.origin === "null" || !/^https?:$/.test(u.protocol)) return DEFAULT_ORIGIN;
+  const path3 = u.pathname.replace(/\/+$/g, "");
+  return u.origin + (path3 === "/" ? "" : path3);
 }
 function displayShareUrl(url) {
   const s = String(url || "").trim();
@@ -20696,12 +22803,12 @@ function buildIntent(platform, { lines = "", url = "" } = {}) {
   const key = String(platform || "").toLowerCase();
   const cap = PLATFORM_CAP[key];
   if (!cap) return null;
-  const text2 = String(lines || "");
+  const text3 = String(lines || "");
   const link = String(url || "");
   let href = null;
   if (key === "x") {
     const qs = [];
-    if (text2) qs.push("text=" + encodeURIComponent(text2));
+    if (text3) qs.push("text=" + encodeURIComponent(text3));
     if (link) qs.push("url=" + encodeURIComponent(link));
     href = "https://twitter.com/intent/tweet" + (qs.length ? "?" + qs.join("&") : "");
   } else if (key === "linkedin") {
@@ -20737,13 +22844,775 @@ function removeBySlug(posts, slug) {
 function isAlreadyDeleted(err) {
   if (!err) return false;
   if (Number(err.status) === 404) return true;
-  const text2 = String(err.message || err.detail || "").toLowerCase();
-  return /\bnot found\b|already (?:deleted|gone)/.test(text2);
+  const text3 = String(err.message || err.detail || "").toLowerCase();
+  return /\bnot found\b|already (?:deleted|gone)/.test(text3);
+}
+
+// src/core/connection.js
+var connection_exports = {};
+__export(connection_exports, {
+  blogUrl: () => blogUrl,
+  isDeadToken: () => isDeadToken,
+  isNetworkError: () => isNetworkError
+});
+function blogUrl({ owner, repo } = {}) {
+  const o = String(owner || "").trim().toLowerCase();
+  const r = String(repo || "").trim();
+  if (!o || !r) return "";
+  return `https://${o}.github.io/${encodeURIComponent(r)}/`;
+}
+function isNetworkError(err) {
+  if (!err) return false;
+  if (Number(err.status)) return false;
+  const name = String(err.name || "");
+  const msg = String(err.message || "").toLowerCase();
+  return name === "TypeError" || /failed to fetch|networkerror|load failed|network request failed/.test(msg);
+}
+function isDeadToken(err) {
+  if (!err) return false;
+  if (isNetworkError(err)) return false;
+  const status = Number(err.status) || 0;
+  const msg = String(err.message || "").toLowerCase();
+  if (/rate limit|abuse detection|secondary rate/.test(msg)) return false;
+  if (status === 401) return true;
+  if (/bad credentials|requires authentication|token expired|token has expired|token.*revoked/.test(msg)) return true;
+  return false;
+}
+
+// src/core/themeCatalogue.js
+var themeCatalogue_exports = {};
+__export(themeCatalogue_exports, {
+  BAKED_CATALOGUE: () => BAKED_CATALOGUE,
+  CATALOGUE_URL: () => CATALOGUE_URL,
+  DEFAULT_THEME: () => DEFAULT_THEME,
+  PICKER_CSS: () => PICKER_CSS,
+  PICKER_STYLE_ID: () => PICKER_STYLE_ID,
+  fetchLiveCatalogue: () => fetchLiveCatalogue,
+  groupByCategory: () => groupByCategory,
+  mountThemePicker: () => mountThemePicker,
+  parseCatalogue: () => parseCatalogue,
+  pickerBodyHTML: () => pickerBodyHTML,
+  safeColor: () => safeColor,
+  themeCardHTML: () => themeCardHTML
+});
+var BAKED_CATALOGUE = {
+  "$schema-note": "Blog theme registry. `id` matches src/styles/themes/<id>.css and the data-blog-theme value on <html>. `hero` names the homepage ARCHETYPE \u2014 index.astro renders src/components/home/Home<Archetype>.astro so every theme has a STRUCTURALLY distinct first screen (a front page, a start screen, a pinboard\u2026), not just a recolour. The rings/torus WebGL hero (archetype `rings`) is reserved for `observatory`. `vocabulary` gives each theme its own words: postsTitle (the writing archive's name), topicsLabel (the noun for the topic set, replacing 'constellations'), aboutLabel, an optional demo tagline, and topicNames \u2014 a DISPLAY-NAME override map over the seed topic SLUGS in src/data/topics.json (slugs/URLs never change; unknown/user topics pass through). Chrome labels fall back to observatory's defaults when a key is absent. The Chapbook composer reads this list for its theme picker; preview{bg,ink,accent} are swatches only.",
+  "categories": [
+    {
+      "id": "clean",
+      "name": "Clean & Simple"
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial"
+    },
+    {
+      "id": "creative",
+      "name": "Creative & Fun"
+    },
+    {
+      "id": "kids",
+      "name": "First Blogs (ages 10\u201315)"
+    },
+    {
+      "id": "photo",
+      "name": "Photo & Portfolio"
+    }
+  ],
+  "themes": [
+    {
+      "id": "observatory",
+      "name": "Observatory",
+      "category": "clean",
+      "hero": "rings",
+      "description": "The house style: near-black canvas, teal-to-violet accents and a fine grotesque. Calm, technical, and the default.",
+      "preview": {
+        "bg": "#04060c",
+        "ink": "#f4f7fd",
+        "accent": "#22d3ee"
+      },
+      "vocabulary": {
+        "postsTitle": "Posts",
+        "topicsLabel": "Constellations",
+        "aboutLabel": "About",
+        "tagline": "Explainers from the workshop, the pantry and the sky.",
+        "topicNames": {}
+      }
+    },
+    {
+      "id": "ledger",
+      "name": "Ledger",
+      "category": "clean",
+      "hero": "index",
+      "description": "Ruled off-white paper with a disciplined grotesque and hairline rules. Reads like a well-kept notebook.",
+      "preview": {
+        "bg": "#f6f5f0",
+        "ink": "#1a1b1d",
+        "accent": "#0f766e"
+      },
+      "vocabulary": {
+        "postsTitle": "Entries",
+        "topicsLabel": "Ledgers",
+        "aboutLabel": "Flyleaf",
+        "tagline": "A well-kept notebook, in public.",
+        "topicNames": {
+          "marrow": "Days",
+          "forge": "Work",
+          "old-bones": "Kitchen",
+          "marginalia": "Reading",
+          "after-hours": "Culture",
+          "atlas": "Journeys",
+          "nebula": "Notes"
+        }
+      }
+    },
+    {
+      "id": "air",
+      "name": "Air",
+      "category": "clean",
+      "hero": "solo",
+      "description": "Maximum whitespace, a single soft-blue accent and quiet type. Nothing on the page you didn't ask for.",
+      "preview": {
+        "bg": "#fbfbfd",
+        "ink": "#1a1c22",
+        "accent": "#2f6bff"
+      },
+      "vocabulary": {
+        "postsTitle": "Writing",
+        "topicsLabel": "Topics",
+        "aboutLabel": "About",
+        "tagline": "Less, but better.",
+        "topicNames": {
+          "marrow": "Life",
+          "forge": "Work",
+          "old-bones": "Food",
+          "marginalia": "Books",
+          "after-hours": "Culture",
+          "atlas": "Travel",
+          "nebula": "Ideas"
+        }
+      }
+    },
+    {
+      "id": "blueprint-workshop",
+      "name": "Blueprint Workshop",
+      "category": "clean",
+      "hero": "blueprint-board",
+      "description": "A working drafting table: gridded plans, numbered project sheets, specifications and cool cyan linework.",
+      "preview": {
+        "bg": "#06172c",
+        "ink": "#eef7ff",
+        "accent": "#9bdcff"
+      },
+      "vocabulary": {
+        "postsTitle": "Drawing Register",
+        "topicsLabel": "Specifications",
+        "aboutLabel": "The Workshop",
+        "tagline": "Ideas drawn, tested and issued.",
+        "topicNames": {
+          "marrow": "Human Factors",
+          "forge": "Builds",
+          "old-bones": "Materials",
+          "marginalia": "References",
+          "after-hours": "Experiments",
+          "atlas": "Field Work",
+          "nebula": "Concepts"
+        }
+      }
+    },
+    {
+      "id": "broadsheet",
+      "name": "Broadsheet",
+      "category": "editorial",
+      "hero": "frontpage",
+      "description": "A proper newspaper: a towering serif masthead, multi-column index with column rules and a drop-cap lede.",
+      "preview": {
+        "bg": "#f5f2ea",
+        "ink": "#1a1714",
+        "accent": "#8a1f14"
+      },
+      "vocabulary": {
+        "postsTitle": "Front Page",
+        "topicsLabel": "The Desks",
+        "aboutLabel": "The Masthead",
+        "tagline": "All the news that fits \u2014 and some that doesn't.",
+        "topicNames": {
+          "marrow": "Living",
+          "forge": "Technology",
+          "old-bones": "Food & Drink",
+          "marginalia": "Books",
+          "after-hours": "Arts",
+          "atlas": "Travel",
+          "nebula": "Opinion"
+        }
+      }
+    },
+    {
+      "id": "journal",
+      "name": "Journal",
+      "category": "editorial",
+      "hero": "essay-cover",
+      "description": "Stark black-on-cream, an oversized display serif and italic datelines. An unhurried literary quarterly.",
+      "preview": {
+        "bg": "#f6efe1",
+        "ink": "#2a2118",
+        "accent": "#7c4a1e"
+      },
+      "vocabulary": {
+        "postsTitle": "The Journal",
+        "topicsLabel": "Departments",
+        "aboutLabel": "Colophon",
+        "tagline": "Essays, unhurried.",
+        "topicNames": {
+          "marrow": "Living",
+          "forge": "Craft",
+          "old-bones": "The Table",
+          "marginalia": "Marginalia",
+          "after-hours": "Arts & Letters",
+          "atlas": "Correspondence",
+          "nebula": "Essays"
+        }
+      }
+    },
+    {
+      "id": "kiosk",
+      "name": "Kiosk",
+      "category": "editorial",
+      "hero": "news-wall",
+      "description": "Newsstand energy: a wall of paper cards with accent ticks, condensed caps headlines and a hot tabloid red.",
+      "preview": {
+        "bg": "#faf7f0",
+        "ink": "#111111",
+        "accent": "#e11d2a"
+      },
+      "vocabulary": {
+        "postsTitle": "Headlines",
+        "topicsLabel": "Sections",
+        "aboutLabel": "Masthead",
+        "tagline": "Straight off the newsstand.",
+        "topicNames": {
+          "marrow": "Life",
+          "forge": "Tech",
+          "old-bones": "Food",
+          "marginalia": "Books",
+          "after-hours": "Culture",
+          "atlas": "Travel",
+          "nebula": "Features"
+        }
+      }
+    },
+    {
+      "id": "desert-archive",
+      "name": "Desert Archive",
+      "category": "editorial",
+      "hero": "desert-scroll",
+      "description": "A panoramic field journal with a sunlit horizon, horizontal folios and route-based story navigation.",
+      "preview": {
+        "bg": "#d9ae76",
+        "ink": "#301b12",
+        "accent": "#a94f35"
+      },
+      "vocabulary": {
+        "postsTitle": "Field Notes",
+        "topicsLabel": "Routes",
+        "aboutLabel": "The Expedition",
+        "tagline": "Stories carried across open ground.",
+        "topicNames": {
+          "marrow": "Shelter",
+          "forge": "Craft",
+          "old-bones": "Provisions",
+          "marginalia": "Fragments",
+          "after-hours": "Night Camp",
+          "atlas": "Routes",
+          "nebula": "Horizons"
+        }
+      }
+    },
+    {
+      "id": "neon",
+      "name": "Neon",
+      "category": "creative",
+      "hero": "marquee",
+      "description": "After-dark and electric \u2014 inky violet-black, glowing cyan and magenta, and type that hums.",
+      "preview": {
+        "bg": "#0a0812",
+        "ink": "#f3ecff",
+        "accent": "#22f5ff"
+      },
+      "vocabulary": {
+        "postsTitle": "After Dark",
+        "topicsLabel": "Frequencies",
+        "aboutLabel": "Backstage",
+        "tagline": "Broadcasting after hours.",
+        "topicNames": {
+          "marrow": "Nightlife",
+          "forge": "Signals",
+          "old-bones": "Late Eats",
+          "marginalia": "B-Sides",
+          "after-hours": "The Scene",
+          "atlas": "Neon Cities",
+          "nebula": "Static"
+        }
+      }
+    },
+    {
+      "id": "zine",
+      "name": "Zine",
+      "category": "creative",
+      "hero": "collage",
+      "description": "Photocopied punk: high-contrast paper, one screaming spot colour, cut-and-paste rules and heavy caps.",
+      "preview": {
+        "bg": "#ece9e2",
+        "ink": "#0d0d0d",
+        "accent": "#ff2d55"
+      },
+      "vocabulary": {
+        "postsTitle": "Back Pages",
+        "topicsLabel": "Cut & Paste",
+        "aboutLabel": "Who We Are",
+        "tagline": "Photocopied and proud.",
+        "topicNames": {
+          "marrow": "Real Talk",
+          "forge": "DIY",
+          "old-bones": "Cheap Eats",
+          "marginalia": "Zines",
+          "after-hours": "Noise",
+          "atlas": "On the Road",
+          "nebula": "Rants"
+        }
+      }
+    },
+    {
+      "id": "scrapbook",
+      "name": "Scrapbook",
+      "category": "creative",
+      "hero": "pinboard",
+      "description": "Warm craft paper, taped-down cards and a friendly rounded hand. Everything looks lovingly stuck in.",
+      "preview": {
+        "bg": "#f3ead8",
+        "ink": "#3a2f26",
+        "accent": "#d1495b"
+      },
+      "vocabulary": {
+        "postsTitle": "Keepsakes",
+        "topicsLabel": "Collections",
+        "aboutLabel": "About Me",
+        "tagline": "Everything worth sticking in.",
+        "topicNames": {
+          "marrow": "Everyday",
+          "forge": "Made",
+          "old-bones": "Recipes",
+          "marginalia": "Bookmarks",
+          "after-hours": "Odds & Ends",
+          "atlas": "Snapshots",
+          "nebula": "Daydreams"
+        }
+      }
+    },
+    {
+      "id": "woodland-chronicle",
+      "name": "Woodland Chronicle",
+      "category": "creative",
+      "hero": "woodland-trail",
+      "description": "An organic story trail with a layered canopy, featured clearing, branching chronology and botanical details.",
+      "preview": {
+        "bg": "#d9ddc5",
+        "ink": "#202719",
+        "accent": "#3f7048"
+      },
+      "vocabulary": {
+        "postsTitle": "Chronicles",
+        "topicsLabel": "Groves",
+        "aboutLabel": "The Keeper",
+        "tagline": "Stories gathered along the path.",
+        "topicNames": {
+          "marrow": "Roots",
+          "forge": "Handwork",
+          "old-bones": "Forage",
+          "marginalia": "Leaves",
+          "after-hours": "Dusk",
+          "atlas": "Trails",
+          "nebula": "Canopy"
+        }
+      }
+    },
+    {
+      "id": "doodle",
+      "name": "Doodle",
+      "category": "kids",
+      "hero": "notebook",
+      "description": "Your notebook, but online: squared paper, biro-blue ink, highlighter swipes and hand-drawn arrows. Annotate everything.",
+      "preview": {
+        "bg": "#fbfcf7",
+        "ink": "#20252b",
+        "accent": "#2f5fd0"
+      },
+      "vocabulary": {
+        "postsTitle": "Rough Work",
+        "topicsLabel": "Subjects",
+        "aboutLabel": "About Me",
+        "tagline": "Your notebook, but online.",
+        "topicNames": {
+          "marrow": "Life Stuff",
+          "forge": "Tech Class",
+          "old-bones": "Snack Break",
+          "marginalia": "Book Reports",
+          "after-hours": "Art Class",
+          "atlas": "Field Trips",
+          "nebula": "Margins"
+        }
+      }
+    },
+    {
+      "id": "rocket",
+      "name": "Rocket",
+      "category": "kids",
+      "hero": "mission-control",
+      "description": "Mission-control console: telemetry rules, stencilled mission numbers and countdown date badges. All systems go.",
+      "preview": {
+        "bg": "#0e1330",
+        "ink": "#eef3ff",
+        "accent": "#4dd6ff"
+      },
+      "vocabulary": {
+        "postsTitle": "Mission Log",
+        "topicsLabel": "Systems",
+        "aboutLabel": "Ground Control",
+        "tagline": "All systems go.",
+        "topicNames": {
+          "marrow": "Life Support",
+          "forge": "Engineering",
+          "old-bones": "Rations",
+          "marginalia": "Archives",
+          "after-hours": "Comms",
+          "atlas": "Navigation",
+          "nebula": "Telemetry"
+        }
+      }
+    },
+    {
+      "id": "pixel",
+      "name": "Pixel",
+      "category": "kids",
+      "hero": "pixel-quest",
+      "description": "Cosy retro-handheld: a chunky pixel wordmark, soft daylight palette, sprite accents and an XP-bar reading strip.",
+      "preview": {
+        "bg": "#e8f4d6",
+        "ink": "#2b2f24",
+        "accent": "#5a9e3f"
+      },
+      "vocabulary": {
+        "postsTitle": "Quests",
+        "topicsLabel": "Zones",
+        "aboutLabel": "Player Info",
+        "tagline": "Press start on your first blog.",
+        "topicNames": {
+          "marrow": "Home Base",
+          "forge": "Workshop",
+          "old-bones": "The Inn",
+          "marginalia": "Library",
+          "after-hours": "Arcade",
+          "atlas": "Overworld",
+          "nebula": "Side Quests"
+        }
+      }
+    },
+    {
+      "id": "comic",
+      "name": "Comic",
+      "category": "kids",
+      "hero": "manga",
+      "description": "Manga energy: screen-tone halftones, a dynamic panel grid and speech-bubble headlines. Every post a splash page.",
+      "preview": {
+        "bg": "#fff8e6",
+        "ink": "#14110c",
+        "accent": "#ff3b3b"
+      },
+      "vocabulary": {
+        "postsTitle": "Issues",
+        "topicsLabel": "Story Arcs",
+        "aboutLabel": "Origin Story",
+        "tagline": "Every post a splash page.",
+        "topicNames": {
+          "marrow": "Slice of Life",
+          "forge": "Gadgets",
+          "old-bones": "Cooking Arc",
+          "marginalia": "Backstory",
+          "after-hours": "Culture",
+          "atlas": "On Location",
+          "nebula": "Panels"
+        }
+      }
+    },
+    {
+      "id": "field-atlas",
+      "name": "Field Atlas",
+      "category": "photo",
+      "hero": "field-atlas",
+      "description": "A cartographer's table with topographic contours, coordinate-led records and a colour-keyed field legend.",
+      "preview": {
+        "bg": "#d9d4bd",
+        "ink": "#20251f",
+        "accent": "#2f6f67"
+      },
+      "vocabulary": {
+        "postsTitle": "Field Records",
+        "topicsLabel": "Map Legend",
+        "aboutLabel": "The Surveyor",
+        "tagline": "Every story has a coordinate.",
+        "topicNames": {
+          "marrow": "Habitat",
+          "forge": "Equipment",
+          "old-bones": "Specimens",
+          "marginalia": "Annotations",
+          "after-hours": "Night Survey",
+          "atlas": "Coordinates",
+          "nebula": "Unmapped"
+        }
+      }
+    },
+    {
+      "id": "darkroom",
+      "name": "Darkroom",
+      "category": "photo",
+      "hero": "lightbox",
+      "description": "Near-black walls and silver labels so photographs glow. Minimal chrome, maximum image.",
+      "preview": {
+        "bg": "#0b0b0d",
+        "ink": "#ededf0",
+        "accent": "#d4d4d8"
+      },
+      "vocabulary": {
+        "postsTitle": "Exposures",
+        "topicsLabel": "Contact Sheets",
+        "aboutLabel": "About",
+        "tagline": "Developed in the dark.",
+        "topicNames": {
+          "marrow": "Daily",
+          "forge": "Technical",
+          "old-bones": "Still Life",
+          "marginalia": "Notes",
+          "after-hours": "Night",
+          "atlas": "On Location",
+          "nebula": "Prints"
+        }
+      }
+    },
+    {
+      "id": "contact-sheet",
+      "name": "Contact Sheet",
+      "category": "photo",
+      "hero": "contact-sheet",
+      "description": "A film contact sheet: charcoal base, framed thumbnails with numbered edges and monospace grease-pencil labels.",
+      "preview": {
+        "bg": "#161514",
+        "ink": "#eae8e3",
+        "accent": "#f4a11f"
+      },
+      "vocabulary": {
+        "postsTitle": "Rolls",
+        "topicsLabel": "Frames",
+        "aboutLabel": "Colophon",
+        "tagline": "Proof, frame by frame.",
+        "topicNames": {
+          "marrow": "Everyday",
+          "forge": "Gear",
+          "old-bones": "Food",
+          "marginalia": "Notes",
+          "after-hours": "Night",
+          "atlas": "Location",
+          "nebula": "Proofs"
+        }
+      }
+    },
+    {
+      "id": "polaroid",
+      "name": "Polaroid",
+      "category": "photo",
+      "hero": "photo-pile",
+      "description": "Instant-photo charm: soft grey desk, white photo frames with a caption lip and a casual retro-blue accent.",
+      "preview": {
+        "bg": "#e9e6df",
+        "ink": "#26241f",
+        "accent": "#3a7ca5"
+      },
+      "vocabulary": {
+        "postsTitle": "Snapshots",
+        "topicsLabel": "The Pile",
+        "aboutLabel": "About",
+        "tagline": "Shake it and see.",
+        "topicNames": {
+          "marrow": "Moments",
+          "forge": "Tinkering",
+          "old-bones": "Meals",
+          "marginalia": "Reads",
+          "after-hours": "Fun",
+          "atlas": "Trips",
+          "nebula": "Captions"
+        }
+      }
+    }
+  ]
+};
+var DEFAULT_THEME = "observatory";
+var CATALOGUE_URL = "https://api.github.com/repos/RQAI-projects/chapbook-template/contents/src/data/themes.json";
+var esc3 = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function safeColor(v) {
+  return typeof v === "string" && /^#[0-9a-fA-F]{3,8}$/.test(v.trim()) ? v.trim() : "transparent";
+}
+function decodeBase64Utf8(b64) {
+  const clean = String(b64).replace(/\s+/g, "");
+  const bin = atob(clean);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+function isValidTheme(t) {
+  return !!t && typeof t.id === "string" && t.id && typeof t.name === "string" && t.name && t.preview && typeof t.preview === "object";
+}
+function normaliseCatalogue(obj) {
+  if (!obj || typeof obj !== "object") throw new Error("themeCatalogue: payload is not an object");
+  const themes = Array.isArray(obj.themes) ? obj.themes.filter(isValidTheme) : [];
+  if (!themes.length) throw new Error("themeCatalogue: no valid themes in payload");
+  const categories = Array.isArray(obj.categories) ? obj.categories.filter((c) => c && typeof c.id === "string" && c.id && typeof c.name === "string" && c.name) : [];
+  return { categories, themes };
+}
+function parseCatalogue(payload) {
+  let obj = payload;
+  if (payload && typeof payload === "object" && typeof payload.content === "string" && !Array.isArray(payload.themes)) {
+    const text3 = payload.encoding === "base64" || payload.encoding == null ? decodeBase64Utf8(payload.content) : payload.content;
+    obj = JSON.parse(text3);
+  } else if (typeof payload === "string") {
+    obj = JSON.parse(payload);
+  }
+  return normaliseCatalogue(obj);
+}
+async function fetchLiveCatalogue(fetchImpl) {
+  const f = fetchImpl || (typeof fetch !== "undefined" ? fetch : null);
+  if (typeof f !== "function") return BAKED_CATALOGUE;
+  try {
+    const res = await f(CATALOGUE_URL, { headers: { Accept: "application/vnd.github+json" } });
+    if (!res || !res.ok) return BAKED_CATALOGUE;
+    const body = await res.json();
+    return parseCatalogue(body);
+  } catch {
+    return BAKED_CATALOGUE;
+  }
+}
+function groupByCategory(catalogue) {
+  const cat = catalogue && Array.isArray(catalogue.themes) ? catalogue : BAKED_CATALOGUE;
+  const order = Array.isArray(cat.categories) ? cat.categories : [];
+  const byId2 = new Map(order.map((c) => [c.id, { id: c.id, name: c.name, themes: [] }]));
+  const extra = { id: "_more", name: "More", themes: [] };
+  for (const t of cat.themes) {
+    const g = byId2.get(t.category) || extra;
+    g.themes.push(t);
+  }
+  const groups = order.map((c) => byId2.get(c.id)).filter((g) => g && g.themes.length);
+  if (extra.themes.length) groups.push(extra);
+  return groups;
+}
+var PICKER_STYLE_ID = "cbtp-style";
+var PICKER_CSS = `
+.cbtp{display:flex;flex-direction:column;gap:.85rem}
+.cbtp-cat-h{margin:0 0 .45rem;font:600 .66rem var(--cbtp-font,'Space Grotesk',system-ui,sans-serif);
+  letter-spacing:.1em;text-transform:uppercase;color:var(--cbtp-faint,#6f7e98)}
+.cbtp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.5rem}
+.cbtp-card{display:flex;align-items:flex-start;gap:.6rem;width:100%;text-align:left;margin:0;
+  border:1px solid var(--cbtp-line,rgba(140,160,200,.16));border-radius:12px;padding:.55rem .6rem;
+  background:var(--cbtp-surface,#0b1120);color:var(--cbtp-ink,#f4f7fd);cursor:pointer;font:inherit;
+  transition:border-color .12s,box-shadow .12s,background .12s}
+.cbtp-card:hover{border-color:var(--cbtp-acc,#22d3ee)}
+.cbtp-card:focus-visible{outline:none;border-color:var(--cbtp-acc,#22d3ee);
+  box-shadow:0 0 0 3px rgba(34,211,238,.28)}
+.cbtp-card.sel{border-color:var(--cbtp-acc,#22d3ee);
+  box-shadow:0 0 0 1px var(--cbtp-acc,#22d3ee),0 8px 24px -14px var(--cbtp-acc,#22d3ee)}
+.cbtp-sw{position:relative;flex:0 0 auto;width:44px;height:36px;border-radius:8px;overflow:hidden;
+  border:1px solid rgba(140,160,200,.22)}
+.cbtp-sw .cbtp-bar{position:absolute;left:7px;right:7px;bottom:8px;height:4px;border-radius:2px;opacity:.92}
+.cbtp-sw .cbtp-dot{position:absolute;top:7px;left:7px;width:12px;height:12px;border-radius:50%}
+.cbtp-tx{min-width:0}
+.cbtp-nm{display:block;margin-bottom:.12em;font:650 .84rem var(--cbtp-font,'Space Grotesk',system-ui,sans-serif)}
+.cbtp-card.sel .cbtp-nm{color:var(--cbtp-acc,#22d3ee)}
+.cbtp-ds{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  font-size:.73rem;line-height:1.35;color:var(--cbtp-mut,#aebbd2)}`;
+function themeCardHTML(theme, checked) {
+  const p = theme.preview || {};
+  const on = !!checked;
+  return `<button type="button" class="cbtp-card${on ? " sel" : ""}" role="radio" aria-checked="${on ? "true" : "false"}" tabindex="${on ? "0" : "-1"}" data-theme="${esc3(theme.id)}"><span class="cbtp-sw" aria-hidden="true" style="background:${safeColor(p.bg)}"><span class="cbtp-dot" style="background:${safeColor(p.accent)}"></span><span class="cbtp-bar" style="background:${safeColor(p.ink)}"></span></span><span class="cbtp-tx"><span class="cbtp-nm">${esc3(theme.name)}</span><span class="cbtp-ds">${esc3(theme.description)}</span></span></button>`;
+}
+function pickerBodyHTML(catalogue, selectedId) {
+  const groups = groupByCategory(catalogue);
+  const themes = catalogue && catalogue.themes || BAKED_CATALOGUE.themes;
+  const sel = themes.some((t) => t.id === selectedId) ? selectedId : themes[0] && themes[0].id;
+  return groups.map((g) => `<div class="cbtp-cat"><div class="cbtp-cat-h">${esc3(g.name)}</div><div class="cbtp-grid">${g.themes.map((t) => themeCardHTML(t, t.id === sel)).join("")}</div></div>`).join("");
+}
+function ensurePickerStyles(doc) {
+  if (!doc || doc.getElementById(PICKER_STYLE_ID)) return;
+  const st = doc.createElement("style");
+  st.id = PICKER_STYLE_ID;
+  st.textContent = PICKER_CSS;
+  (doc.head || doc.documentElement).appendChild(st);
+}
+function mountThemePicker(container, opts = {}) {
+  if (!container || typeof document === "undefined") return null;
+  const catalogue = opts.catalogue && Array.isArray(opts.catalogue.themes) && opts.catalogue.themes.length ? opts.catalogue : BAKED_CATALOGUE;
+  const onSelect = typeof opts.onSelect === "function" ? opts.onSelect : null;
+  const ids = catalogue.themes.map((t) => t.id);
+  let current = ids.includes(opts.selected) ? opts.selected : ids.includes(DEFAULT_THEME) ? DEFAULT_THEME : ids[0];
+  ensurePickerStyles(container.ownerDocument || document);
+  container.classList.add("cbtp");
+  container.setAttribute("role", "radiogroup");
+  if (!container.getAttribute("aria-label")) container.setAttribute("aria-label", "Blog theme");
+  container.innerHTML = pickerBodyHTML(catalogue, current);
+  const cards = () => Array.from(container.querySelectorAll(".cbtp-card"));
+  const select = (id, focus) => {
+    if (!ids.includes(id)) return;
+    current = id;
+    for (const el2 of cards()) {
+      const isOn = el2.dataset.theme === id;
+      el2.classList.toggle("sel", isOn);
+      el2.setAttribute("aria-checked", isOn ? "true" : "false");
+      el2.tabIndex = isOn ? 0 : -1;
+      if (isOn) {
+        el2.querySelector(".cbtp-nm")?.setAttribute("data-sel", "1");
+        if (focus) el2.focus();
+      }
+    }
+    if (onSelect) onSelect(id);
+  };
+  container.addEventListener("click", (e) => {
+    const card = e.target.closest(".cbtp-card[data-theme]");
+    if (card && container.contains(card)) select(card.dataset.theme, false);
+  });
+  container.addEventListener("keydown", (e) => {
+    const card = e.target.closest && e.target.closest(".cbtp-card[data-theme]");
+    if (!card) return;
+    const list = cards();
+    const i = list.indexOf(card);
+    if (i < 0) return;
+    let next = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % list.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i - 1 + list.length) % list.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = list.length - 1;
+    else if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      select(card.dataset.theme, false);
+      return;
+    } else return;
+    e.preventDefault();
+    select(list[next].dataset.theme, true);
+  });
+  if (onSelect) onSelect(current);
+  return { get value() {
+    return current;
+  }, set: (id) => select(id, false) };
 }
 
 // src/app.js
+var escHtml2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var GH_CLIENT_ID = typeof window !== "undefined" && window.__STUDIO_GH_CLIENT_ID || "";
-var RELAY_BASE = typeof window !== "undefined" && window.__STUDIO_RELAY_BASE || "/.netlify/functions/gh-device";
+var RELAY_BASE = typeof window !== "undefined" && window.__STUDIO_RELAY_BASE || "https://chapbook.rqai.co.uk/.netlify/functions/gh-device";
 function buildApi() {
   const gh = makeGithub(config.getGithub());
   const ai = makeAi(config);
@@ -20789,9 +23658,9 @@ function renderOnboarding() {
   const startMode = config.isRemoteHelm() ? "remote" : "byok";
   const manualFields = `
       <label>GitHub owner / repo</label>
-      <div class="row"><input id="byok-owner" placeholder="owner" value="${c.ghOwner || ""}"><input id="byok-repo" placeholder="repo" value="${c.ghRepo || ""}"></div>
-      <label>Branch</label><input id="byok-branch" placeholder="main" value="${c.ghBranch || "main"}">
-      <label>GitHub token (fine-grained, contents: read & write)</label><input id="byok-token" type="password" placeholder="github_pat_\u2026" value="${c.ghToken || ""}">`;
+      <div class="row"><input id="byok-owner" placeholder="owner" value="${escHtml2(c.ghOwner || "")}"><input id="byok-repo" placeholder="repo" value="${escHtml2(c.ghRepo || "")}"></div>
+      <label>Branch</label><input id="byok-branch" placeholder="main" value="${escHtml2(c.ghBranch || "main")}">
+      <label>GitHub token (fine-grained, contents: read & write)</label><input id="byok-token" type="password" placeholder="github_pat_\u2026" value="${escHtml2(c.ghToken || "")}">`;
   const signinBlock = `
       <div id="gh-signin">
         <button type="button" id="gh-start">Sign in with GitHub</button>
@@ -20902,7 +23771,7 @@ function renderOnboarding() {
     #byok-overlay .no-gh a.no-gh-back{display:inline-block;margin:.45rem 0 0;color:#2dd4bf;text-decoration:none;font-weight:700;white-space:normal}
   </style>
   <div class="bc">
-    <h2>Set up your <b>Studio</b></h2>
+    <h2>Set up your <b>Atelier</b></h2>
     <p>Choose how this device works. You can switch any time in Settings.</p>
     <div class="modes" role="group" aria-label="Connection mode">
       <button type="button" id="mode-byok" data-mode="byok" aria-pressed="${startMode === "byok"}">This device only<br><span style="font-weight:400;font-size:.72rem;opacity:.8">bring your own keys</span></button>
@@ -20918,16 +23787,16 @@ function renderOnboarding() {
         <option value="openai"${c.aiProvider === "openai" ? " selected" : ""}>OpenAI</option>
         <option value="google"${c.aiProvider === "google" ? " selected" : ""}>Google (Gemini)</option>
       </select>
-      <label>AI key <span style="opacity:.6">(optional)</span></label><input id="byok-key" type="password" placeholder="sk-\u2026 (only needed for AI drafting)" value="${c.aiKey || ""}">
+      <label>AI key <span style="opacity:.6">(optional)</span></label><input id="byok-key" type="password" placeholder="sk-\u2026 (only needed for AI drafting)" value="${escHtml2(c.aiKey || "")}">
       <button id="byok-save">Save &amp; start</button>
       <div class="msg" id="byok-msg"></div>
     </div>
 
     <div data-pane="remote" class="${startMode === "remote" ? "on" : ""}">
-      <p style="margin-top:-.4rem">Run <b>npm&nbsp;run&nbsp;tunnel</b> on your laptop, paste the printed URL below, and your phone edits the laptop's real Studio \u2014 drafts, queue, posts. Keys stay on the laptop.</p>
-      <label>Helm URL (your tunnel)</label><input id="helm-url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://helm-xxxx.trycloudflare.com" value="${r.baseUrl || ""}">
+      <p style="margin-top:-.4rem">Run <b>npm&nbsp;run&nbsp;tunnel</b> on your laptop, paste the printed URL below, and your phone edits the laptop's real Atelier \u2014 drafts, queue, posts. Keys stay on the laptop.</p>
+      <label>Helm URL (your tunnel)</label><input id="helm-url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://helm-xxxx.trycloudflare.com" value="${escHtml2(r.baseUrl || "")}">
       <div class="hint" style="margin:.35rem 0 0">Only paste your own Helm/tunnel URL \u2014 the admin token is sent to it.</div>
-      <label>Admin token</label><input id="helm-token" type="password" autocomplete="off" placeholder="from config/config.json" value="${r.token || ""}">
+      <label>Admin token</label><input id="helm-token" type="password" autocomplete="off" placeholder="from config/config.json" value="${escHtml2(r.token || "")}">
       <button class="ghost" id="helm-test" style="margin-top:.9rem">Test connection</button>
       <button id="helm-save">Connect &amp; start</button>
       <div class="msg" id="helm-msg"></div>
@@ -21000,7 +23869,7 @@ function renderOnboarding() {
         $("gh-codebox").style.display = "none";
         $("gh-create").style.display = "block";
         if (repos.length) {
-          sel.innerHTML = repos.map((r2) => `<option value="${r2.fullName}" data-branch="${r2.branch}">${r2.fullName}</option>`).join("");
+          sel.innerHTML = repos.map((r2) => `<option value="${escHtml2(r2.fullName)}" data-branch="${escHtml2(r2.branch)}">${escHtml2(r2.fullName)}</option>`).join("");
           $("gh-picker").style.display = "block";
         } else {
           $("gh-picker").style.display = "none";
@@ -21168,6 +24037,12 @@ if (typeof window !== "undefined") {
   window.__studioCalendar = postCalendar_exports;
   window.__studioShare = shareIntents_exports;
   window.__studioPostList = postList_exports;
+  window.__studioStorage = storage;
+  window.__studioDrafts = draftsIo_exports;
+  window.__studioSanitise = stripUnsafeHtml;
+  window.__studioConnection = connection_exports;
+  window.__studioThread = thread_exports;
+  window.__studioThemeCatalogue = themeCatalogue_exports;
   refresh();
 }
 export {

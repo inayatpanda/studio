@@ -82,11 +82,26 @@ function normaliseExif(raw) {
   }
   const camera = tidyCamera(e.Make, e.Model);
   let gps = null;
-  const lat = e.GPSLatitude, lng = e.GPSLongitude;
-  if (typeof lat === "number" && Number.isFinite(lat) && typeof lng === "number" && Number.isFinite(lng)) {
-    gps = [lat, lng];
-  }
+  const num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+  const lat = num(e.latitude) ?? num(e.GPSLatitude);
+  const lng = num(e.longitude) ?? num(e.GPSLongitude);
+  if (lat != null && lng != null) gps = [lat, lng];
   return { date, camera, gps };
+}
+async function readExif(exifr2, file, { onError } = {}) {
+  const empty = { date: null, camera: null, gps: null };
+  try {
+    const raw = await exifr2.parse(file);
+    return normaliseExif(raw);
+  } catch (err) {
+    if (typeof onError === "function") {
+      try {
+        onError(err);
+      } catch {
+      }
+    }
+    return empty;
+  }
 }
 var cleanStr = (s) => (s == null ? "" : String(s)).trim();
 var cleanTags = (tags) => (Array.isArray(tags) ? tags : []).map((t) => cleanStr(t)).filter(Boolean).filter((t, i, a) => a.indexOf(t) === i);
@@ -102,9 +117,6 @@ function buildEntry({ exif = {}, caption = "", tags = [], album = "" } = {}) {
   if (date) entry.date = date;
   const camera = cleanStr(exif.camera);
   if (camera) entry.camera = camera;
-  if (Array.isArray(exif.gps) && exif.gps.length === 2 && typeof exif.gps[0] === "number" && Number.isFinite(exif.gps[0]) && typeof exif.gps[1] === "number" && Number.isFinite(exif.gps[1])) {
-    entry.gps = [exif.gps[0], exif.gps[1]];
-  }
   return entry;
 }
 function parseExistingMeta(content) {
@@ -118,10 +130,19 @@ function parseExistingMeta(content) {
     return {};
   }
 }
+function stripGps(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry) || !("gps" in entry)) return entry;
+  const { gps, ...rest } = entry;
+  return rest;
+}
 function mergeMeta(existing, additions) {
-  const out = { ...existing && typeof existing === "object" ? existing : {} };
-  for (const [name, entry] of Object.entries(additions || {})) {
+  const out = {};
+  for (const [name, entry] of Object.entries(existing && typeof existing === "object" ? existing : {})) {
+    out[name] = stripGps(entry);
+  }
+  for (const [name, rawEntry] of Object.entries(additions || {})) {
     if (!name) continue;
+    const entry = stripGps(rawEntry);
     if (entry && typeof entry === "object" && Object.keys(entry).length) out[name] = entry;
     else if (!(name in out)) out[name] = {};
   }
@@ -131,7 +152,6 @@ function mergeMeta(existing, additions) {
 // src/darkroom-upload.src.js
 var IMG_DIR = (slug) => `src/content/blog/_images/${slug}`;
 var META_PATH = (slug) => `${IMG_DIR(slug)}/meta.json`;
-var EXIF_PICK = ["DateTimeOriginal", "Make", "Model", "GPSLatitude", "GPSLongitude"];
 var MAX_IMG_BYTES = 10 * 1024 * 1024;
 var MAX_BATCH_BYTES = 40 * 1024 * 1024;
 var MAX_BATCH_COUNT = 40;
@@ -144,7 +164,7 @@ var $ = (id) => document.getElementById(id);
 var mkId = () => "dk-" + Math.random().toString(36).slice(2, 9);
 function helmReachable() {
   if (typeof window === "undefined") return false;
-  if (window.__studioRemote && window.__studioRemote.active) return true;
+  if (window.__studioRemote?.active) return true;
   if (!window.__studioConfig) return true;
   return false;
 }
@@ -176,13 +196,10 @@ var esc = (s) => D && D.esc ? D.esc(s) : String(s == null ? "" : s).replace(/[&<
 var toast = (t) => {
   if (D && D.toast) D.toast(t);
 };
-async function readExif(file) {
-  try {
-    const raw = await exifr.parse(file, { pick: EXIF_PICK });
-    return normaliseExif(raw);
-  } catch {
-    return { date: null, camera: null, gps: null };
-  }
+async function readExif2(file) {
+  return readExif(exifr, file, {
+    onError: (err) => console.warn("[darkroom] EXIF parse failed:", err && err.message)
+  });
 }
 function fmtDate(iso) {
   if (!iso) return "";
@@ -190,9 +207,17 @@ function fmtDate(iso) {
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
+function pickSelectValue(prevValue, slugs) {
+  const list = (Array.isArray(slugs) ? slugs : []).map((s) => String(s == null ? "" : s));
+  const prev = String(prevValue == null ? "" : prevValue);
+  if (prev && list.includes(prev)) return prev;
+  return list.length ? list[0] : "";
+}
+var lastPostSlug = "";
 async function loadPosts() {
   const sel = $("dkPost");
   if (!sel) return;
+  if (sel.value) lastPostSlug = sel.value;
   sel.innerHTML = '<option value="">Loading posts\u2026</option>';
   try {
     posts = await D.api("/posts") || [];
@@ -203,6 +228,8 @@ async function loadPosts() {
     sel.innerHTML = posts.map(
       (p) => `<option value="${esc(p.slug)}">${esc(p.title || p.slug)}</option>`
     ).join("");
+    sel.value = pickSelectValue(lastPostSlug, posts.map((p) => p.slug));
+    lastPostSlug = sel.value;
     showDarkroomCount();
   } catch (e) {
     sel.innerHTML = '<option value="">Could not load posts</option>';
@@ -227,11 +254,30 @@ async function showDarkroomCount() {
   el.textContent = "Checking existing photos\u2026";
   const names = await existingImageNames(gh, slug);
   if (seq !== countSeq) return;
+  if (!names) {
+    el.textContent = "";
+    return;
+  }
   const c = names.length;
   el.textContent = c ? `${c} photo${c === 1 ? "" : "s"} already in this post's gallery` : "No photos in this post yet";
 }
+function partitionImageFiles(fileList) {
+  const accepted = [], skipped = [];
+  for (const f of [...fileList || []].filter(Boolean)) {
+    const type = f.type || "";
+    if (type === "" || /^image\//.test(type)) accepted.push(f);
+    else skipped.push(f);
+  }
+  return { accepted, skipped };
+}
 async function addFiles(fileList) {
-  const files = [...fileList || []].filter((f) => f && /^image\//.test(f.type || ""));
+  if (busy) {
+    toast("Hang on \u2014 finishing the current commit\u2026");
+    return;
+  }
+  const { accepted, skipped } = partitionImageFiles(fileList);
+  if (skipped.length) toast("Skipped " + skipped.length + " file" + (skipped.length > 1 ? "s" : "") + " that aren't photos");
+  const files = accepted;
   if (!files.length) return;
   toast("Reading " + files.length + " photo" + (files.length > 1 ? "s" : "") + "\u2026");
   let added = 0, skippedBig = 0, skippedCap = 0;
@@ -242,7 +288,7 @@ async function addFiles(fileList) {
       continue;
     }
     try {
-      const exif = await readExif(file);
+      const exif = await readExif2(file);
       const { filename, base64, bytes, width, height } = await resizeToBase64(file);
       if (bytes > MAX_IMG_BYTES) {
         skippedBig++;
@@ -272,12 +318,12 @@ function dedupeFilenames(existingNames = []) {
   });
 }
 async function existingImageNames(gh, slug) {
+  if (!gh || typeof gh.listTree !== "function") return null;
   try {
-    if (!gh || typeof gh.listTree !== "function") return [];
     const entries = await gh.listTree(IMG_DIR(slug));
     return (entries || []).map((e) => (e.path || "").split("/").pop()).filter((name) => name && name.toLowerCase() !== "meta.json");
   } catch {
-    return [];
+    return null;
   }
 }
 function renderGrid() {
@@ -285,7 +331,7 @@ function renderGrid() {
   const summary = $("dkSummary");
   if (!grid) return;
   if (!photos.length) {
-    grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1"><b>No photos staged yet.</b>Drop a batch above, or use Take a photo.</p>';
+    grid.innerHTML = '<p class="sub" style="color:var(--faint);text-align:center;padding:1.4rem 0">No photos staged yet. Drop some above.</p>';
     if (summary) summary.textContent = "";
     $("dkBulkBar").style.display = "none";
     $("dkCommit").disabled = true;
@@ -388,7 +434,7 @@ async function archiveOriginals(slug, btn) {
       toast("Could not archive the original for " + (p.filename || "a photo") + " \u2014 publishing the resized copy only");
     }
   }
-  if (archived) toast("Archived " + archived + " original" + (archived > 1 ? "s" : "") + " on your Helm \u2713");
+  if (archived) toast("Archived " + archived + " original" + (archived > 1 ? "s" : "") + " \u2713");
 }
 async function commit() {
   if (busy) return;
@@ -397,7 +443,7 @@ async function commit() {
   if (!photos.length) return toast("Stage some photos first");
   const gh = resolveGh();
   if (!gh) {
-    return toast("Uploading photos needs your GitHub token (the \u201CThis device only\u201D / BYOK setup) or a connected Helm. Open Settings to connect.");
+    return toast("Uploading photos needs your GitHub token \u2014 open Settings to connect.");
   }
   const n = photos.length;
   const albums = [...new Set(photos.map((p) => p.album).filter(Boolean))];
@@ -415,7 +461,12 @@ The resized images + an updated meta.json go straight to your repo in one commit
     btn.textContent = "Reading meta.json\u2026";
   }
   try {
-    dedupeFilenames(await existingImageNames(gh, slug));
+    const existingNames = await existingImageNames(gh, slug);
+    if (existingNames === null) {
+      toast("Couldn't check existing photos on GitHub \u2014 try again in a moment");
+      return;
+    }
+    dedupeFilenames(existingNames);
     await archiveOriginals(slug, btn);
     const existing = await gh.getFile(META_PATH(slug));
     const merged = mergeMeta(
@@ -429,7 +480,7 @@ The resized images + an updated meta.json go straight to your repo in one commit
     ];
     const res = await gh.commitMany(changes, `studio: add ${n} photo${n > 1 ? "s" : ""} to ${slug}`);
     toast("Committed " + n + " photo" + (n > 1 ? "s" : "") + " \u2713");
-    showSuccess(slug, n, res && res.commit);
+    showSuccess(slug, n, res && res.commit, await siteOrigin());
     photos = [];
     await loadPosts();
     $("dkPost").value = slug;
@@ -447,10 +498,49 @@ The resized images + an updated meta.json go straight to your repo in one commit
     renderGrid();
   }
 }
-function showSuccess(slug, n, commit2) {
+function normaliseSiteOrigin(url) {
+  const raw = String(url == null ? "" : url).trim();
+  if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) return "";
+  let u;
+  try {
+    u = new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw);
+  } catch {
+    return "";
+  }
+  if (!/^https?:$/.test(u.protocol) || !u.origin || u.origin === "null") return "";
+  return u.origin + u.pathname.replace(/\/+$/, "");
+}
+function darkroomHref(siteUrl) {
+  const o = normaliseSiteOrigin(siteUrl);
+  return o ? o + "/darkroom/" : "/darkroom/";
+}
+function createSiteOriginResolver(fetchOrigin) {
+  let inflight = null;
+  return function resolve() {
+    if (inflight) return inflight;
+    inflight = Promise.resolve().then(fetchOrigin).then((origin) => {
+      const o = String(origin == null ? "" : origin);
+      if (!o) inflight = null;
+      return o;
+    }).catch(() => {
+      inflight = null;
+      return "";
+    });
+    return inflight;
+  };
+}
+var resolveSiteOrigin = createSiteOriginResolver(async () => {
+  const r = await D.api("/settings/site");
+  return r && r.data && r.data.url || "";
+});
+async function siteOrigin() {
+  if (typeof window === "undefined" || !window.__studioConfig || !D || typeof D.api !== "function") return "";
+  return resolveSiteOrigin();
+}
+function showSuccess(slug, n, commit2, origin) {
   const el = $("dkDone");
   if (!el) return;
-  const href = "/darkroom/";
+  const href = darkroomHref(origin);
   el.innerHTML = `<div class="dk-done-card">\u2713 ${n} photo${n > 1 ? "s" : ""} committed to <b>${esc(slug)}</b>` + (commit2 ? ` <code style="opacity:.7">${esc(String(commit2).slice(0, 7))}</code>` : "") + `. The blog will rebuild in a minute or two.<br><a href="${esc(href)}" target="_blank" rel="noopener" style="color:#22d3ee;text-decoration:underline">Open your blog's Darkroom \u2192</a></div>`;
   el.style.display = "block";
   clearTimeout(showSuccess._t);
@@ -500,6 +590,7 @@ function wireOnce() {
   }
   const post = $("dkPost");
   if (post) post.addEventListener("change", () => {
+    if (post.value) lastPostSlug = post.value;
     showDarkroomCount();
     renderGrid();
   });
@@ -527,6 +618,12 @@ if (typeof window !== "undefined") {
   window.__dkAddFiles = darkroomAddFiles;
 }
 export {
+  createSiteOriginResolver,
   darkroomAddFiles,
-  initDarkroom
+  darkroomHref,
+  existingImageNames,
+  initDarkroom,
+  normaliseSiteOrigin,
+  partitionImageFiles,
+  pickSelectValue
 };
