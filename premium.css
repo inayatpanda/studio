@@ -653,3 +653,66 @@ html[data-product="atelier"] .helm-status>span{
 @media(max-width:560px){
   html[data-product="atelier"] #v-library #libSeg{flex-wrap:wrap;min-width:0}
 }
+
+/* Writing canvas: document fields should read as a page, with tools at its edges.
+   Keep these overrides scoped to the editor; chat bubbles retain their layout. */
+#v-editor{--editor-on-ink:#fff}
+html[data-product="atelier"]:not([data-theme="light"]) #v-editor{--editor-on-ink:#04211c}
+#v-editor .pub-btn,#v-editor .chip.on,#v-editor .be-h-level button.on{color:var(--editor-on-ink)!important}
+#v-editor .editor-bar{gap:.45rem}
+#v-editor .editor-bar .iconBtn{border-color:transparent;border-radius:9px;box-shadow:none!important}
+#v-editor .editor-bar .iconBtn:hover,#v-editor .editor-bar .iconBtn:focus-visible{background:var(--surface-2);border-color:var(--line-2)}
+#v-editor .editor-bar #previewBtn,#v-editor .editor-bar .tb-menu > summary{border-color:var(--line)}
+#v-editor .editor-bar .themeBtn{box-shadow:none!important}
+#v-editor .editor-bar .pub-btn{box-shadow:none}
+#v-editor:not(.thread-mode) .title-row{margin-bottom:1.1rem;padding:0 .65rem .9rem;border-bottom:1px solid var(--line-2)}
+#v-editor:not(.thread-mode) #editorTitle.title-in{
+  min-height:44px;padding:.25rem 0!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;font-size:1.65rem;line-height:1.3;
+}
+#v-editor:not(.thread-mode) #editorTitle:focus{outline:2px solid var(--acc)!important;outline-offset:5px}
+#v-editor:not(.thread-mode) #chatReviewDock{display:none}
+#blockList:not(.thread-on) > .block{padding:.45rem .65rem;margin:0;border-radius:8px}
+#blockList:not(.thread-on) .be-ce{min-height:1.7em;padding:.1em 0;line-height:1.7}
+#blockList:not(.thread-on) .be-heading{gap:.4rem;padding:.15rem 0}
+#blockList:not(.thread-on) input.be-h-text{
+  min-height:38px;padding:.2rem 0!important;background:transparent!important;
+  border:0!important;border-bottom:1px solid transparent!important;border-radius:0!important;
+  box-shadow:none!important;font-weight:650;
+}
+#blockList:not(.thread-on) input.be-h-text:focus{border-bottom-color:var(--acc)!important}
+#blockList:not(.thread-on) > .adddiv{height:22px;margin:0;opacity:.45}
+#blockList:not(.thread-on) > .adddiv .ln{background:transparent}
+#blockList:not(.thread-on) > .adddiv:hover,#blockList:not(.thread-on) > .adddiv:focus-within{opacity:1}
+#blockList:not(.thread-on) > .adddiv:hover .ln,#blockList:not(.thread-on) > .adddiv:focus-within .ln{background:var(--line-2)}
+#blockList:not(.thread-on) .htag{font-size:8px;letter-spacing:.08em;color:var(--mut);border-color:transparent;background:var(--bg);top:-7px}
+@media(hover:hover) and (pointer:fine){
+  #blockList:not(.thread-on) .block:not(:hover):not(:focus-within):not(.sel) .htag{opacity:.35}
+  #blockList:not(.thread-on) .block:hover .htag,#blockList:not(.thread-on) .block:focus-within .htag{opacity:1;color:var(--acc)}
+}
+#settingsRail .set-group{padding:.6rem 0}
+#settingsRail .set-group > summary{padding:.6rem 0;font-size:.73rem;letter-spacing:.045em}
+#settingsRail .set-body{padding:.25rem 0 .65rem}
+#settingsRail h4{margin-top:1.15rem;margin-bottom:.55rem;color:var(--mut);font-size:.68rem;letter-spacing:.09em}
+#settingsRail .chip{min-height:30px;padding:.35rem .6rem;line-height:1.2}
+#settingsRail input,#settingsRail textarea{padding:.65rem .7rem!important;border-radius:10px!important;font-size:.82rem}
+#settingsRail #seriesWrap{gap:.45rem}
+#settingsRail #seriesName{flex-basis:100%}
+#settingsRail .series-hint{margin-top:.2rem;color:var(--mut)}
+#outlineRail input{padding:.6rem .65rem!important;border-radius:10px!important;font-size:.82rem}
+#threadHint{box-shadow:0 4px 20px rgba(20,20,40,.12)}
+@media(min-width:900px){
+  #editorOuter{grid-template-columns:minmax(0,1fr) 260px}
+  #editorInner{max-width:800px;padding:2rem 2rem 3rem}
+  #settingsRail{padding:1rem 1.2rem 2rem}
+  #outlineRail{padding:1.55rem .9rem}
+  #v-editor .editor-bar{padding:.6rem 1rem}
+}
+@media(min-width:1200px){#editorOuter{grid-template-columns:180px minmax(0,1fr) 280px}}
+@media(max-width:640px){
+  #v-editor:not(.thread-mode) #editorTitle.title-in{font-size:1.3rem;min-height:44px}
+  #v-editor:not(.thread-mode) .title-row{margin-bottom:.9rem;padding-bottom:.7rem}
+  #blockList:not(.thread-on) > .block{padding:.45rem .4rem}
+  #blockList:not(.thread-on) > .adddiv{height:28px}
+  #blockList:not(.thread-on) > .adddiv .plus{width:28px;height:28px}
+}
