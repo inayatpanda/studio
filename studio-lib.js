@@ -3536,7 +3536,7 @@ var BAKED_CATALOGUE = {
     },
     {
       "id": "kids",
-      "name": "First Blogs (ages 10\u201315)"
+      "name": "Playful & colourful"
     },
     {
       "id": "photo",
