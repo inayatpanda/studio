@@ -2978,7 +2978,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-08f8519";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-79c2316";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -3422,6 +3422,7 @@
     </div>
     <label style="margin-top:1.1rem">AI providers</label>
     <div id="aiActiveLine" class="ai-active-line"></div>
+    <p class="sub">Gemini API requires users aged 18 or over and an API project with billing enabled for UK, EEA and Swiss use. A Gemini chat subscription is separate. Do not use it for clinical practice or medical advice.</p>
     <div id="aiProviders"><p class="sub">Loading…</p></div>
 
     <button class="btn" id="aiSaveBtn" onclick="saveSettings()">Save keys</button>
@@ -4234,6 +4235,9 @@
         <button class="chip on" id="mStatusDraftChip">Draft</button>
         <button class="chip" id="mStatusLiveChip">Live</button>
       </div>
+      <label for="mAiDisclosure" class="mset-label">AI disclosure</label>
+      <textarea id="mAiDisclosure" rows="3" maxlength="500" placeholder="Optional public note about AI-generated content" style="width:100%;box-sizing:border-box;background:var(--bg);color:var(--ink);padding:.7rem;border:1px solid var(--line);border-radius:10px"></textarea>
+      <p class="sub">Published above the post. Add captions beside realistic synthetic images.</p>
       <div class="mset-label">Description (SEO)</div>
       <div id="mMetaDescWrap" style="margin-bottom:.8rem">
         <textarea id="mMetaDesc" rows="3" placeholder="Used as the page description. Leave blank to auto-derive."></textarea>
@@ -4342,6 +4346,9 @@
             <button class="seo-suggest" id="seoSuggestBtn" type="button">✦ Suggest</button>
             <div id="metaDescHint"></div>
           </div>
+          <label for="aiDisclosure" style="display:block;margin-top:1.2rem;font-weight:600">AI disclosure</label>
+          <textarea id="aiDisclosure" rows="3" maxlength="500" placeholder="For example: AI-generated illustration; text reviewed by the author." style="width:100%;box-sizing:border-box;margin-top:.5rem;padding:.7rem;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit"></textarea>
+          <p class="sub" style="font-size:.78rem">This note appears above the published post. Add a caption beside realistic synthetic media. Routine spelling help does not need a blanket label.</p>
           <h4 id="postActionsHdr" style="display:none">Actions</h4>
           <div id="postActionBtns" style="display:none;flex-direction:column;gap:.4rem;margin-top:.2rem">
             <button class="btn ghost" id="railTakedownBtn" style="font-size:.8rem;padding:.5em .8em;margin-top:0">Take down</button>
@@ -5321,13 +5328,45 @@ function classifyError({ status, payload, raw } = {}){
      2. BYOK — window.__studioApi (the client-side router) does GitHub/AI locally.
      3. Local Atelier (served by Helm same-origin) — hits /api directly.
    Every failure path is routed through classifyError() → a friendly, typed Error. */
+// Keep origin information with accepted content; do not record prompts or keys.
+function aiOriginResult(path, opts, result){
+  const route = String(path).split('?')[0];
+  if(!/^\/(?:ai\/(?:draft|social-pack|structure|alt-text|seo|rewrite|generate-image|read-document)|draft|thread\/turn|social\/repurpose|playgrounds\/(?:suggest|tweak|invent)|figures\/(?:suggest|tweak|invent|sticker|vectorise|label-suggest))$/.test(route)) return result;
+  let input = {}; try{ input = typeof opts.body==='string' ? JSON.parse(opts.body) : (opts.body||{}); }catch{}
+  if(route==='/ai/read-document' && /wordprocessingml|msword/.test(input.mimeType||'')) return result;
+  if(!result || typeof result!=='object') return result;
+  const assisted = /structure|alt-text|seo|read-document|vectorise/.test(route) || (route==='/ai/rewrite' && input.action!=='expand') || (route==='/thread/turn' && input.ask==='tighten');
+  const aiProvenance = [{kind:assisted?'assisted':'generated',tool:'AI',action:route.slice(1)}];
+  const tag = block => ({...block, aiProvenance});
+  return {...result, aiProvenance,
+    ...(result.block ? {block:tag(result.block)} : {}),
+    ...(Array.isArray(result.blocks) ? {blocks:result.blocks.map(tag)} : {}),
+    ...(result.doc ? {doc:{...result.doc, aiProvenance, blocks:(result.doc.blocks||[]).map(tag)}} : {})};
+}
+function addAiOrigin(block, result, action='generation'){
+  if(block) block.aiProvenance = result?.aiProvenance || [{kind:'generated',tool:'AI',action}];
+}
+function copyAiOrigin(target, source){
+  if(target && Array.isArray(source?.aiProvenance) && source.aiProvenance.length) target.aiProvenance=structuredClone(source.aiProvenance);
+  return target;
+}
+function imageDataUri(block){
+  if(/^data:/i.test(block.base64 || '')) return block.base64;
+  const mime=/^image\/(png|jpeg|webp)$/.test(block.mimeType || '') ? block.mimeType : 'image/jpeg';
+  return 'data:' + mime + ';base64,' + block.base64;
+}
+function updateAiDisclosure(){
+  for(const id of ['aiDisclosure','mAiDisclosure']){const input=$(id); if(input && document.activeElement!==input) input.value=meta.aiDisclosure||'';}
+}
+for(const id of ['aiDisclosure','mAiDisclosure']) $(id)?.addEventListener('input',e=>{meta.aiDisclosure=e.target.value.slice(0,500);updateAiDisclosure();markDirty();});
+
 const api=async(path,opts={})=>{
   if(window.__studioRemote&&window.__studioRemote.active){
-    try{ return await window.__studioRemote.request(path,opts); }
+    try{ return aiOriginResult(path,opts,await window.__studioRemote.request(path,opts)); }
     catch(err){ throw classifyError({ status: err && err.status, raw: err, payload: err && err.payload }); }
   }
   if(window.__studioApi){
-    try{ return await window.__studioApi(path,opts); }
+    try{ return aiOriginResult(path,opts,await window.__studioApi(path,opts)); }
     catch(err){ throw classifyError({ raw: err, status: err && err.status }); }
   }
   let r;
@@ -5340,7 +5379,7 @@ const api=async(path,opts={})=>{
   }catch(err){ throw classifyError({ raw: err }); }
   const j=await r.json().catch(()=>({}));
   if(!r.ok) throw classifyError({ status:r.status, payload:j });
-  return j;
+  return aiOriginResult(path,opts,j);
 };
 
 /* ── msg helper (existing, by element id) ───────────────────────────────── */
@@ -9447,7 +9486,7 @@ function chatSyncInput(){
     _chatRebuildT = setTimeout(async () => {
       try{
         const r = await api('/playgrounds/build', { method:'POST', body: JSON.stringify({ familyId: b.template.familyId, params: b.template.params, domId: b.domId }) });
-        if(r && r.block){ b.html = r.block.html; b.css = r.block.css; b.js = r.block.js; chatPaint(); }
+        if(r && r.block){ if(r.block.aiProvenance) addAiOrigin(b,r.block); b.html = r.block.html; b.css = r.block.css; b.js = r.block.js; chatPaint(); }
       }catch(_){ /* offline — params kept, rebuild happens on next edit */ }
     }, 450);
   }
@@ -9800,7 +9839,7 @@ function edImage(b, isSel){
     // Preview
     const img = document.createElement('img');
     img.className = 'be-img-preview';
-    img.src = b.base64 ? 'data:image/jpeg;base64,' + b.base64 : (b.src || b.url || '');
+    img.src = b.base64 ? imageDataUri(b) : (b.src || b.url || '');
     img.alt = b.alt || '';
     wrap.appendChild(img);
 
@@ -10471,7 +10510,7 @@ function edPlayground(b, isSel){
         try{
           const r = await api('/playgrounds/build', { method:'POST', body: JSON.stringify({ familyId: fam.id, params, domId: b.domId }) });
           if(r && r.block){
-            b.html = r.block.html; b.css = r.block.css; b.js = r.block.js;
+            if(r.block.aiProvenance) addAiOrigin(b,r.block); b.html = r.block.html; b.css = r.block.css; b.js = r.block.js;
             if(r.block.domId) b.domId = r.block.domId;
             markDirty();
             if(on) renderPreview();   // refresh ONLY this block's iframe — keeps input focus
@@ -10532,7 +10571,7 @@ function edPlayground(b, isSel){
       try{
         const r = await api('/playgrounds/tweak', { method:'POST', body: JSON.stringify({ familyId: b.template.familyId, params: b.template.params || {}, instruction: instruction.trim() }) });
         if(r.block){
-          b.html = r.block.html; b.css = r.block.css; b.js = r.block.js;
+          if(r.block.aiProvenance) addAiOrigin(b,r.block); b.html = r.block.html; b.css = r.block.css; b.js = r.block.js;
           if(r.block.domId) b.domId = r.block.domId;
           b.template.params = r.params || b.template.params;
           renderBlocks(); markDirty(); toast('Interactive adjusted ✓');
@@ -11160,6 +11199,7 @@ function renderBlockEl(b, idx){
 }
 
 function renderBlocks(){
+  updateAiDisclosure();
   const host = $('blockList');
   if(!host) return;
   host.innerHTML = '';
@@ -11355,6 +11395,8 @@ function metaFromData(slug, data, defaultDraft = true){
       : (r.theme === 'parchment' ? 'parchment' : 'observatory'),
     glyph: r.glyph || '',
     image: r.image || '',
+    aiDisclosure: r.aiDisclosure || '',
+    aiProvenance: Array.isArray(r.aiProvenance) ? r.aiProvenance : [],
     citations: Array.isArray(r.citations) ? r.citations.filter(c=>c&&c.id).map(c=>({id:String(c.id),text:String(c.text==null?'':c.text)})) : [],
     series: r.series || '',
     seriesPart: Number.isFinite(Number(r.seriesPart)) && String(r.seriesPart).trim() !== '' ? Number(r.seriesPart) : null,
@@ -11422,6 +11464,7 @@ async function offerDraftRecovery(slug, savedAt){
 
 /* ── load topics + wire settings rail ───────────────────────────────────── */
 async function loadEditorSettings(){
+  updateAiDisclosure();
   let topics = _topicsCache;
   if(!topics){
     try{ topics = await api('/topics'); _topicsCache = topics; }catch{ topics = []; }
@@ -12045,6 +12088,8 @@ $('editorPassPanel')?.addEventListener('click', e=>{ if(e.target===$('editorPass
 function publishMeta(){
   return {
     title: meta.title.trim(),
+    aiDisclosure: meta.aiDisclosure || '',
+    aiProvenance: meta.aiProvenance || [],
     tags: meta.tags,
     accent: meta.accent,
     theme: meta.theme || 'dark',
@@ -12878,6 +12923,7 @@ let _tplLibFamily   = null;     // current family object
 let _tplLibParams   = {};       // params object kept in sync with the form
 let _tplLibInsertAt = null;     // where to insert into doc.blocks (insert mode)
 let _tplLibDomId    = '';       // domId used for the current build
+let _tplLibOrigin   = [];      // retained across parameter rebuilds
 let _tplLibBuilt    = null;     // last successfully-built block (for Insert/Update)
 let _tplLibStandalone = false;  // true when the sheet is the standalone Interactive maker (no post; save/export only)
 let _tplLibDebounce = null;     // preview debounce timer
@@ -12900,7 +12946,7 @@ async function openTplLib(atIndex){
   _activeForm = _tplLibFormCtx;
   _tplLibMode = 'insert'; _tplLibEditId = null;
   _tplLibInsertAt = atIndex;
-  _tplLibFamily = null; _tplLibParams = {}; _tplLibBuilt = null;
+  _tplLibFamily = null; _tplLibParams = {}; _tplLibBuilt = null; _tplLibOrigin = [];
   _tplLibStandalone = false;
   { const sh = $('tplLibSheet'); if(sh) sh.classList.remove('maker-standalone'); const t = $('tplLibTitle'); if(t) t.textContent = 'Insert interactive'; }
   _tplLibPlacement = { placement:'standard' };
@@ -12945,7 +12991,8 @@ async function openTplLibForEdit(block){
   _activeForm = _tplLibFormCtx;
   _tplLibMode = 'update'; _tplLibEditId = block.id;
   _tplLibInsertAt = null;
-  _tplLibFamily = null; _tplLibParams = {}; _tplLibBuilt = null;
+  _tplLibFamily = null; _tplLibParams = {}; _tplLibBuilt = null; _tplLibOrigin = [];
+  _tplLibOrigin = block.aiProvenance || [];
   _tplLibPlacement = { placement: block.placement || 'standard' };
   _tplLibDomId = block.domId || ('pg-' + block.template.familyId + '-' + Math.random().toString(36).slice(2, 8));
   $('tplLibInsertBtn').textContent = 'Update';
@@ -13064,6 +13111,7 @@ async function chooseTplLibFamily(id, presetName){
   if(!fam) return;
   setTplLibInventMode(false);
   _tplLibFamily = fam;
+  _tplLibOrigin = [];
   _tplLibDomId = 'pg-' + fam.id + '-' + Math.random().toString(36).slice(2, 8);
   $('tplLibBrowse').style.display = 'none';
   $('tplLibBuild').style.display = 'block';
@@ -13080,11 +13128,12 @@ async function chooseTplLibFamily(id, presetName){
 /* AI describe → build: open the build view for a family prefilled with the
    suggested params, in insert mode. Mirrors chooseTplLibFamily/openTplLibForEdit
    but takes params straight from /playgrounds/suggest instead of a preset. */
-function openTplLibSuggested(familyId, params){
+function openTplLibSuggested(familyId, params, origin=[]){
   const fam = (_tplLibFamilies || []).find(f => f.id === familyId);
   if(!fam) return false;
   setTplLibInventMode(false);
   _tplLibFamily = fam;
+  _tplLibOrigin = [];
   _tplLibDomId = 'pg-' + fam.id + '-' + Math.random().toString(36).slice(2, 8);
   $('tplLibBrowse').style.display = 'none';
   $('tplLibBuild').style.display = 'block';
@@ -13092,6 +13141,7 @@ function openTplLibSuggested(familyId, params){
   $('tplLibFamDesc').textContent = fam.description || '';
   $('tplLibSheet').scrollTop = 0;
   renderTplLibPresets(fam);
+  _tplLibOrigin = origin;
   // backfill the suggested params with schema defaults so every key is present
   _tplLibParams = deepMerge(schemaDefault(fam.paramsSchema), structuredClone(params || {}));
   rebuildTplLibForm();
@@ -13125,7 +13175,7 @@ async function doTplLibSuggest(){
     });
     const familyId = r && r.familyId;
     if(!familyId){ throw new Error('No matching interactive — pick a template below instead.'); }
-    const ok = openTplLibSuggested(familyId, (r && r.params) || {});
+    const ok = openTplLibSuggested(familyId, (r && r.params) || {}, r?.aiProvenance || []);
     if(!ok){ throw new Error('That interactive ("' + familyId + '") isn’t available — pick a template below instead.'); }
     setMsg('', false);
   }catch(e){
@@ -13167,7 +13217,8 @@ function openTplLibInvented(r){
   _tplLibFamily = null; _tplLibParams = {};
   _tplLibMode = 'insert'; _tplLibEditId = null;
   _tplLibDomId = block.domId || ('pg-' + Math.random().toString(36).slice(2, 8));
-  _tplLibBuilt = { domId: _tplLibDomId, html: block.html || '', css: block.css || '', js: block.js || '' };
+  _tplLibOrigin = block.aiProvenance || r.aiProvenance || [];
+  _tplLibBuilt = copyAiOrigin({ domId: _tplLibDomId, html: block.html || '', css: block.css || '', js: block.js || '' }, {aiProvenance:_tplLibOrigin});
   $('tplLibBrowse').style.display = 'none';
   $('tplLibBuild').style.display = 'block';
   $('tplLibSheet').scrollTop = 0;
@@ -13739,7 +13790,7 @@ async function runTplLibPreview(){
       body: JSON.stringify({ familyId: _tplLibFamily.id, params: _tplLibParams, domId: _tplLibDomId }),
     });
     if(seq !== _tplLibSeq) return;          // a newer preview superseded this one
-    _tplLibBuilt = r && r.block;
+    _tplLibBuilt = copyAiOrigin(r && r.block, {aiProvenance:_tplLibOrigin});
     if(!_tplLibBuilt) throw new Error('No block returned');
     renderTplLibPreviewFrame(_tplLibBuilt);
     $('tplLibInsertBtn').disabled = false;
@@ -13814,6 +13865,7 @@ async function insertTplLibBlock(){
     b.html  = _tplLibBuilt.html || '';
     b.css   = _tplLibBuilt.css || '';
     b.js    = _tplLibBuilt.js || '';
+    copyAiOrigin(b, _tplLibBuilt);
     if(tpl) b.template = tpl;
     renderBlocks();
     selectBlock(b.id);
@@ -13832,6 +13884,7 @@ async function insertTplLibBlock(){
     js: _tplLibBuilt.js || '',
     placement: (_tplLibPlacement && _tplLibPlacement.placement) || 'standard',
   };
+  copyAiOrigin(b, _tplLibBuilt);
   if(tpl) b.template = tpl;
   const at = _tplLibInsertAt;
   doc.blocks.splice(at == null ? doc.blocks.length : at, 0, b);
@@ -13922,7 +13975,7 @@ function openInteractiveMakerFromSaved(item){
   const d = item.data;
   openTplLibInvented({
     block: { domId: d.domId || ('pg-' + Math.random().toString(36).slice(2, 8)),
-             title: item.name || 'Interactive', html: d.html || '', css: d.css || '', js: d.js || '' },
+             title: item.name || 'Interactive', html: d.html || '', css: d.css || '', js: d.js || '', aiProvenance:d.aiProvenance },
     notes: 'Loaded \u201c' + (item.name || 'interactive') + '\u201d from your Library. Describe a change below, or Save it as a new copy.',
   });
 }
@@ -13971,7 +14024,7 @@ function openFlipbookMaker(){
   _activeForm = _figFormCtx;
   _figStandalone = true;
   _figMode = 'insert'; _figEditId = null; _figInsertAt = null;
-  _figFamily = null; _figParams = {}; _figBuilt = null; _figAnimate = 'motion'; _figRaw = false;
+  _figFamily = null; _figParams = {}; _figBuilt = null; _figOrigin = []; _figAnimate = 'motion'; _figRaw = false;
   _figHandEdited = false; _figBase = null;
   const sh = $('figSheet'); if(sh) sh.classList.add('maker-standalone');
   const title = $('figSheetTitle'); if(title) title.textContent = '\u25c6 Make a flipbook';
@@ -13991,7 +14044,7 @@ window.openFlipbookMaker = openFlipbookMaker;
 function exportInteractiveHtml(){
   if(!_tplLibBuilt || !(_tplLibBuilt.html || _tplLibBuilt.js)){ toast('Build an interactive first, then Export'); return; }
   const nameHint = ($('tplLibFamName')?.textContent || 'interactive').replace(/^[^\w]+/, '').trim() || 'interactive';
-  const htmlDoc = tplLibSrcdoc(_tplLibBuilt);
+  const htmlDoc = tplLibSrcdoc(_tplLibBuilt).replace('<head>', '<head>' + (_tplLibBuilt.aiProvenance?.length ? '<meta name="ai-origin" content="' + (_tplLibBuilt.aiProvenance.some(x=>x.kind==='generated')?'generated':'assisted') + '">' : ''));
   const blob = new Blob([htmlDoc], { type: 'text/html' });
   const fname = (nameHint.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)) || 'interactive';
   const a = document.createElement('a');
@@ -14019,6 +14072,7 @@ let _figFamilies = null;     // cached GET /figures families
 let _figFamily   = null;     // current family object
 let _figParams   = {};       // params object kept in sync with the form
 let _figInsertAt = null;     // where to insert into doc.blocks (insert mode)
+let _figOrigin   = [];      // retained across parameter rebuilds
 let _figBuilt    = null;     // last successfully-built { svg, animation }
 let _figAnimate  = 'none';   // chosen animation mode ('draw'|'none' static; 'motion'|'none' motion)
 let _figDebounce = null;     // preview debounce timer
@@ -14059,7 +14113,7 @@ async function openFigLib(atIndex){
   _activeForm = _figFormCtx;
   _figMode = 'insert'; _figEditId = null;
   _figInsertAt = atIndex;
-  _figFamily = null; _figParams = {}; _figBuilt = null; _figAnimate = 'none'; _figRaw = false;
+  _figFamily = null; _figParams = {}; _figBuilt = null; _figOrigin = []; _figAnimate = 'none'; _figRaw = false;
   _figHandEdited = false;
   _figBase = null;
   _figStandalone = false;
@@ -14106,7 +14160,8 @@ async function openFigLibForEdit(block){
   _activeForm = _figFormCtx;
   _figMode = 'update'; _figEditId = block.id;
   _figInsertAt = null;
-  _figFamily = null; _figParams = {}; _figBuilt = null; _figRaw = false; _figHandEdited = false;
+  _figFamily = null; _figParams = {}; _figBuilt = null; _figOrigin = []; _figRaw = false; _figHandEdited = false;
+  _figOrigin = block.aiProvenance || [];
   _figAnimate = block.animation || 'none';
   _figPlacement = { placement: (block.placement && block.placement !== 'default') ? block.placement : 'standard' };
   $('figInsertBtn').textContent = 'Update';
@@ -14202,6 +14257,7 @@ async function chooseFigFamily(id, presetName){
   if(!fam) return;
   _activeForm = _figFormCtx;
   _figFamily = fam;
+  _figOrigin = [];
   _figRaw = false;
   _figBase = null;   // template figures never carry a still backdrop
   { const famOnly = $('figFamilyOnly'); if(famOnly) famOnly.style.display = ''; $('figRegenBtn').hidden = true; }
@@ -14303,7 +14359,7 @@ async function runFigPreview(){
       body: JSON.stringify({ familyId: _figFamily.id, params: _figParams, animate: _figAnimate }),
     });
     if(seq !== _figSeq) return;          // a newer preview superseded this one
-    _figBuilt = r && r.block;
+    _figBuilt = copyAiOrigin(r && r.block, {aiProvenance:_figOrigin});
     if(!_figBuilt || !_figBuilt.svg) throw new Error('No figure returned');
     renderFigPreviewFrame(_figBuilt.svg);
     $('figInsertBtn').disabled = false;
@@ -14355,6 +14411,7 @@ async function insertFigBlock(){
     const b = doc.blocks.find(x => x.id === _figEditId);
     if(!b){ closeFigLib(); return; }
     b.svg = _figBuilt.svg;
+    copyAiOrigin(b, _figBuilt);
     b.animation = _figBuilt.animation || _figAnimate || 'none';
     b.alt = alt; b.caption = caption;
     b.placement = placement;
@@ -14379,6 +14436,7 @@ async function insertFigBlock(){
     animation: _figBuilt.animation || _figAnimate || 'none',
     placement,
   };
+  copyAiOrigin(b, _figBuilt);
   if(_figBuilt.kind) b.kind = _figBuilt.kind;   // sticker marker (retro die-cut)
   if(fig) b.figure = fig;
   if(base) b.base = base;
@@ -14448,7 +14506,8 @@ function openFigSuggested(block, notes){
   // Optional still backdrop (Keep-backdrop figures): { base64, alt }. Flows onto the
   // inserted block so it publishes the image + the animated overlay over it.
   _figBase = (block.base && block.base.base64) ? { base64: block.base.base64, alt: block.base.alt || '' } : null;
-  _figBuilt = { svg: block.svg, animation: block.animation || 'none', kind: block.kind || null };
+  _figOrigin = block.aiProvenance || [];
+  _figBuilt = copyAiOrigin({ svg: block.svg, animation: block.animation || 'none', kind: block.kind || null }, block);
   _figAnimate = block.animation || 'none';
   // hide family-only controls (no preset / params form for a bespoke svg)
   const famOnly = $('figFamilyOnly'); if(famOnly) famOnly.style.display = 'none';
@@ -15004,7 +15063,8 @@ function mediaInsertReference(im){
   } else {
     const nb = { id: mkId(), type: 'image', placement: 'standard', alt: '', caption: '', url: im.url, file: im.file };
     const at = ctx.insertAt == null ? doc.blocks.length : ctx.insertAt;
-    doc.blocks.splice(at, 0, nb);
+    addAiOrigin(nb, acceptedOrigin);
+      doc.blocks.splice(at, 0, nb);
     markDirty();
     renderBlocks();
     selectBlock(nb.id);
@@ -17548,7 +17608,8 @@ async function runFigTweak(){
       const block = r && r.block;
       if(!block || !block.svg) throw new Error('No figure returned');
       if(r.params) _figParams = r.params;            // keep the form/insert path in sync
-      _figBuilt = { svg: block.svg, animation: block.animation || _figAnimate || 'none' };
+      _figOrigin = block.aiProvenance || _figOrigin;
+      _figBuilt = copyAiOrigin({ svg: block.svg, animation: block.animation || _figAnimate || 'none' }, {aiProvenance:_figOrigin});
       if(typeof rebuildFigForm === 'function' && _figFamily.paramsSchema) rebuildFigForm();
       renderFigPreviewFrame(_figBuilt.svg);
     }else{
@@ -17564,7 +17625,8 @@ async function runFigTweak(){
       if(!block || !block.svg) throw new Error('No figure returned');
       _figRaw = true;
       _figLastGen = { mode: 'invent', description };  // regenerate now reflects the refined description
-      _figBuilt = { svg: block.svg, animation: block.animation || _figAnimate || 'none' };
+      _figOrigin = block.aiProvenance || _figOrigin;
+      _figBuilt = copyAiOrigin({ svg: block.svg, animation: block.animation || _figAnimate || 'none' }, {aiProvenance:_figOrigin});
       renderFigPreviewFrame(_figBuilt.svg);
     }
     $('figInsertBtn').disabled = false;
@@ -17971,6 +18033,7 @@ async function doAiDraft(){
     const j = await api('/ai/draft', { method:'POST', body: JSON.stringify({ idea, tone, length }) });
     const b = doc.blocks.find(x => x.id === _aiDraftBlockId);
     if(!b){ aiFeedback('aiDraftMsg', 'That block is no longer here.', 'err'); return; }
+    addAiOrigin(b, j, 'draft');
     const draftHtml = textToHtml(j.post || '');
     const cur = (b.html || '').replace(/<br\s*\/?>/gi,'').trim();
     b.html = cur ? (b.html.replace(/(<br\s*\/?>)+\s*$/i,'') + '<br><br>' + draftHtml) : draftHtml;
@@ -18181,8 +18244,11 @@ async function doGenImage(b, inp, runBtn, toggleBtn, msgEl){
       ? await window.__studioR2.image({ prompt })
       : await api('/ai/generate-image', { method:'POST', body: JSON.stringify({ prompt }) });
     if(r && r.base64){
+      addAiOrigin(b, r, 'image-generation');
+      if(!b.caption) b.caption = 'AI-generated illustration';
+      b.mimeType = r.mimeType || 'image/png';
       b.base64 = r.base64;                 // publishes via the existing single-image pipeline
-      b.file = b.id + '.jpg';
+      b.file = b.id + ({'image/png':'.png','image/webp':'.webp','image/jpeg':'.jpg'}[b.mimeType] || '.png');
       if(!b.placement) b.placement = 'standard';
       markDirty();
       genImageMsg(msgEl, '', '');
@@ -18225,7 +18291,7 @@ async function doStructure(){
     const mapped = incoming
       .filter(blk => blk && STRUCT_OK_TYPES.includes(blk.type))
       .map(blk => {
-        const out = { id: mkId(), type: blk.type };
+        const out = { id: mkId(), type: blk.type, ...(blk.aiProvenance ? {aiProvenance:blk.aiProvenance} : {}) };
         if(blk.type === 'heading'){ out.level = blk.level || 2; out.text = blk.text || ''; }
         else if(blk.type === 'text' || blk.type === 'quote'){ out.html = inlineMdToHtml(blk.html || ''); if(blk.cite != null) out.cite = blk.cite; }
         else if(blk.type === 'image'){ Object.assign(out, defaults('image')); }
@@ -18552,6 +18618,8 @@ async function runInlineAi(action, btn){
       const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
       range.deleteContents(); range.insertNode(document.createTextNode(out));
       sel.removeAllRanges();
+      const owner=doc.blocks.find(b=>b.id===block.closest('.block')?.dataset.id);
+      addAiOrigin(owner, r, 'rewrite');
       block.dispatchEvent(new Event('input', { bubbles:true }));   // sync block model
       if(typeof markDirty==='function') markDirty();
       toast('Rewritten ✓');
@@ -18916,7 +18984,7 @@ function _postImageChoices(){
   const out = [];
   for(const b of (doc.blocks || [])){
     if(b.type === 'image'){
-      const src = b.base64 ? 'data:image/jpeg;base64,'+b.base64 : (b.src || (b.file ? '/images/posts/'+_effectiveSlug()+'/'+b.file : ''));
+      const src = b.base64 ? imageDataUri(b) : (b.src || (b.file ? '/images/posts/'+_effectiveSlug()+'/'+b.file : ''));
       const ref = b.file ? '/images/posts/'+_effectiveSlug()+'/'+b.file : (b.src && /^https?:|^\//.test(b.src) ? b.src : '');
       if(src) out.push({ thumb: src, ref });
     }
@@ -19262,6 +19330,7 @@ async function saveCurrentFigureToLibrary(){
   const base = (_figBase && _figBase.base64) ? { base64:_figBase.base64, alt:_figBase.alt||alt||'' } : null;
   // data == the figure block fields insertFigBlock would write (minus a block id).
   const data = { svg:_figBuilt.svg, alt, caption, animation:(_figBuilt.animation||_figAnimate||'none'), placement };
+  copyAiOrigin(data, _figBuilt);
   if(_figBuilt.kind) data.kind = _figBuilt.kind;
   if(fig) data.figure = fig;
   if(base) data.base = base;
@@ -19281,6 +19350,7 @@ async function saveCurrentInteractiveToLibrary(){
     domId:_tplLibBuilt.domId, html:_tplLibBuilt.html||'', css:_tplLibBuilt.css||'', js:_tplLibBuilt.js||'',
     placement:(_tplLibPlacement && _tplLibPlacement.placement)||'standard',
   };
+  copyAiOrigin(data, _tplLibBuilt);
   if(tpl) data.template = tpl;
   const suggested = (_tplLibFamily && (_tplLibFamily.name||_tplLibFamily.id)) || 'My interactive';
   const name = await helmPrompt({ title: 'Name this interactive', value: suggested, okText: 'Save to Library' });
