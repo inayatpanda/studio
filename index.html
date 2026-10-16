@@ -816,7 +816,7 @@
   .pp-links-state .ppl-spin{display:inline-block;width:.8em;height:.8em;border:2px solid var(--line);
     border-top-color:var(--acc);border-radius:50%;animation:ppl-spin .7s linear infinite}
   @keyframes ppl-spin{to{transform:rotate(360deg)}}
-  .pp-foot{display:flex;gap:.6rem;padding:.8rem 1.1rem;border-top:1px solid var(--line)}
+  .pp-foot{display:flex;flex-wrap:wrap;gap:.6rem;padding:.8rem 1.1rem;border-top:1px solid var(--line)}
   .pp-foot .btn{margin-top:0}
 
   /* ── EDITOR PASS (whole-draft AI critique; suggestions only) ───────────────── */
@@ -2978,7 +2978,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-0af0624";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -4076,6 +4076,7 @@
         <button class="btn ghost" id="ppCancel">Close</button>
         <button class="btn ghost" id="ppShare">📣 Share preview</button>
         <button class="btn" id="ppPublish" style="display:none">Publish</button>
+        <button class="btn" id="ppPublishNow" style="display:none">Publish now</button>
       </div>
     </div>
   </div>
@@ -11877,11 +11878,25 @@ function renderPrepublish(res, onPublish){
     ? `<div class="pp-links-state" id="ppLinksState"><span class="ppl-spin"></span>Checking ${res.externalCount} external link${res.externalCount===1?'':'s'}…</div>`
     : '';
   const polishHtml = renderPolish(res, linksState);
-  $('ppBody').innerHTML = issuesHtml + polishHtml + hintsHtml;
+  const committing = onPublish === doPublish;
+  const scheduled = committing && Boolean(meta.publishAt);
+  const savingDraft = committing && meta.draft && !scheduled;
+  const intent = !committing ? '' : scheduled
+    ? 'This post is scheduled. Saving keeps its publication date and leaves it hidden until then.'
+    : savingDraft ? 'This post is a draft. Save it to GitHub, or publish it to your website now.'
+    : 'This post will be public after your website finishes rebuilding.';
+  $('ppBody').innerHTML = (intent ? '<p class="pp-intent">'+esc(intent)+'</p>' : '') + issuesHtml + polishHtml + hintsHtml;
   const pub = $('ppPublish');
+  const now = $('ppPublishNow');
+  now.style.display='none'; now.onclick=null;
+  pub.classList.toggle('ghost', Boolean(savingDraft));
   if(onPublish && !res.errors.length){
-    pub.style.display=''; pub.textContent = res.warnings.length ? 'Publish anyway' : 'Publish';
+    pub.style.display=''; pub.textContent = scheduled ? 'Save scheduled post' : savingDraft ? 'Save draft to GitHub' : committing ? 'Publish now' : 'Continue';
     pub.onclick = ()=>{ closePrepublish(); onPublish(); };
+    if(savingDraft){
+      now.style.display='';
+      now.onclick=()=>{ setDraft(false); closePrepublish(); onPublish(); };
+    }
   } else { pub.style.display='none'; pub.onclick=null; }
   $('prepublishPanel').hidden = false;
   // kick off the async broken-link probe (never blocks the panel / publish)
