@@ -2978,7 +2978,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-eaedb71";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-08f8519";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -7525,7 +7525,7 @@ function renderSettings(s){
     const c=provs[p.id]||{};
     const configured=!!c.configured;
     _aiModels[p.id]=c.model||'';
-    const active = _aiDefault===p.id;
+    const active = configured && _aiDefault===p.id;
     // header control: Active badge if running; "Use this" if configured-but-idle; else "not set"
     const pill = active
       ? '<span class="pill active">● Active</span>'
@@ -11886,7 +11886,8 @@ function renderPrepublish(res, onPublish){
     ? 'This post is scheduled. Saving keeps its publication date and leaves it hidden until then.'
     : savingDraft ? 'This post is a draft. Save it to GitHub, or publish it to your website now.'
     : 'This post will be public after your website finishes rebuilding.';
-  $('ppBody').innerHTML = (intent ? '<p class="pp-intent">'+esc(intent)+'</p>' : '') + issuesHtml + polishHtml + hintsHtml;
+  const editorialNotice = committing ? '<p class="pp-intent"><strong>Before making this public:</strong> review facts, permissions and personal information. If you used AI, add any required disclosure beside the generated text or media. A successful check does not certify accuracy or legal compliance.</p>' : '';
+  $('ppBody').innerHTML = (intent ? '<p class="pp-intent">'+esc(intent)+'</p>' : '') + editorialNotice + issuesHtml + polishHtml + hintsHtml;
   const pub = $('ppPublish');
   const now = $('ppPublishNow');
   now.style.display='none'; now.onclick=null;

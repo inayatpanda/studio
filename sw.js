@@ -1,5 +1,5 @@
 // Network-first app shell. Drafts live in IndexedDB; API responses are never cached.
-const CACHE = 'studio-v95';
+const CACHE = 'studio-v96';
 const SHELL = ['/', '/index.html', '/studio.js', '/studio-lib.js', '/premium.css', '/darkroom-upload.js', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/resize.js', '/preview.css'];
 
 // Cache the shell per-entry, NOT with addAll(): addAll() rejects the whole install if a
