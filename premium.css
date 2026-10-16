@@ -732,3 +732,44 @@ html[data-product="atelier"]:not([data-theme="light"]) #v-editor{--editor-on-ink
   .editor-resizer:active{transform:none}
 }
 body.focus-mode .editor-resizer{display:none}
+
+/* Settings: readable groups, compact controls and optional setup kept out of the way. */
+#v-settings{max-width:1040px;margin-inline:auto}
+#v-settings .settings-intro{max-width:64ch;margin:0 0 1.4rem}
+.settings-nav{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 2rem;padding:.75rem 0;border-block:1px solid var(--line)}
+.settings-nav a{padding:.55rem .8rem;border-radius:8px;color:var(--ink);font-weight:600;text-decoration:none;font-size:.88rem}
+.settings-nav a:hover{background:var(--surface-2)}
+.settings-nav a:focus-visible,#v-settings summary:focus-visible{outline:2px solid var(--acc,#635bda);outline-offset:3px}
+.settings-section{scroll-margin-top:2rem;margin:0 0 2.5rem;padding:0 0 1.75rem;border-bottom:1px solid var(--line)}
+.settings-section h2{font:650 1.3rem var(--font-display);margin:0 0 .5rem;letter-spacing:-.025em}
+#v-settings .settings-section .btn{width:auto;min-height:40px;margin-top:0;padding:.6rem .9rem;font-size:.85rem}
+#v-settings .set-row{gap:1rem;flex-wrap:wrap}
+#v-settings .set-row>div{min-width:0;flex:1 1 240px}
+#v-settings .set-row .sub{overflow-wrap:anywhere}
+.settings-actions{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;margin:.9rem 0}
+.settings-check{font-size:.84rem;line-height:1.5;color:var(--mut);overflow-wrap:anywhere}
+.settings-storage{margin-top:1.2rem;border:1px solid var(--line);border-radius:12px;padding:1rem}
+.settings-storage>summary{font-weight:600;cursor:pointer;line-height:1.5}
+#v-settings .settings-storage .card{border:0;padding:0;box-shadow:none;background:transparent}
+#v-settings .ai-card{margin:.65rem 0;padding:0;overflow:hidden}
+#v-settings .ai-card>summary{cursor:pointer;padding:1rem;display:flex;gap:1rem;align-items:center;justify-content:space-between;list-style:none}
+#v-settings .ai-card>summary::after{content:'+';font-size:1.2rem;color:var(--mut)}
+#v-settings .ai-card[open]>summary::after{content:'−'}
+#v-settings .ai-card>summary::-webkit-details-marker{display:none}
+#v-settings .ai-card .ai-head{margin:0}
+#v-settings .ai-card .pill{margin-left:auto}
+#v-settings .ai-card-body{padding:0 1rem 1.1rem}
+#v-settings .ai-card-body>label{display:block;margin:.65rem 0 .4rem}
+#v-settings .ai-card-body .ai-savekey{margin:.7rem 0}
+#v-settings .settings-backup-status{padding:.75rem .9rem;border-left:3px solid var(--acc,#635bda);background:var(--surface-2);line-height:1.6}
+#v-settings label{line-height:1.5}
+@media(max-width:640px){.settings-nav{gap:.2rem}.settings-nav a{padding:.5rem .6rem}#v-settings .set-row>div{flex-basis:100%}.settings-section{margin-bottom:1.6rem}#v-settings .ai-card>summary{padding:.85rem}}
+
+/* Closed overlays must stay invisible while viewport breakpoints change. */
+.picker-sheet:not(.open),.picker-scrim:not(.open){visibility:hidden;pointer-events:none}
+#v-settings .set-row{border-radius:12px!important;box-shadow:none!important}
+#v-settings .card{border-radius:14px!important;box-shadow:none!important}
+.settings-section{scroll-margin-top:7rem}
+
+#v-settings .ai-active-line .warn{color:var(--mut)}
+#v-settings .settings-actions a,#v-settings .sub a{color:var(--acc);text-underline-offset:3px}

@@ -2978,7 +2978,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-79c2316";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-554ddd7";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -3387,21 +3387,18 @@
   <!-- ===== SETTINGS ===== -->
   <section class="view" id="v-settings">
     <div class="bar"><h1>Settings</h1></div>
-
-    <div class="set-row">
-      <div>
-        <strong>Theme</strong>
-        <div class="sub" style="margin:0">Light or dark appearance.</div>
-      </div>
-      <button class="themeBtn" id="themeToggleSettings" title="Toggle theme" onclick="toggleTheme()">☀️</button>
-    </div>
-
+    <p class="sub settings-intro">Your website, writing tools and saved work, each in one place.</p>
+    <nav class="settings-nav" aria-label="Settings sections">
+      <a href="#settings-website">Website</a><a href="#settings-ai">AI &amp; voice</a><a href="#settings-appearance">Appearance</a><a href="#settings-privacy">Privacy &amp; backups</a>
+    </nav>
+    <section class="settings-section" id="settings-website" aria-labelledby="settingsWebsiteTitle">
+      <h2 id="settingsWebsiteTitle" tabindex="-1">Website</h2>
     <div class="set-row" id="connRow" style="display:none">
       <div>
         <strong>Connection</strong>
-        <div class="sub" id="connStatus" style="margin:0">Local-only</div>
+        <div class="sub" id="connStatusKeys" style="margin:0">Local-only</div>
       </div>
-      <button class="btn ghost" id="connBtn" onclick="window.__studioOnboard&&window.__studioOnboard()">Change…</button>
+      <button class="btn ghost" id="connBtn" onclick="window.__studioOnboard&&window.__studioOnboard()">Change connection</button>
     </div>
 
     <div class="set-row">
@@ -3412,48 +3409,15 @@
       <button class="btn ghost" type="button" onclick="goSetup()">Open</button>
     </div>
 
-    <div class="card" id="draftBackupCard" style="margin-top:1rem">
-      <strong>Draft backup</strong>
-      <p class="sub">Export local drafts, ideas, conversations and history to a portable file. API keys are never included. When connected to Helm, use Helm's backup for server drafts.</p>
-      <button class="btn ghost" type="button" onclick="exportDrafts()">⤓ Export drafts</button>
-      <button class="btn ghost" type="button" onclick="document.getElementById('draftsImportInput').click()">⤒ Import drafts</button>
-      <input id="draftsImportInput" type="file" accept="application/json,.json" hidden />
-      <div id="draftsMsg" class="msg" role="status"></div>
+<div class="settings-actions">
+      <button class="btn ghost" id="settingsCheckBtn" type="button" onclick="checkSettingsConnection()">Check connection</button>
+      <a id="settingsSiteLink" target="_blank" rel="noopener noreferrer" hidden>Open website ↗</a>
     </div>
-    <label style="margin-top:1.1rem">AI providers</label>
-    <div id="aiActiveLine" class="ai-active-line"></div>
-    <p class="sub">Gemini API requires users aged 18 or over and an API project with billing enabled for UK, EEA and Swiss use. A Gemini chat subscription is separate. Do not use it for clinical practice or medical advice.</p>
-    <div id="aiProviders"><p class="sub">Loading…</p></div>
-
-    <button class="btn" id="aiSaveBtn" onclick="saveSettings()">Save keys</button>
-    <div id="settingsMsg" class="msg"></div>
-    <p class="sub" style="margin-top:.6rem">Paste a key and tap <b>Use this</b> — Atelier picks that provider's current model automatically. Keys are write-only (never shown again); save a new key before testing it.</p>
-
-    <!-- ===== About you / Your voice (the author profile that steers every AI feature) ===== -->
-    <div id="profileCard" class="card" style="margin-top:1.1rem">
-      <strong style="font:700 1rem var(--font-display)">About you · your voice</strong>
-      <p class="sub" style="margin-top:.35rem">This guides every AI feature — drafts, the writing partner, the goblin, figures. It's a starting point, not a script: the AI captures the spirit, it won't parrot your exact words. Leave a field blank to keep the neutral default.</p>
-
-      <label style="margin-top:.9rem">What should I call you?</label>
-      <input type="text" id="pf-name" autocomplete="off" placeholder="e.g. Sam Rivers — or just Sam" />
-
-      <label style="margin-top:.8rem">What you do / are into</label>
-      <input type="text" id="pf-role" autocomplete="off" placeholder="e.g. a designer who tinkers with synths" />
-
-      <label style="margin-top:.8rem">What you write about</label>
-      <input type="text" id="pf-writesAbout" autocomplete="off" placeholder="e.g. design, music, and the odd travel note" />
-
-      <label style="margin-top:.8rem">How you like to sound <span style="opacity:.6">(optional)</span></label>
-      <textarea id="pf-voiceNotes" rows="2" placeholder="e.g. dry, a bit nerdy, allergic to buzzwords"></textarea>
-
-      <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem">
-        <button class="btn" id="pfSaveBtn" onclick="saveProfile()">Save profile</button>
-        <button class="btn ghost" onclick="startOnboardingQA()">Run the get-to-know-you Q&amp;A</button>
-      </div>
-      <div id="profileMsg" class="msg"></div>
-    </div>
-
-    <!-- ===== R2 (self-host video on your own Cloudflare R2) ===== -->
+    <p id="settingsConnectionCheck" class="settings-check" role="status">Connection has not been checked in this session.</p>
+    <div class="settings-actions">
+      <button class="btn ghost" type="button" onclick="go('site-settings');loadSiteSettings()">Site details &amp; theme</button>
+      <button class="btn ghost" type="button" onclick="go('topics-settings');loadTopicsSettings()">Topics &amp; navigation</button>
+    </div><details class="settings-storage"><summary>Video &amp; large media storage · optional</summary>    <!-- ===== R2 (self-host video on your own Cloudflare R2) ===== -->
     <div id="r2Row" class="card" style="margin-top:1.1rem;display:none">
       <!-- Plain-language "connect your storage" intro: text+images are already free in the
            GitHub repo; R2 is only needed for video/large media. Clearly advanced/optional. -->
@@ -3472,19 +3436,19 @@
       <strong style="font:700 1rem var(--font-display)">Video storage — Cloudflare R2</strong>
       <p class="sub" style="margin-top:.35rem">Optional. Add your own Cloudflare&nbsp;R2 keys and the video block gains an <b>Upload&nbsp;to&nbsp;R2</b> button — your phone uploads a clip straight to <i>your</i> bucket, no server in between. Keys are stored only in this browser, like your GitHub token. Create an R2 API token with <b>Object Read &amp; Write</b> on the bucket.</p>
 
-      <label style="margin-top:.9rem">S3 API endpoint</label>
+      <label for="r2-endpoint" style="margin-top:.9rem">S3 API endpoint</label>
       <input type="text" id="r2-endpoint" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="https://<account-id>.r2.cloudflarestorage.com" />
 
-      <label style="margin-top:.8rem">Bucket name</label>
+      <label for="r2-bucket" style="margin-top:.8rem">Bucket name</label>
       <input type="text" id="r2-bucket" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="my-media" />
 
-      <label style="margin-top:.8rem">Access key ID</label>
+      <label for="r2-akid" style="margin-top:.8rem">Access key ID</label>
       <input type="text" id="r2-akid" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="R2 access key ID" />
 
-      <label style="margin-top:.8rem">Secret access key</label>
+      <label for="r2-secret" style="margin-top:.8rem">Secret access key</label>
       <input type="password" id="r2-secret" autocomplete="off" placeholder="•••• (paste to set; leave blank to keep)" />
 
-      <label style="margin-top:.8rem">Public base URL</label>
+      <label for="r2-public" style="margin-top:.8rem">Public base URL</label>
       <input type="text" id="r2-public" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="https://media.yoursite.com  (your bucket's public/custom-domain URL)" />
       <p class="sub" style="margin-top:.4rem">Where the bucket serves objects publicly — your R2 custom domain, or the <code>pub-…r2.dev</code> URL. The video's <code>src</code> becomes <code>&lt;public base&gt;/videos/…</code>.</p>
 
@@ -3497,9 +3461,9 @@
         <p class="sub" style="margin-top:.35rem">Uploads go through a small Cloudflare&nbsp;Worker that writes to the <i>same</i> bucket via an R2 binding — it never touches <code>&lt;account&gt;.r2.cloudflarestorage.com</code> (which can fail a TLS handshake on some accounts). Deploy the Worker in <code>cloudflare/r2-upload-worker</code>, then paste its URL + secret here. Access key / secret above aren't needed on this path — but keep the <b>Public base URL</b> set.</p>
         <p class="sub" style="margin-top:.35rem">The same Worker also powers <b>free image generation</b> (✦ Generate on any image block) via Cloudflare Workers AI (FLUX) — no AI key needed. Add the <code>[ai]</code> binding to the Worker's <code>wrangler.toml</code> and redeploy (<code>npx wrangler deploy</code>) to enable it.</p>
         <div id="r2WorkerFields" style="display:none">
-          <label style="margin-top:.7rem">Worker URL</label>
+          <label for="r2-worker-url" style="margin-top:.7rem">Worker URL</label>
           <input type="text" id="r2-worker-url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="https://r2-upload-worker.<subdomain>.workers.dev" />
-          <label style="margin-top:.7rem">Worker secret (UPLOAD_SECRET)</label>
+          <label for="r2-worker-secret" style="margin-top:.7rem">Worker secret (UPLOAD_SECRET)</label>
           <input type="password" id="r2-worker-secret" autocomplete="off" placeholder="•••• (paste to set; leave blank to keep)" />
         </div>
       </div>
@@ -3518,6 +3482,66 @@
       <p class="sub" id="r2OptimiseNote" style="margin-top:.8rem;color:var(--faint)">Note: this is a raw upload — no transcode (the clip is stored as-is). On a UK ISP/mobile network, R2 uploads can be blocked by SNI filtering — turn on a VPN/WARP if an upload fails to connect.</p>
     </div>
 
+</details>
+    </section>
+    <section class="settings-section" id="settings-ai" aria-labelledby="settingsAiTitle">
+      <h2 id="settingsAiTitle" tabindex="-1">AI &amp; your voice</h2>
+
+    <div id="aiActiveLine" class="ai-active-line"></div>
+    <p class="sub">Gemini API requires users aged 18 or over and an API project with billing enabled for UK, EEA and Swiss use. A Gemini chat subscription is separate. Do not use it for clinical practice or medical advice.</p>
+    <div id="aiProviders"><p class="sub">Loading…</p></div>
+
+    <div id="settingsMsg" class="msg"></div>
+    <p class="sub" style="margin-top:.6rem">Paste a key and tap <b>Save &amp; use</b> — Atelier picks that provider's current model automatically. Saved keys stay hidden in this interface; save a new key before testing it.</p>
+
+    <!-- ===== About you / Your voice (the author profile that steers every AI feature) ===== -->
+    <div id="profileCard" class="card" style="margin-top:1.1rem">
+      <strong style="font:700 1rem var(--font-display)">About you · your voice</strong>
+      <p class="sub" style="margin-top:.35rem">This guides every AI feature — drafts, the writing partner, the goblin, figures. It's a starting point, not a script: the AI captures the spirit, it won't parrot your exact words. Leave a field blank to keep the neutral default.</p>
+
+      <label for="pf-name" style="margin-top:.9rem">What should I call you?</label>
+      <input type="text" id="pf-name" autocomplete="off" placeholder="e.g. Sam Rivers — or just Sam" />
+
+      <label for="pf-role" style="margin-top:.8rem">What you do / are into</label>
+      <input type="text" id="pf-role" autocomplete="off" placeholder="e.g. a designer who tinkers with synths" />
+
+      <label for="pf-writesAbout" style="margin-top:.8rem">What you write about</label>
+      <input type="text" id="pf-writesAbout" autocomplete="off" placeholder="e.g. design, music, and the odd travel note" />
+
+      <label for="pf-voiceNotes" style="margin-top:.8rem">How you like to sound <span style="opacity:.6">(optional)</span></label>
+      <textarea id="pf-voiceNotes" rows="2" placeholder="e.g. dry, a bit nerdy, allergic to buzzwords"></textarea>
+
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem">
+        <button class="btn" id="pfSaveBtn" onclick="saveProfile()">Save profile</button>
+        <button class="btn ghost" onclick="startOnboardingQA()">Run the get-to-know-you Q&amp;A</button>
+      </div>
+      <div id="profileMsg" class="msg"></div>
+    </div>
+
+</section>
+    <section class="settings-section" id="settings-appearance" aria-labelledby="settingsAppearanceTitle">
+      <h2 id="settingsAppearanceTitle" tabindex="-1">Appearance</h2>
+    <div class="set-row">
+      <div>
+        <strong>Theme</strong>
+        <div class="sub" style="margin:0">Light or dark appearance.</div>
+      </div>
+      <button class="themeBtn" id="themeToggleSettings" title="Toggle theme" onclick="toggleTheme()">☀️</button>
+    </div>
+
+<p class="sub">This changes the editor. Choose your public website's theme in Site details &amp; theme above.</p></section>
+    <section class="settings-section" id="settings-privacy" aria-labelledby="settingsPrivacyTitle">
+      <h2 id="settingsPrivacyTitle" tabindex="-1">Privacy &amp; backups</h2>
+<p id="settingsBackupStatus" class="sub settings-backup-status" role="status">Checking local saved work…</p>
+    <div class="card" id="draftBackupCard" style="margin-top:1rem">
+      <strong>Draft backup</strong>
+      <p class="sub">Export local drafts, ideas, conversations and history to a portable file. API keys are never included. When connected to Helm, use Helm's backup for server drafts.</p>
+      <button class="btn ghost" type="button" onclick="exportDrafts()">⤓ Export drafts</button>
+      <button class="btn ghost" type="button" onclick="document.getElementById('draftsImportInput').click()">⤒ Import drafts</button>
+      <input id="draftsImportInput" type="file" accept="application/json,.json" hidden />
+      <div id="draftsMsg" class="msg" role="status"></div>
+    </div>
+</section>
     <!-- ===== Build / version stamp (unobtrusive) — set from window.__STUDIO_BUILD, which
              the deploy pipeline injects at build time (scripts/deploy-studio.sh). ===== -->
     <p class="sub" id="buildStamp" style="margin-top:1.6rem;opacity:.5;font:.72rem var(--font-mono,ui-monospace,monospace)">Atelier · local build</p>
@@ -7427,19 +7451,24 @@ let _aiModels={}; // last-loaded model per provider, to detect changes on save
 // Connection-mode status (hosted Atelier only). Shows "Connected to your Helm ✓"
 // in remote mode, or "Local-only (this device)" in BYOK. Hidden in the local build.
 function refreshConnStatus(){
+  if(_settingsCheckedIdentity && _settingsCheckedIdentity!==settingsConnectionIdentity()){
+    _settingsCheckedIdentity=''; $('settingsSiteLink').hidden=true;
+    $('settingsConnectionCheck').textContent='Connection changed. Check the selected website again.';
+  }
   const row=$('connRow'); if(!row) return;
   const cfg=window.__studioConfig;
   if(!cfg){ row.style.display='none'; return; } // local same-origin build: no mode switch
   row.style.display='';
   const remote=window.__studioRemote&&window.__studioRemote.active;
-  const st=$('connStatus');
+  const st=$('connStatusKeys');
   if(remote){ const r=cfg.getRemoteHelm?cfg.getRemoteHelm():{}; st.textContent='Connected to your Helm ✓ — '+(r.baseUrl||''); st.style.color='var(--acc)'; }
-  else { st.textContent='Local-only (this device · bring your own keys)'; st.style.color=''; }
+  else { const gh=cfg.getGithub ? cfg.getGithub() : {}; st.textContent=gh.owner && gh.repo && gh.token ? 'GitHub: '+gh.owner+'/'+gh.repo+' · drafts stored on this device' : 'No publishing repository selected · drafts stored on this device'; st.style.color=''; }
 }
 window.refreshConnStatus=refreshConnStatus;
 
 async function loadSettings(){
   refreshConnStatus();
+  refreshSettingsBackup();
   loadR2Settings();
   loadProfile();
   const wrap=$('aiProviders');
@@ -7450,6 +7479,43 @@ async function loadSettings(){
   }catch(e){ wrap.innerHTML=''; msg('settingsMsg',e.message,'err'); }
 }
 window.loadSettings=loadSettings;
+
+// These checks describe a successful read, not proof that a future publish will succeed.
+let _settingsCheckGeneration=0, _settingsCheckedIdentity='';
+function settingsConnectionIdentity(){ const c=window.__studioConfig;const g=c?.getGithub?.()||{};return JSON.stringify([g.owner,g.repo,g.branch,g.token,window.__studioRemote?.active,c?.getRemoteHelm?.().baseUrl]); }
+async function checkSettingsConnection(){
+  const generation=++_settingsCheckGeneration, el=$('settingsConnectionCheck'), btn=$('settingsCheckBtn'), link=$('settingsSiteLink');
+  btn.disabled=true; el.textContent='Checking your website settings…'; link.hidden=true;
+  const before=settingsConnectionIdentity();
+  try{
+    const r=await api('/settings/site');
+    if(generation!==_settingsCheckGeneration || before!==settingsConnectionIdentity()){el.textContent='Connection changed. Check the selected website again.';return;}
+    _settingsCheckedIdentity=before;
+    const u=r?.data?.url;
+    if(u){try{const url=new URL(u);if(url.protocol==='https:' && !url.username && !url.password){link.href=url.href;link.hidden=false;}}catch{}}
+    el.textContent='Website settings read successfully at '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'. Publishing permissions are checked when you save a post.';
+  }catch(e){el.textContent=(e?.message||'Could not check this connection.')+' Use Change connection to sign in again or select your website, then retry.';}
+  finally{btn.disabled=false;refreshConnStatus();}
+}
+window.checkSettingsConnection=checkSettingsConnection;
+async function refreshSettingsBackup(){
+  const el=$('settingsBackupStatus'); if(!el)return;
+  if(!window.__studioConfig || window.__studioRemote?.active){el.textContent="Connected to Helm. Use Helm's backup for server drafts; browser exports cover this device only.";return;}
+  const S=window.__studioStorage,D=window.__studioDrafts;
+  if(!S||!D){el.textContent='Local saved-work details are unavailable. Reload to try again.';return;}
+  try{
+    let count=0; for(const store of D.DRAFT_STORES) count+=(await S.all(store)).length;
+    let last='';try{last=localStorage.getItem('atelier.backup.lastExportAt')||'';}catch{}
+    const date=new Date(last), valid=last && Number.isFinite(date.getTime());
+    el.textContent=count+' saved item'+(count===1?'':'s')+' on this device, including drafts, ideas and history. '+(valid?'Last export requested '+date.toLocaleString()+'. Keep the downloaded file somewhere safe.':'No export recorded on this device.');
+  }catch{el.textContent='Could not read local saved work. Your data has not been changed.';}
+}
+window.refreshSettingsBackup=refreshSettingsBackup;
+document.querySelector('.settings-nav')?.addEventListener('click',e=>{
+  const a=e.target.closest('a');if(!a)return;const section=document.querySelector(a.getAttribute('href'));if(!section)return;
+  e.preventDefault();section.scrollIntoView({block:'start'});section.querySelector('h2')?.focus({preventScroll:true});
+});
+
 
 /* ── Author / voice profile ─────────────────────────────────────────────────
    The profile steers every AI prompt (identity + voice + fact guard). It lives
@@ -7565,30 +7631,26 @@ function renderSettings(s){
     const configured=!!c.configured;
     _aiModels[p.id]=c.model||'';
     const active = configured && _aiDefault===p.id;
-    // header control: Active badge if running; "Use this" if configured-but-idle; else "not set"
-    const pill = active
-      ? '<span class="pill active">● Active</span>'
-      : (configured
-          ? `<button class="use-btn" onclick="activateProvider('${p.id}')">Use this</button>`
-          : '<span class="pill">not set</span>');
     // credential field: key for cloud providers, baseUrl for ollama
     const cred = p.id==='ollama'
-      ? `<label>Base URL</label>
+      ? `<label for="ai-base-${p.id}">Base URL</label>
          <input type="text" id="ai-base-${p.id}" placeholder="http://127.0.0.1:11434" value="${esc(c.baseUrl)}" />`
-      : `<label>API key</label>
+      : `<label for="ai-key-${p.id}">API key</label>
          <input type="password" id="ai-key-${p.id}" autocomplete="off" placeholder="${configured?'•••• set':'paste key'}" value="" />`;
     // Model is now automatic: paste key → "Use this" applies the provider default.
     // The field lives in a collapsed expander so a stale default stays correctable.
     // Ollama has no cloud default, so its expander starts open (the user must name a local model).
     const def = defaultModelFor(p.id);
     const ph = def || (p.id==='ollama' ? 'e.g. llama3.1' : 'model');
-    return `<div class="ai-card${active?' active':''}" data-id="${p.id}">
-      <div class="ai-head"><span class="ai-name">${p.name}</span>${pill}</div>
+    return `<details class="ai-card${active?' active':''}" data-id="${p.id}"${active?' open':''}>
+      <summary class="ai-head"><span class="ai-name">${p.name}</span><span class="pill${active?' active':''}">${active?'Active':configured?'Saved':'Set up'}</span></summary>
+      <div class="ai-card-body">
       ${cred}
+      <button class="btn ai-savekey" onclick="activateProvider('${p.id}')">Save &amp; use</button>
       <details class="ai-adv"${p.id==='ollama'?' open':''}>
         <summary>Advanced — override model<span class="ai-adv-caret" aria-hidden="true">▾</span></summary>
         <div class="ai-model-row">
-          <input type="text" id="ai-model-${p.id}" list="ai-models-${p.id}" placeholder="${esc(ph)}" value="${esc(c.model)}" />
+          <input type="text" id="ai-model-${p.id}" aria-label="${p.name} model override" list="ai-models-${p.id}" placeholder="${esc(ph)}" value="${esc(c.model)}" />
           <datalist id="ai-models-${p.id}"></datalist>
           <button class="btn ghost" id="ai-refresh-${p.id}" title="Refresh model list" onclick="loadModels('${p.id}')">↻</button>
         </div>
@@ -7598,7 +7660,8 @@ function renderSettings(s){
         <button class="btn ghost" onclick="testProvider('${p.id}')">Test</button>
         <span class="ai-result" id="ai-result-${p.id}"></span>
       </div>
-    </div>`;
+      </div>
+    </details>`;
   }).join('');
   // glanceable "what's running right now" line
   const act = AI_PROVIDERS.find(p=>p.id===_aiDefault);
@@ -7607,7 +7670,7 @@ function renderSettings(s){
   if (act && (provs[act.id]||{}).configured) {
     actLine.innerHTML = `Using <b>${act.name}</b>${actModel?` · <code>${esc(actModel)}</code>`:''} for all AI.`;
   } else {
-    actLine.innerHTML = `<span class="warn">No active model — paste a provider's key below and tap “Use this”.</span>`;
+    actLine.innerHTML = `<span class="warn">No active model — paste a provider's key below and tap “Save &amp; use”.</span>`;
   }
 }
 
@@ -11725,6 +11788,8 @@ async function exportDrafts(){
     a.download='atelier-drafts-'+new Date().toISOString().slice(0,10)+'.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch{} },30000);
+    if(env.count)try{localStorage.setItem('atelier.backup.lastExportAt',new Date().toISOString());}catch{}
+    refreshSettingsBackup();
     msg('draftsMsg', env.count ? ('Exported '+env.count+' item'+(env.count===1?'':'s')+' to a JSON file.') : 'Nothing to export yet — no local drafts.','ok');
   }catch(e){ msg('draftsMsg','Export failed: '+((e&&e.message)||'unknown error'),'err'); }
 }
@@ -11749,6 +11814,7 @@ async function importDraftsFile(file){
   try{
     let n=0;
     for(const s of D.DRAFT_STORES) for(const rec of (r.stores[s]||[])){ await S.put(s, rec); n++; }
+    refreshSettingsBackup();
     msg('draftsMsg','Imported '+n+' item'+(n===1?'':'s')+'. Open Posts or Write to see them.','ok');
   }catch(e){ msg('draftsMsg','Import failed: '+((e&&e.message)||'unknown error'),'err'); }
 }
