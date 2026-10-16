@@ -2978,7 +2978,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-c4846b9";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-eaedb71";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -11339,13 +11339,14 @@ async function startNewPost(seedDoc){
 }
 window.startNewPost = startNewPost;
 
-function metaFromData(slug, data){
+function metaFromData(slug, data, defaultDraft = true){
   const r = data || {};
   return {
     title: r.title || slug,
     tags:  r.tags  || [],
     accent: r.accent || '#2dd4bf',
-    draft: r.draft != null ? !!r.draft : true,
+    // Published Markdown omits draft:false; local legacy drafts stay private by default.
+    draft: r.draft != null ? !!r.draft : defaultDraft,
     description: r.description || '',
     theme: r.theme || 'dark',
     // Reading template (six keys). Prefer the explicit `template:`; fall back from a
@@ -11378,10 +11379,10 @@ async function openBlockEditor(slug){
   try{
     const r = await api('/posts/'+slug+'/blocks');
     doc = r.doc || { version:1, blocks:[] };
-    meta = metaFromData(slug, r.data);
+    meta = metaFromData(slug, r.data, r.source === 'draft' && !r.publishedAt);
     $('editorTitle').value = meta.title;
     setMetaDescUI(meta.description);
-    setSaveState('saved','Draft · saved');
+    setSaveState('saved','Post loaded');
     renderBlocks();
     updateWordCount();   // editor-open: count the freshly-loaded post's words
     await loadEditorSettings();
@@ -11411,11 +11412,11 @@ async function offerDraftRecovery(slug, savedAt){
     await api('/posts/'+slug+'/blocks', { method:'DELETE' });
     const r = await api('/posts/'+slug+'/blocks');
     doc = (r && r.doc) || { version:1, blocks:[] };
-    meta = metaFromData(slug, r && r.data);
+    meta = metaFromData(slug, r && r.data, r?.source === 'draft' && !r?.publishedAt);
     $('editorTitle').value = meta.title; setMetaDescUI(meta.description);
     renderBlocks(); await loadEditorSettings();
     updateWordCount();   // reloaded the published version — refresh the readout (no markDirty here)
-    setSaveState('saved','Draft · saved'); _dirty=false;
+    setSaveState('saved','Post loaded'); _dirty=false;
   }catch(e){ showError(e, { title:'Couldn’t discard the draft' }); }
 }
 

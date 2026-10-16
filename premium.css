@@ -702,13 +702,13 @@ html[data-product="atelier"]:not([data-theme="light"]) #v-editor{--editor-on-ink
 #outlineRail input{padding:.6rem .65rem!important;border-radius:10px!important;font-size:.82rem}
 #threadHint{box-shadow:0 4px 20px rgba(20,20,40,.12)}
 @media(min-width:900px){
-  #editorOuter{grid-template-columns:minmax(0,1fr) 260px}
+  #editorOuter{grid-template-columns:minmax(0,1fr) var(--editor-settings-width,260px)}
   #editorInner{max-width:800px;padding:2rem 2rem 3rem}
   #settingsRail{padding:1rem 1.2rem 2rem}
   #outlineRail{padding:1.55rem .9rem}
   #v-editor .editor-bar{padding:.6rem 1rem}
 }
-@media(min-width:1200px){#editorOuter{grid-template-columns:180px minmax(0,1fr) 280px}}
+@media(min-width:1200px){#editorOuter{grid-template-columns:var(--editor-outline-width,180px) minmax(0,1fr) var(--editor-settings-width,280px)}}
 @media(max-width:640px){
   #v-editor:not(.thread-mode) #editorTitle.title-in{font-size:1.3rem;min-height:44px}
   #v-editor:not(.thread-mode) .title-row{margin-bottom:.9rem;padding-bottom:.7rem}
@@ -716,3 +716,19 @@ html[data-product="atelier"]:not([data-theme="light"]) #v-editor{--editor-on-ink
   #blockList:not(.thread-on) > .adddiv{height:28px}
   #blockList:not(.thread-on) > .adddiv .plus{width:28px;height:28px}
 }
+
+/* Draggable desktop dividers, also operable with a keyboard. */
+.editor-resizer{display:none}
+@media(min-width:900px){
+  #outlineRail,#settingsRail{position:relative;min-width:0}
+  .editor-resizer{display:block;position:absolute;top:0;bottom:0;width:12px;padding:0;border:0;border-radius:0;background:transparent;color:var(--mut);cursor:col-resize;touch-action:none;z-index:9;box-shadow:none}
+  .editor-resizer--outline{right:-6px}
+  .editor-resizer--settings{left:-6px}
+  .editor-resizer::before{content:"";position:absolute;inset:0 5px;background:transparent;transition:background .15s}
+  .editor-resizer::after{content:"";position:absolute;top:180px;left:3px;width:6px;height:30px;border:1px solid var(--line-2);border-radius:6px;background:var(--surface-2)}
+  .editor-resizer:hover::before,.editor-resizer:focus-visible::before,.editor-resizer.is-dragging::before{background:var(--acc)}
+  .editor-resizer:hover::after,.editor-resizer:focus-visible::after,.editor-resizer.is-dragging::after{background:var(--acc);border-color:var(--acc)}
+  #editorOuter.is-resizing,#editorOuter.is-resizing *{cursor:col-resize!important;user-select:none!important}
+  .editor-resizer:active{transform:none}
+}
+body.focus-mode .editor-resizer{display:none}

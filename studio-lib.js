@@ -4,6 +4,108 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/core/editorPanels.js
+var KEY = "studio.editorPanelWidths.v1";
+var PANELS = {
+  outline: { id: "outlineRail", label: "Resize Rough draft panel", min: 140, max: 300, initial: 180, direction: 1 },
+  settings: { id: "settingsRail", label: "Resize post settings panel", min: 220, max: 420, initial: 280, direction: -1 }
+};
+function mountEditorPanels(doc = document, storage) {
+  const root = doc.getElementById("editorOuter");
+  if (!root || root.dataset.resizable === "true") return;
+  root.dataset.resizable = "true";
+  try {
+    storage ??= doc.defaultView.localStorage;
+  } catch {
+  }
+  let saved = {};
+  try {
+    saved = JSON.parse(storage?.getItem(KEY) || "{}") || {};
+  } catch {
+  }
+  const widths = {};
+  const persist = () => {
+    try {
+      storage?.setItem(KEY, JSON.stringify(widths));
+    } catch {
+    }
+  };
+  for (const [name, spec] of Object.entries(PANELS)) {
+    const panel = doc.getElementById(spec.id);
+    if (!panel) continue;
+    const handle = doc.createElement("button");
+    handle.type = "button";
+    handle.className = `editor-resizer editor-resizer--${name}`;
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.setAttribute("aria-label", spec.label);
+    handle.setAttribute("aria-controls", spec.id);
+    handle.setAttribute("aria-valuemin", String(spec.min));
+    handle.setAttribute("aria-valuemax", String(spec.max));
+    handle.title = "Drag to resize \xB7 arrow keys adjust \xB7 double-click to reset";
+    const apply2 = (value) => {
+      const width = Math.max(spec.min, Math.min(spec.max, Number.isFinite(value) ? Math.round(value) : spec.initial));
+      widths[name] = width;
+      root.style.setProperty(`--editor-${name}-width`, `${width}px`);
+      handle.setAttribute("aria-valuenow", String(width));
+      handle.setAttribute("aria-valuetext", `${width} pixels`);
+    };
+    apply2(saved[name]);
+    let drag = null;
+    const finish = (cancelled) => {
+      if (!drag) return;
+      const { pointer, width } = drag;
+      drag = null;
+      if (cancelled) apply2(width);
+      root.classList.remove("is-resizing");
+      handle.classList.remove("is-dragging");
+      if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
+      persist();
+    };
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || drag) return;
+      event.preventDefault();
+      handle.focus();
+      drag = { pointer: event.pointerId, x: event.clientX, width: widths[name] };
+      handle.setPointerCapture(event.pointerId);
+      root.classList.add("is-resizing");
+      handle.classList.add("is-dragging");
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (drag?.pointer === event.pointerId) apply2(drag.width + (event.clientX - drag.x) * spec.direction);
+    });
+    handle.addEventListener("pointerup", (event) => {
+      if (drag?.pointer === event.pointerId) finish(false);
+    });
+    handle.addEventListener("pointercancel", (event) => {
+      if (drag?.pointer === event.pointerId) finish(true);
+    });
+    handle.addEventListener("lostpointercapture", () => finish(false));
+    handle.addEventListener("dblclick", () => {
+      apply2(spec.initial);
+      persist();
+    });
+    handle.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && drag) {
+        event.preventDefault();
+        finish(true);
+        return;
+      }
+      const step = event.shiftKey ? 40 : 10;
+      const value = event.key === "ArrowLeft" ? widths[name] - step * spec.direction : event.key === "ArrowRight" ? widths[name] + step * spec.direction : event.key === "Home" ? spec.min : event.key === "End" ? spec.max : null;
+      if (value == null) return;
+      event.preventDefault();
+      apply2(value);
+      persist();
+    });
+    panel.appendChild(handle);
+  }
+}
+function initEditorPanels() {
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => mountEditorPanels(), { once: true });
+  else mountEditorPanels();
+}
+
 // src/core/professionalForm.js
 var professionalForm_exports = {};
 __export(professionalForm_exports, {
@@ -3756,3 +3858,4 @@ window.__studioConnection ??= connection_exports;
 window.__studioThread ??= thread_exports;
 window.__studioThemeCatalogue ??= themeCatalogue_exports;
 window.__studioSanitise ??= stripUnsafeHtml;
+initEditorPanels();
