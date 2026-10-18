@@ -26181,6 +26181,9 @@ function makeRouter(deps) {
         { status: 503, code: "VIDEO_LOCAL_ONLY" }
       );
     }
+    if (a === "local-drafts" && !b && method === "GET") {
+      return (await storage2.all("blockdrafts")).filter((draft) => draft.id && draft.id !== "__untitled__").map((draft) => ({ slug: draft.id, title: draft.meta?.title || draft.id, savedAt: draft.savedAt || "" })).sort((x, y) => y.savedAt.localeCompare(x.savedAt));
+    }
     if (a === "posts" && !b && method === "GET") return posts.listPosts();
     if (a === "topics") return posts.getTopics();
     if (a === "slug") return posts.suggestSlug(query.title || "untitled");

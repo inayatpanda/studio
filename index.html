@@ -2966,6 +2966,10 @@
   .lib-icon-controls #libIconSearch{flex:1 1 60%;min-width:0;margin:0}
   .lib-icon-controls #libIconCat{flex:1 1 30%;min-width:160px}
   #libIconCatChips{margin:.5rem 0 .2rem}
+/* Local recovery links stay readable at phone and magnified widths. */
+.local-draft-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 1rem;width:100%;text-align:left;margin:.6rem 0;padding:1rem;cursor:pointer;color:var(--ink);font:inherit}
+.local-draft-row strong{overflow-wrap:anywhere;min-width:0}
+#writeLocalDrafts,#postsLocalDrafts{margin:1.5rem 0 2rem}
 </style>
 <link rel="stylesheet" href="/premium.css" />
 <!-- Baked-in licence verify key (hex Ed25519 public key). Patched by `npm run licence:init`
@@ -2978,7 +2982,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261016-d69cea4";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261018-5efafbb";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -3028,6 +3032,7 @@
        Partner CTA keep the other ways into a post reachable from here. -->
   <section class="view" id="v-newpost">
     <div id="untitledRecovery" class="card" hidden><strong>Unfinished untitled draft</strong><p>Your writing was kept on this device.</p><button class="btn" onclick="openUntitledDraft()">Continue writing</button></div>
+    <section id="writeLocalDrafts" aria-label="Saved drafts" hidden></section>
     <div class="bar"><h1>New post</h1></div>
     <p class="sub" style="margin:-.2rem 0 1rem">Pick a template to start, or go blank — then write and publish straight to your repo.</p>
     <div class="btn-row" style="margin-bottom:1.25rem">
@@ -3204,6 +3209,7 @@
       <button type="button" data-view="calendar" role="tab" aria-selected="false">Calendar</button>
     </div>
     <!-- LIST view (the original list + its controls) -->
+    <section id="postsLocalDrafts" aria-label="Saved on this device" hidden></section>
     <div id="postsListWrap">
     <input id="postSearch" class="pm-search" type="search" placeholder="Search title, slug or topic…" autocomplete="off" />
     <div class="pm-controls">
@@ -6706,7 +6712,39 @@ function setRowDeleting(row,btn){
     setBusy(btn,false);
   };
 }
+// Autosaves are local records, separate from the GitHub post listing. Keep a
+// direct recovery route in both Write and Posts; GitHub failures cannot hide it.
+async function refreshLocalDrafts(){
+  const hosts = [$('writeLocalDrafts'), $('postsLocalDrafts')].filter(Boolean);
+  if(!hosts.length) return;
+  try{
+    const drafts = await api('/local-drafts');
+    for(const host of hosts){
+      host.replaceChildren(); host.hidden = !drafts.length;
+      if(!drafts.length) continue;
+      const heading = document.createElement('h2');
+      heading.textContent = (window.__studioRemote?.active || !window.__studioApi) ? 'Saved in Helm' : 'Saved on this device'; host.setAttribute('aria-label',heading.textContent); host.append(heading);
+      const note = document.createElement('p'); note.className = 'sub';
+      note.textContent = 'Unpublished drafts and local edits. Open one to continue writing or send it to your website.';
+      host.append(note);
+      for(const draft of drafts){
+        const row = document.createElement('button'); row.type = 'button'; row.className = 'draftItem local-draft-row';
+        const title = document.createElement('strong'); title.textContent = draft.title;
+        const when = document.createElement('span'); when.className = 'sub';
+        when.textContent = draft.savedAt ? 'Saved '+relTime(draft.savedAt) : 'Saved locally';
+        row.append(title,when); row.addEventListener('click',()=>openBlockEditor(draft.slug)); host.append(row);
+      }
+    }
+  }catch{
+    for(const host of hosts){
+      host.hidden=false; host.replaceChildren();
+      const retry=document.createElement('button'); retry.type='button'; retry.className='btn ghost';
+      retry.textContent='Could not read local drafts — retry'; retry.addEventListener('click',refreshLocalDrafts); host.append(retry);
+    }
+  }
+}
 async function loadPosts(){
+  refreshLocalDrafts();
   const list=$('postsList');
   list.innerHTML='<p class="sub">Loading…</p>';
   try{ _posts=await api('/posts'); renderPosts(); renderPostCalendar(); }
@@ -11881,6 +11919,7 @@ function markDirty(){
 }
 
 async function refreshUntitledRecovery(){
+  refreshLocalDrafts();
   const el=$('untitledRecovery'); if(!el) return;
   try { const saved=await api('/posts/'+UNTITLED_SLUG+'/blocks'); el.hidden=!(saved?.source==='draft'); }
   catch { el.hidden=true; }
