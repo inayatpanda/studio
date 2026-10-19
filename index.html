@@ -90,6 +90,9 @@
     font:16px/1.6 var(--font-body);font-weight:430;
     padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 90px);min-height:100vh;
     transition:background .2s,color .2s;-webkit-font-smoothing:antialiased}
+  /* Keep scrolled content behind the native status bar, including sticky toolbars. */
+  body::after{content:'';position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);
+    background:var(--bg);pointer-events:none;z-index:20000}
   /* atmospheric depth — fixed radial glows like inayatpanda.com, never scroll-jank */
   body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:
@@ -418,7 +421,7 @@
       var(--surface);
     border-bottom:1px solid var(--line);
     backdrop-filter:saturate(1.4) blur(6px);
-    position:sticky;top:0;z-index:30}
+    position:sticky;top:env(safe-area-inset-top,0px);z-index:30}
   .subnav-bar[hidden]{display:none}
   /* One row: brand, then the section's views, then the app actions. The brand USED to sit in
      a separate <header> below this bar, which read as the app being named by whatever tab you
@@ -2673,7 +2676,7 @@
   #v-editor .editor-bar{
     display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
     background:var(--surface);border-bottom:1px solid var(--line);
-    position:sticky;top:0;z-index:10}
+    position:sticky;top:env(safe-area-inset-top,0px);z-index:10}
   /* On narrow screens let the (now labelled) toolbar wrap to a second row rather
      than overflow or clip the dropdown pop-overs. ⌘K is keyboard-only → hide it. */
   @media(max-width:899px){
@@ -2983,7 +2986,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261019-58aa983";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261019-safearea";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
