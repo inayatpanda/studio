@@ -2986,7 +2986,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261019-6d9e76a";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261019-f55b6a0";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -7601,9 +7601,9 @@ function startOnboardingQA(){
   const previousFocus=document.activeElement;
   const ov=document.createElement('div'); ov.id='qaOverlay';
   ov.innerHTML=`<style>
-    #qaOverlay{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:1rem;
+    #qaOverlay{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;overflow-y:auto;padding:max(1rem,env(safe-area-inset-top,0px)) max(1rem,env(safe-area-inset-right,0px)) max(1rem,env(safe-area-inset-bottom,0px)) max(1rem,env(safe-area-inset-left,0px));
       background:rgba(2,4,9,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-    #qaOverlay .qc{width:min(440px,100%);min-width:0;max-height:92vh;overflow:auto;background:var(--surface,#0b1120);
+    #qaOverlay .qc{width:min(440px,100%);min-width:0;flex-shrink:0;margin:auto;background:var(--surface,#0b1120);
       border:1px solid var(--line,#1c2433);border-radius:18px;padding:1.4rem 1.5rem;box-shadow:0 24px 70px rgba(0,0,0,.6)}
     #qaOverlay h3{font:700 1.2rem var(--font-display,'Space Grotesk');margin:0 0 .2rem;color:var(--ink,#f4f7fd)}
     #qaOverlay p.qsub{color:var(--mut,#aebbd2);font-size:.85rem;margin:.1rem 0 1rem}
