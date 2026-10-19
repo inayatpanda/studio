@@ -2986,7 +2986,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261019-f55b6a0";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261019-3b0f592";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -3499,6 +3499,16 @@
 
     <div id="aiActiveLine" class="ai-active-line"></div>
     <p class="sub">Gemini API requires users aged 18 or over and an API project with billing enabled for UK, EEA and Swiss use. A Gemini chat subscription is separate. Do not use it for clinical practice or medical advice.</p>
+    <details class="settings-advanced" id="aiMarkingHelp"><summary>AI markings when you publish</summary>
+      <p class="sub">AI labels and provider watermarks serve different purposes. Atelier keeps origin information with accepted content and includes “Created with AI.” when copying or sharing a generated social post. Review facts and add a public disclosure where your content requires one. A mark does not establish accuracy, ownership or legal compliance.</p>
+      <ul class="sub">
+        <li><b>Claude:</b> use a model listed as supporting text watermarks. Older models and some file workflows differ. <a href="https://support.claude.com/en/articles/16266773-how-claude-marks-ai-generated-content" target="_blank" rel="noopener noreferrer">Check model coverage</a>.</li>
+        <li><b>OpenAI:</b> API text watermarking is a separate project or organisation setting. Enable it for the models you use; a saved API key does not confirm it is on. <a href="https://help.openai.com/en/articles/8912793-provenance-signals-in-openai-generated-content" target="_blank" rel="noopener noreferrer">Provider setup and limits</a>.</li>
+        <li><b>Gemini:</b> keep generated images in their original format to preserve their credentials. Image SynthID support does not establish marking for API text.</li>
+        <li><b>Groq and Workers AI:</b> verify marking for your exact model and output before relying on it. Atelier does not certify their outputs.</li>
+      </ul>
+      <p class="sub">Heavy rewriting, screenshots and external conversions can remove provenance. Keep the original asset. Atelier does not upload your drafts to a detector automatically.</p>
+    </details>
     <div id="aiProviders"><p class="sub">Loading…</p></div>
 
     <div id="settingsMsg" class="msg"></div>
@@ -5232,7 +5242,7 @@ function tico(name, cls){
   return '<svg class="tico' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="' + TICO_SPRITE + '#ti-' + n + '"/></svg>';
 }
 let TOKEN=localStorage.getItem('studio_token')||'';
-let state={platform:'linkedin', idea:'', post:'', hooks:[], imageDataUrl:null, imageFile:null};
+let state={platform:'linkedin', idea:'', post:'', aiProvenance:[], hooks:[], imageDataUrl:null, imageFile:null};
 
 /* ── theme system ───────────────────────────────────────────────────────── */
 // LIGHT is the default for a NEW / unset user; DARK is a first-class opt-in via the toggle.
@@ -5383,6 +5393,30 @@ function addAiOrigin(block, result, action='generation'){
 function copyAiOrigin(target, source){
   if(target && Array.isArray(source?.aiProvenance) && source.aiProvenance.length) target.aiProvenance=structuredClone(source.aiProvenance);
   return target;
+}
+// Social exports are plain text: keep an explicit origin notice with generated
+// content. This is a disclosure, not a cryptographic watermark or legal certification.
+function socialOrigin(value){
+  const clean=[], seen=new Set();
+  for(const x of (Array.isArray(value)?value:[]).slice(0,100)){
+    if(!x || !['generated','assisted'].includes(x.kind)) continue;
+    const token=v=>String(v||'').replace(/[^a-zA-Z0-9_./:-]/g,'').slice(0,100);
+    const p={kind:x.kind,tool:token(x.tool)||'AI',action:token(x.action)||'generation'};
+    const key=JSON.stringify(p); if(!seen.has(key)){seen.add(key);clean.push(p);}
+  }
+  return clean;
+}
+function socialExportText(text, origin){
+  const raw=String(text||'');
+  if(!raw.trim() || !socialOrigin(origin).some(x=>x.kind==='generated')) return raw;
+  const notice='Created with AI.';
+  return raw.trimEnd().endsWith(notice)?raw:raw.trimEnd()+'\n\n'+notice;
+}
+function showSocialOrigin(host, origin){
+  if(!socialOrigin(origin).some(x=>x.kind==='generated')) return;
+  const note=document.createElement('p'); note.className='sub';
+  note.textContent='Created with AI. This notice is included when you copy or share.';
+  host.appendChild(note);
 }
 function imageDataUri(block){
   if(/^data:/i.test(block.base64 || '')) return block.base64;
@@ -5798,7 +5832,7 @@ async function doDraft(){
   $('draftBtn').disabled=true; msg('composeMsg','Drafting in your voice…','busy');
   try{
     const r=await api('/draft',{method:'POST',body:JSON.stringify({idea:state.idea,platform:state.platform})});
-    state.post=r.post; state.hooks=r.hooks||[];
+    state.post=r.post; state.aiProvenance=socialOrigin(r.aiProvenance); state.hooks=r.hooks||[];
     renderReview(); go('review'); msg('composeMsg','','ok');$('composeMsg').className='msg';
   }catch(e){ msg('composeMsg',e.message,'err'); }
   finally{ $('draftBtn').disabled=false; }
@@ -5820,10 +5854,10 @@ $('draftText')&&$('draftText').addEventListener('input',updateCount);
 $('ss-domain')&&$('ss-domain').addEventListener('input',()=>{ try{ renderDnsPreview(); }catch{} });
 function updateCount(){
   window._xCapWarned=false;   // editing resets the one-tap X over-cap warning
-  const n=$('draftText').value.length;
+  const n=socialExportText($('draftText').value,state.aiProvenance).length;
   const caps={ linkedin:'LinkedIn ~3000 max', instagram:'Instagram ~2200 max', x:'X 280 max', facebook:'Facebook (long-form OK)' };
   const over=(state.platform==='x'&&n>280);
-  $('count').textContent=n+' chars · '+(caps[state.platform]||'');
+  $('count').textContent=n+' chars · '+(caps[state.platform]||'')+(socialOrigin(state.aiProvenance).some(x=>x.kind==='generated')?' · includes AI notice':'');
   $('count').style.color=over?'#fb7185':'';
 }
 async function regen(){
@@ -5942,7 +5976,7 @@ function _setShareUrl(url){ const f=$('shareUrl'); if(f) f.value=SHARE.displaySh
    Instagram). Shown only when the native share sheet is unavailable (desktop). */
 function _renderDesktopIntents(){
   const host=$('shareIntents'); if(!host) return;
-  const lines=($('draftText')?.value||'').trim();
+  const lines=socialExportText(($('draftText')?.value||'').trim(),state.aiProvenance);
   const link=_shareLink();
   const intents=SHARE.shareIntents({ lines, url:link });
   host.innerHTML=intents.map(i=>
@@ -5955,7 +5989,7 @@ function _showDesktopIntents(show){
 $('shareIntents')?.addEventListener('click',async e=>{
   const b=e.target.closest('.share-intent'); if(!b) return;
   const platform=b.dataset.p;
-  const lines=($('draftText')?.value||'').trim();
+  const lines=socialExportText(($('draftText')?.value||'').trim(),state.aiProvenance);
   const link=_shareLink();
   const intent=SHARE.buildIntent(platform,{ lines, url:link });
   if(!intent) return;
@@ -5974,7 +6008,7 @@ $('shareUrl')?.addEventListener('input',()=>{ if($('shareDesktop')?.style.displa
    taps Post); desktop opens each platform's own web composer in a new tab. */
 async function shareNow(){
   state.post=$('draftText').value;
-  const lines=(state.post||'').trim();
+  const lines=socialExportText((state.post||'').trim(),state.aiProvenance);
   const link=_shareLink();
   if(!lines && !link){ msg('reviewMsg','Write a few lines or add a link first.','err'); return; }
   // X hard-caps at 280 — warn once (with the count); a second tap shares anyway.
@@ -6052,7 +6086,8 @@ function isNoKeyErr(t){
 
 /* Share one chunk of text via the native share sheet (manual — nothing auto-posts).
    Falls back to clipboard where Web Share is unsupported (e.g. desktop). */
-async function shareText(txt, label){
+async function shareText(txt, label, origin){
+  txt=socialExportText(txt,origin);
   try{
     if(navigator.share){ await navigator.share({text:txt}); }
     else { await navigator.clipboard.writeText(txt); toast('Copied — paste into '+(label||'the app')+'.'); }
@@ -6062,7 +6097,8 @@ window.shareText=shareText;
 
 /* Build one editable social card. `platform` (linkedin|instagram|x) drives the label,
    char-limit hint, and what gets saved to the queue. Edit / Copy / Share / Save to Planner. */
-function makePackCard(platform, txt, idxLabel){
+function makePackCard(platform, txt, idxLabel, origin){
+  origin=socialOrigin(origin);
   const label = PLAT_LABEL[platform] || (platform||'Post');
   const card=document.createElement('div'); card.className='pack-card';
   const hd=document.createElement('div'); hd.className='pack-hd';
@@ -6070,20 +6106,20 @@ function makePackCard(platform, txt, idxLabel){
   hd.appendChild(plat);
   if(idxLabel){ const ix=document.createElement('span'); ix.className='pack-idx'; ix.textContent=idxLabel; hd.appendChild(ix); }
   card.appendChild(hd);
-  const ta=document.createElement('textarea'); ta.className='pack-edit'; ta.value=txt||''; card.appendChild(ta);
+  const ta=document.createElement('textarea'); ta.className='pack-edit'; ta.value=txt||''; card.appendChild(ta); showSocialOrigin(card,origin);
   const limit=PLAT_LIMIT[platform];
   let count=null;
   if(limit){ count=document.createElement('div'); count.className='pack-count'; card.appendChild(count); }
-  const refreshCount=()=>{ if(!count) return; const n=ta.value.length; count.textContent=n+' / '+limit+' chars'; count.classList.toggle('over',n>limit); };
+  const refreshCount=()=>{ if(!count) return; const n=socialExportText(ta.value,origin).length; count.textContent=n+' / '+limit+' chars'; count.classList.toggle('over',n>limit); };
   if(count){ refreshCount(); ta.addEventListener('input',refreshCount); }
   const acts=document.createElement('div'); acts.className='pack-actions';
   const copyBtn=document.createElement('button'); copyBtn.type='button'; copyBtn.className='btn ghost'; copyBtn.textContent='Copy';
-  copyBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(ta.value); toast(label+' copied'); }catch{ toast('Copy failed'); } });
+  copyBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(socialExportText(ta.value,origin)); toast(label+' copied'); }catch{ toast('Copy failed'); } });
   const shareBtn=document.createElement('button'); shareBtn.type='button'; shareBtn.className='btn'; shareBtn.textContent='Share →';
-  shareBtn.addEventListener('click',()=>shareText(ta.value,label));
+  shareBtn.addEventListener('click',()=>shareText(ta.value,label,origin));
   const queueBtn=document.createElement('button'); queueBtn.type='button'; queueBtn.className='btn ghost'; queueBtn.textContent='Save to Planner';
   queueBtn.addEventListener('click',async()=>{
-    try{ await addToQueue({ text:ta.value, platform:(platform==='x'||platform==='linkedin'||platform==='instagram')?platform:'', postUrl:_shareLink() }); toast('Saved to Planner ✓'); }
+    try{ await addToQueue({ text:ta.value, platform:(platform==='x'||platform==='linkedin'||platform==='instagram')?platform:'', postUrl:_shareLink(), aiProvenance:origin }); toast('Saved to Planner ✓'); }
     catch(e){ toast(e.message||'Could not queue'); }
   });
   acts.appendChild(copyBtn); acts.appendChild(shareBtn); acts.appendChild(queueBtn);
@@ -6103,7 +6139,7 @@ async function socialPack(){
     let any=false;
     for(const [key] of PACK_PLATS){
       const txt=r[key]; if(!txt) continue; any=true;
-      host.appendChild(makePackCard(key, txt));
+      host.appendChild(makePackCard(key, txt, null, r.aiProvenance));
     }
     if(!any) msg('reviewMsg','No variants came back — try redrafting.','err');
   }catch(e){
@@ -6139,7 +6175,9 @@ function _cardWrap(ctx, text, maxW){
   return lines;
 }
 async function makeShareCard(){
-  const main=($('cardMain').value||'').trim() || ($('draftText')?.value||'').split('\n')[0].trim();
+  const typedMain=($('cardMain').value||'').trim();
+  const main=typedMain || ($('draftText')?.value||'').split('\n')[0].trim();
+  const generatedSource=!typedMain && socialOrigin(state.aiProvenance).some(x=>x.kind==='generated');
   if(!main){ msg('reviewMsg','Give the card a line first.','err'); return; }
   const sub=($('cardSub').value||'').trim();
   const [W,H]=CARD_SIZES[_cardState.size]||CARD_SIZES.square;
@@ -6265,10 +6303,10 @@ async function repurpose(format){
     const bar=document.createElement('div'); bar.className='pack-allbar';
     const h=document.createElement('span'); h.className='pack-allhd'; h.textContent=heading+' · '+parts.length+(isThread?' tweets':' slides');
     const allBtn=document.createElement('button'); allBtn.type='button'; allBtn.className='btn ghost'; allBtn.textContent='Copy all';
-    const joined=parts.join(isThread?'\n\n':'\n\n— — —\n\n');
-    allBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(joined); toast('All '+(isThread?'tweets':'slides')+' copied'); }catch{ toast('Copy failed'); } });
+    const joined=()=>[...host.querySelectorAll('.pack-edit')].map(ta=>socialExportText(ta.value,r.aiProvenance)).join(isThread?'\n\n':'\n\n— — —\n\n');
+    allBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(joined()); toast('All '+(isThread?'tweets':'slides')+' copied'); }catch{ toast('Copy failed'); } });
     bar.appendChild(h); bar.appendChild(allBtn); host.appendChild(bar);
-    parts.forEach((txt,i)=>{ host.appendChild(makePackCard(platform, txt, (isThread?'Tweet ':'Slide ')+(i+1)+' / '+parts.length)); });
+    parts.forEach((txt,i)=>{ host.appendChild(makePackCard(platform, txt, (isThread?'Tweet ':'Slide ')+(i+1)+' / '+parts.length, r.aiProvenance)); });
   }catch(e){
     const t=String(e.message||e);
     if(isNoKeyErr(e)){
@@ -6305,11 +6343,11 @@ function docToText(doc){
   }).filter(Boolean).join('\n\n');
 }
 // One-tap announce: land in Review with the link + source set, then generate the social pack.
-async function announceFlow(url, source){
+async function announceFlow(url, source, origin=[]){
   go('review');
   _setShareUrl(url||'');
   if(source && $('draftText')) $('draftText').value=source;
-  state.post = source||'';
+  state.post = source||''; state.aiProvenance=socialOrigin(origin);
   await socialPack();
 }
 window.announceFlow=announceFlow;
@@ -6320,7 +6358,7 @@ window.announceFlow=announceFlow;
    old confirm-true branch called. */
 let _pubBarTimer=null;
 function dismissPublishBar(){ clearTimeout(_pubBarTimer); _pubBarTimer=null; const b=$('pubBar'); if(b) b.remove(); }
-function showPublishBar(url, source){
+function showPublishBar(url, source, origin=[]){
   dismissPublishBar();
   // The publish routes return a site-relative /blog/<slug>/ — absolutise it
   // against the configured live-site origin so "View live" is a genuine link.
@@ -6341,18 +6379,18 @@ function showPublishBar(url, source){
     +buildLink+viewLive
     +'<button type="button" class="pb-btn" id="pubBarSocial">Draft social posts</button>'
     +'<button type="button" class="pb-x" aria-label="Dismiss">'+tico('x')+'</button>';
-  bar.querySelector('#pubBarSocial').addEventListener('click',()=>{ dismissPublishBar(); announceFlow(url, source||''); });
+  bar.querySelector('#pubBarSocial').addEventListener('click',()=>{ dismissPublishBar(); announceFlow(url, source||'', origin); });
   bar.querySelector('.pb-x').addEventListener('click',dismissPublishBar);
   document.body.appendChild(bar);
   // Keep build guidance available until dismissed or another publish replaces it.
 }
 window.dismissPublishBar=dismissPublishBar;
 // Offer to announce right after a publish. url/source optional; no url → a gentle toast.
-async function offerAnnounce(url, source){
+async function offerAnnounce(url, source, origin=[]){
   notePublished(url);
   if(url){
     try{ await ensureSiteCfg(); }catch{}   // warm the live-site origin for the View-live link
-    showPublishBar(url, source||'');
+    showPublishBar(url, source||'', origin);
   } else { toast('Saved to GitHub. Your website will update after its build finishes.'); }
 }
 window.offerAnnounce=offerAnnounce;
@@ -6370,7 +6408,7 @@ $('sharePostPick')?.addEventListener('change',e=>{ if(e.target.value) _setShareU
 function normDraft(d){
   const text = (d && (d.text!=null ? d.text : (d.post || d.idea))) || '';
   const status = (d && d.status && ['idea','queued','shared'].includes(d.status)) ? d.status : 'idea';
-  return { id:d.id, status, text:String(text), platform:(d&&d.platform)||'', date:(d&&d.date)||'',
+  return { id:d.id, aiProvenance:socialOrigin(d?.aiProvenance), status, text:String(text), platform:(d&&d.platform)||'', date:(d&&d.date)||'',
            postUrl:(d&&d.postUrl)||'', createdAt:(d&&d.createdAt)|| (d&&d._created) || '' };
 }
 const _todayISO=()=>new Date().toISOString().slice(0,10);
@@ -6380,7 +6418,7 @@ async function saveDraft(){
   try{
     const text=($('draftText')?.value||state.post||'').trim();
     if(text.length<2){ msg('reviewMsg','Write or draft something first.','err'); return; }
-    await addToQueue({ text, platform:state.platform, postUrl:_shareLink(), status:'idea' });
+    await addToQueue({ text, platform:state.platform, postUrl:_shareLink(), status:'idea', aiProvenance:state.aiProvenance });
     msg('reviewMsg','Saved to the queue','ok');
   }catch(e){ msg('reviewMsg',e.message,'err'); }
 }
@@ -6388,8 +6426,8 @@ window.saveDraft=saveDraft;
 
 // Create a draft record. Defaults status to 'queued' (so pack/repurpose "Save to Planner"
 // lands a real planned item); pass status:'idea' for a bare note.
-async function addToQueue({ text, platform='', date='', postUrl='', status='queued' }={}){
-  const rec={ status, date:date||'', platform:platform||'', text:String(text||''), postUrl:postUrl||'', createdAt:new Date().toISOString() };
+async function addToQueue({ text, platform='', date='', postUrl='', status='queued', aiProvenance=[] }={}){
+  const rec={ aiProvenance:socialOrigin(aiProvenance), status, date:date||'', platform:platform||'', text:String(text||''), postUrl:postUrl||'', createdAt:new Date().toISOString() };
   return api('/drafts',{method:'POST',body:JSON.stringify(rec)});
 }
 window.addToQueue=addToQueue;
@@ -6410,7 +6448,7 @@ async function loadDrafts(){
   }catch(e){ $('draftList').textContent=e.message; }
 }
 window.loadDrafts=loadDrafts;
-function reopen(d){ state.idea=''; state.post=d.text||d.post||d.idea||''; state.platform=(d.platform==='instagram'?'instagram':'linkedin'); state.hooks=[]; renderReview(); go('review'); }
+function reopen(d){ state.idea=''; state.post=d.text||d.post||d.idea||''; state.aiProvenance=socialOrigin(d.aiProvenance); state.platform=(d.platform==='instagram'?'instagram':'linkedin'); state.hooks=[]; renderReview(); go('review'); }
 window.reopen=reopen;
 async function delDraft(id){ await api('/drafts/'+id,{method:'DELETE'}); loadDrafts(); }
 window.delDraft=delDraft;
@@ -6611,7 +6649,7 @@ function makeQueueItem(d, today){
   meta.innerHTML=`<span class="chip">${esc(label)}</span><span class="q-due ${dueClass}">${esc(dueTxt)}</span>${d.postUrl?`<span>🔗 link attached</span>`:''}`;
   item.appendChild(meta);
 
-  const ta=document.createElement('textarea'); ta.className='q-text'; ta.value=d.text||''; item.appendChild(ta);
+  const ta=document.createElement('textarea'); ta.className='q-text'; ta.value=d.text||''; item.appendChild(ta); showSocialOrigin(item,d.aiProvenance);
   // A planner idea is a whole social post, so the box (63px) held a fraction of the content
   // (438px) and cut the last visible line horizontally through the glyphs. Grow to fit, up to
   // a cap — beyond that it scrolls, but on a line boundary so no row is ever sliced.
@@ -6641,7 +6679,7 @@ function makeQueueItem(d, today){
 
   // persist edits (text/date/platform) on change
   const persist=async()=>{
-    const next={ id:d.id, status:d.status, text:ta.value, platform:platSel.value, date:dateIn.value, postUrl:d.postUrl||'', createdAt:d.createdAt||new Date().toISOString() };
+    const next={ id:d.id, aiProvenance:socialOrigin(d.aiProvenance), status:d.status, text:ta.value, platform:platSel.value, date:dateIn.value, postUrl:d.postUrl||'', createdAt:d.createdAt||new Date().toISOString() };
     Object.assign(d,next);
     try{ await api('/drafts/'+d.id,{method:'PUT',body:JSON.stringify(next)}); }catch(e){ toast(e.message||'Could not save'); }
   };
@@ -6652,19 +6690,19 @@ function makeQueueItem(d, today){
   // actions: Share (native sheet) · Mark shared / Re-queue · Delete
   const acts=document.createElement('div'); acts.className='q-actions';
   const shareBtn=document.createElement('button'); shareBtn.type='button'; shareBtn.className='btn'; shareBtn.textContent='Share →';
-  shareBtn.addEventListener('click',()=>{ const t = d.postUrl ? (ta.value.trim()+'\n\n'+d.postUrl) : ta.value; shareText(t,label); });
+  shareBtn.addEventListener('click',()=>{ const t = d.postUrl ? (ta.value.trim()+'\n\n'+d.postUrl) : ta.value; shareText(t,label,d.aiProvenance); });
   acts.appendChild(shareBtn);
   if(d.status!=='shared'){
     const markBtn=document.createElement('button'); markBtn.type='button'; markBtn.className='btn ghost'; markBtn.textContent='Mark shared';
-    markBtn.addEventListener('click',async()=>{ d.status='shared'; try{ await api('/drafts/'+d.id,{method:'PUT',body:JSON.stringify({id:d.id,status:'shared',text:ta.value,platform:platSel.value,date:dateIn.value,postUrl:d.postUrl||'',createdAt:d.createdAt||new Date().toISOString()})}); toast('Marked shared ✓'); renderQueue(); }catch(e){ toast(e.message||'Could not update'); } });
+    markBtn.addEventListener('click',async()=>{ d.status='shared'; try{ await api('/drafts/'+d.id,{method:'PUT',body:JSON.stringify({id:d.id,aiProvenance:socialOrigin(d.aiProvenance),status:'shared',text:ta.value,platform:platSel.value,date:dateIn.value,postUrl:d.postUrl||'',createdAt:d.createdAt||new Date().toISOString()})}); toast('Marked shared ✓'); renderQueue(); }catch(e){ toast(e.message||'Could not update'); } });
     acts.appendChild(markBtn);
   } else {
     const reqBtn=document.createElement('button'); reqBtn.type='button'; reqBtn.className='btn ghost'; reqBtn.textContent='Re-queue';
-    reqBtn.addEventListener('click',async()=>{ d.status='queued'; try{ await api('/drafts/'+d.id,{method:'PUT',body:JSON.stringify({id:d.id,status:'queued',text:ta.value,platform:platSel.value,date:dateIn.value,postUrl:d.postUrl||'',createdAt:d.createdAt||new Date().toISOString()})}); renderQueue(); }catch(e){ toast(e.message||'Could not update'); } });
+    reqBtn.addEventListener('click',async()=>{ d.status='queued'; try{ await api('/drafts/'+d.id,{method:'PUT',body:JSON.stringify({id:d.id,aiProvenance:socialOrigin(d.aiProvenance),status:'queued',text:ta.value,platform:platSel.value,date:dateIn.value,postUrl:d.postUrl||'',createdAt:d.createdAt||new Date().toISOString()})}); renderQueue(); }catch(e){ toast(e.message||'Could not update'); } });
     acts.appendChild(reqBtn);
   }
   const copyBtn=document.createElement('button'); copyBtn.type='button'; copyBtn.className='btn ghost'; copyBtn.textContent='Copy';
-  copyBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(ta.value); toast('Copied'); }catch{ toast('Copy failed'); } });
+  copyBtn.addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(socialExportText(ta.value,d.aiProvenance)); toast('Copied'); }catch{ toast('Copy failed'); } });
   acts.appendChild(copyBtn);
   const delBtn=document.createElement('button'); delBtn.type='button'; delBtn.className='btn ghost'; delBtn.textContent='Delete';
   delBtn.addEventListener('click',async()=>{ if(!(await helmConfirm({ title:'Delete this queued item?', okText:'Delete', danger:true }))) return; try{ await api('/drafts/'+d.id,{method:'DELETE'}); _queue=_queue.filter(x=>x.id!==d.id); renderQueue(); }catch(e){ toast(e.message||'Could not delete'); } });
@@ -6877,7 +6915,7 @@ async function shareFromPost(p){
   go('review');
   _setShareUrl(url);
   if($('draftText')) $('draftText').value=source;
-  state.post=source; state.hooks=[]; updateCount();
+  state.post=source; state.aiProvenance=socialOrigin([...(data?.aiProvenance||[]),...(doc?.aiProvenance||[]),...(doc?.blocks||[]).flatMap(b=>b.aiProvenance||[])]); state.hooks=[]; updateCount();
   // seed the compose idea + state so "Redraft" has a source to work from (it reads $('idea'))
   if($('idea')) $('idea').value=source;
   state.idea=source;
@@ -12245,7 +12283,7 @@ async function doPublish(){
     syncActionBtns();
     // snapshot the just-published state (label "Published") — never lose work.
     snapshotCurrent(label, { silent:true });
-    if(!meta.draft && !meta.publishAt && r.url){ await offerAnnounce(r.url, ((meta.title?meta.title+'\n\n':'')+docToText(doc)).slice(0,1500)); }
+    if(!meta.draft && !meta.publishAt && r.url){ await offerAnnounce(r.url, ((meta.title?meta.title+'\n\n':'')+docToText(doc)).slice(0,1500), [...(meta.aiProvenance||[]),...(doc.aiProvenance||[]),...(doc.blocks||[]).flatMap(b=>b.aiProvenance||[])]); }
     else toast(label+' → ' + (r.url || currentSlug));
   }catch(e){
     setSaveState('error','Publish failed');

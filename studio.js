@@ -1274,7 +1274,7 @@ var IMAGE_SIZES = /* @__PURE__ */ new Set(["1024x1024", "1536x1024", "1024x1536"
 async function generateImage2({ prompt, size, model, key, baseUrl }, fetchImpl = fetch) {
   const url = "https://api.openai.com/v1/images/generations";
   const body = {
-    model: model || "gpt-image-1",
+    model: model || "gpt-image-2.5-flare",
     prompt,
     size: IMAGE_SIZES.has(size) ? size : "1024x1024",
     n: 1
