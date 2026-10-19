@@ -323,6 +323,7 @@
   .msg{padding:.7em 1em;border-radius:10px;margin-top:.8rem;font-size:.86rem;display:none}
   .msg.ok{display:block;background:rgba(45,212,191,.12);color:var(--acc)}
   .msg.err{display:block;background:rgba(244,114,182,.12);color:#f472b6}
+  [data-theme="light"] .msg.err{color:#9d174d}
   .msg.busy{display:block;background:rgba(129,140,248,.12);color:var(--violet)}
   .count{font-size:.74rem;color:var(--faint);text-align:right;margin-top:.25rem}
   img.preview{max-width:100%;border-radius:12px;margin-top:.6rem;border:1px solid var(--line)}
@@ -2982,7 +2983,7 @@
      clobber each other. Without this the local build had none of them — see
      studio-app/lib-entry.js. -->
 <script type="module" src="./studio-lib.js"></script>
-  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261018-7fa4b47";</script>
+  <script>window.__STUDIO_GH_CLIENT_ID="Ov23liB0NzXKQmhnlPng";window.__STUDIO_RELAY_BASE="https://chapbook.rqai.co.uk/.netlify/functions/gh-device";window.__STUDIO_BUILD="v20261019-58aa983";</script>
   <script type="module" src="./studio.js"></script>
 </head>
 <body>
@@ -7594,26 +7595,28 @@ const ONBOARD_QA=[
 function startOnboardingQA(){
   if(document.getElementById('qaOverlay')) return;
   const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const previousFocus=document.activeElement;
   const ov=document.createElement('div'); ov.id='qaOverlay';
   ov.innerHTML=`<style>
     #qaOverlay{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:1rem;
       background:rgba(2,4,9,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-    #qaOverlay .qc{width:min(440px,94vw);max-height:92vh;overflow:auto;background:var(--panel,#0b1120);
+    #qaOverlay .qc{width:min(440px,94vw);max-height:92vh;overflow:auto;background:var(--surface,#0b1120);
       border:1px solid var(--line,#1c2433);border-radius:18px;padding:1.4rem 1.5rem;box-shadow:0 24px 70px rgba(0,0,0,.6)}
     #qaOverlay h3{font:700 1.2rem var(--font-display,'Space Grotesk');margin:0 0 .2rem;color:var(--ink,#f4f7fd)}
-    #qaOverlay p.qsub{color:var(--faint,#aebbd2);font-size:.85rem;margin:.1rem 0 1rem}
+    #qaOverlay p.qsub{color:var(--mut,#aebbd2);font-size:.85rem;margin:.1rem 0 1rem}
     #qaOverlay label{display:block;font:600 .68rem var(--font-display,'Space Grotesk');letter-spacing:.06em;
-      text-transform:uppercase;color:var(--faint,#aebbd2);margin:.9rem 0 .25rem}
+      text-transform:uppercase;color:var(--mut,#aebbd2);margin:.9rem 0 .25rem}
     #qaOverlay input,#qaOverlay textarea{width:100%;background:var(--bg,#080c16);border:1px solid var(--line,#1c2433);
       border-radius:10px;color:var(--ink,#f4f7fd);padding:.6em .7em;font:inherit}
+    #qaOverlay input::placeholder,#qaOverlay textarea::placeholder{color:var(--mut,#aebbd2);opacity:1}
     #qaOverlay .qrow{display:flex;gap:.6rem;margin-top:1.2rem}
     #qaOverlay button{flex:1;border:0;border-radius:12px;padding:.7em;font:700 .95rem var(--font-display,'Space Grotesk');cursor:pointer;
       color:#042018;background:linear-gradient(95deg,var(--teal,#2dd4bf),var(--cyan,#22d3ee))}
-    #qaOverlay button.ghost{background:transparent;border:1px solid var(--line,#1c2433);color:var(--faint,#aebbd2)}
-    #qaOverlay .qmsg{font-size:.8rem;margin-top:.6rem;min-height:1em;color:var(--faint,#aebbd2)}
+    #qaOverlay button.ghost{background:transparent;border:1px solid var(--line,#1c2433);color:var(--mut,#aebbd2)}
+    #qaOverlay .qmsg{font-size:.8rem;margin-top:.6rem;min-height:1em;color:var(--mut,#aebbd2)}
   </style>
-  <div class="qc">
-    <h3>A quick hello</h3>
+  <div class="qc" role="dialog" aria-modal="true" aria-labelledby="qaTitle">
+    <h3 id="qaTitle">A quick hello</h3>
     <p class="qsub">Four questions so the AI writes as <i>you</i>, not as a generic blogger. It's a guide, not a script — and you can change any of it later in Settings.</p>
     ${ONBOARD_QA.map(it=>`<label for="qa-${it.key}">${esc(it.q)}</label>${
       it.key==='voiceNotes'
@@ -7626,7 +7629,16 @@ function startOnboardingQA(){
     </div>
   </div>`;
   document.body.appendChild(ov);
-  const close=()=>ov.remove();
+  const close=()=>{ ov.remove(); if(previousFocus?.isConnected) previousFocus.focus(); };
+  ov.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){ e.preventDefault(); document.getElementById('qaSkip').click(); return; }
+    if(e.key!=='Tab') return;
+    const controls=[...ov.querySelectorAll('input,textarea,button')].filter(el=>!el.disabled);
+    const first=controls[0],last=controls[controls.length-1];
+    if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
+  ov.querySelector('input')?.focus();
   // Prefill from any existing profile so re-running the Q&A edits rather than blanks.
   api('/settings/profile').then(r=>{ const p=(r&&r.profile)||{}; for(const it of ONBOARD_QA){ const el=document.getElementById('qa-'+it.key); if(el&&p[it.key]) el.value=p[it.key]; } }).catch(()=>{});
   document.getElementById('qaSkip').addEventListener('click',()=>{ try{ localStorage.setItem('helm.studio.onboarded','1'); }catch{} close(); });
